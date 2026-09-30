@@ -1,0 +1,96 @@
+station_id,station_name,type,basin_id,river_reach_id,relation_to_da_vien,river_snap_distance_m,coordinate_source
+682816,Hồ Hòa Mỹ (Phong Điền),rain,4121576580,41281437,outside_catchment,149.4782991986205,rain_stations.csv
+750007,Nhâm (A Lưới),rain,4121098920,41288100,outside_catchment,964.4155428671555,rain_stations.csv
+750008,A Đớt (A Lưới),rain,4121577980,41290712,outside_catchment,128.32774621263738,rain_stations.csv
+750024,An Tây (Thuận Hóa),rain,4120015622,41282345,same_catchment,1961.907124842517,rain_stations.csv
+750002,Hồ Mỹ Xuyên (Phong Điền),rain,4121092412,41278222,outside_catchment,0.00035730401791242997,rain_stations.csv
+750045,Đan Điền,rain,4120015590,41277705,outside_catchment,843.7062991151782,rain_stations.csv
+750062,Hồng Thái (A Lưới),rain,4121098420,41287314,outside_catchment,173.30480327053783,rain_stations.csv
+750015,Hồ Tà Rinh (Phú Lộc),rain,4121099080,41290023,upstream,559.8921758036252,rain_stations.csv
+14696,Hồ chứa nước Khe Ngang,rain,4120015621,41282748,downstream,513.5794155729985,rain_stations.csv
+750016,Trạm bơm Sơn Bổn,rain,4120015670,41284851,outside_catchment,28.385027856808776,rain_stations.csv
+750041,Bạch Mã,rain,4120015700,41287236,outside_catchment,531.6644503660107,rain_stations.csv
+228006,VPTT PCTTHUE,rain,4129148771,41282167,upstream,724.0094609143163,rain_stations.csv
+750025,Thị trấn Phong Điền (Phong Điền),rain,4121093412,41279344,outside_catchment,663.2613096969071,rain_stations.csv
+750014,Hồ chứa nước Phú Bài (Hương Thủy),rain,4120015652,41284771,outside_catchment,167.44288059058826,rain_stations.csv
+750027,Thủy Thanh (Hương Thủy),rain,4120015622,41282168,same_catchment,864.7923127593816,rain_stations.csv
+750032,Trạm bơm Quảng Thành (Quảng Điền),rain,4120015621,41280241,downstream,1984.893548391513,rain_stations.csv
+681524,Hồ Thọ Sơn (Hương Trà),rain,4120015600,41281970,outside_catchment,128.07587156931785,rain_stations.csv
+750012,"Đập, Thủy điện Thượng Nhật (Phú Lộc)",rain,4121099080,41290114,upstream,452.16130411058236,rain_stations.csv
+750006,Hương Nguyên (A Lưới),rain,4121578501,41290436,upstream,707.49491840168,rain_stations.csv
+14690,Hồ chứa nước Thủy Yên,rain,4120015710,41287129,outside_catchment,560.0549553862159,rain_stations.csv
+677493,TT Khe Tre (Phú Lộc),rain,4121099032,41288888,upstream,46.17970557531806,rain_stations.csv
+750033,VP QLKTCTTL TP Huế (TP Huế),rain,4120015621,41282166,downstream,1801.7187042355358,rain_stations.csv
+750011,Hồ A Lá (A Lưới),rain,4121098420,41287234,outside_catchment,1536.392747689577,rain_stations.csv
+750009,Lộc Tiến (Phú Lộc),rain,4120015710,41286516,outside_catchment,107.73123091711368,rain_stations.csv
+228005,Cảng Chân Mây,rain,4120015720,41285628,outside_catchment,2247.3237618619664,rain_stations.csv
+750028,Hương Sơn (Phú Lộc),rain,4121099080,41289173,upstream,440.2022035372186,rain_stations.csv
+750035,Cảng Tư Hiền,rain,4120015640,41285349,outside_catchment,3429.7528016100337,rain_stations.csv
+750061,Thủy điện Bình Điền (Hương Trà),rain,4121577531,41285621,upstream,128.18435373597222,rain_stations.csv
+677851,TT Sịa (Quảng Điền),rain,4120015590,41278975,outside_catchment,270.0358762551456,rain_stations.csv
+750001,TT Phú Đa (Phú Vang),rain,4120015651,41282754,outside_catchment,641.8998501133058,rain_stations.csv
+750029,Thượng Quảng (Phú Lộc),rain,4121099080,41289846,upstream,3.2473925211677246,rain_stations.csv
+750059,Cảng Thuận An,rain,4120015630,41280322,outside_catchment,2657.5599047439155,rain_stations.csv
+750003,Thị trấn A Lưới (A Lưới),rain,4121098420,41286408,outside_catchment,538.1272992913081,rain_stations.csv
+750022,Đồn Biên phòng Cảng Chân Mây (Phú Lộc),rain,4120015720,41285628,outside_catchment,2179.941837036915,rain_stations.csv
+750063,Phú Sơn (Hương Thủy),rain,4121096532,41284771,upstream,1649.771021607978,rain_stations.csv
+567011,Quan Tượng Đài (Phú Xuân),rain,4120015621,41282167,downstream,297.1565977552456,rain_stations.csv
+750034,Trạm bơm Vinh Hà (Phú Vang),rain,4120015630,41284182,outside_catchment,3191.999553506894,rain_stations.csv
+750010,Giang Hải (Phú Lộc),rain,4120015640,41284481,outside_catchment,1201.9485153726666,rain_stations.csv
+750047,Lộc An,rain,4120015690,41285713,outside_catchment,925.4807378163723,rain_stations.csv
+750026,Bình Tiến (Hương Trà),rain,4121576980,41284765,outside_catchment,74.2526886228339,rain_stations.csv
+750023,Quảng Phú (Quảng Điền),rain,4120015600,41280432,outside_catchment,637.8693125008906,rain_stations.csv
+750021,Đồn Biên phòng Lăng Cô (Phú Lộc),rain,4120015720,41288110,outside_catchment,2308.879983197229,rain_stations.csv
+958573,Đập Thủy điện Rào Trăng 3 (Phong Điền),rain,4121096620,41283270,outside_catchment,107.68963286392191,rain_stations.csv
+678628,Tà Lương (A Lưới),rain,4121096670,41285817,outside_catchment,107.65455829437542,rain_stations.csv
+750065,Xuân Lộc (Phú Lộc),rain,4120015670,41286884,outside_catchment,21.28194904779537,rain_stations.csv
+750005,Hồng Vân (A Lưới),rain,4121098420,41284472,outside_catchment,169.0573722219252,rain_stations.csv
+750013,Lưu vực Thủy điện Thượng Nhật (Phú Lộc),rain,4121099080,41291069,upstream,64.15643217347491,rain_stations.csv
+750042,Trạm kiểm lâm Khe Mỏ Rang,rain,4121099032,41289375,upstream,45.09937611887401,rain_stations.csv
+959428,Đập Thủy điện Rào Trăng 4 (Phong Điền),rain,4121096620,41283591,outside_catchment,76.90486525192284,rain_stations.csv
+14699,Hồ chứa nước Truồi,rain,4120015690,41286978,outside_catchment,140.40324370854947,rain_stations.csv
+750040,Hương Chữ (Hương Trà),rain,4120015621,41281441,downstream,661.2335594444816,rain_stations.csv
+750066,Đỉnh Bạch Mã (Phú Lộc),rain,4120015690,41287839,outside_catchment,2106.1190013468536,rain_stations.csv
+750030,Vườn Quốc gia Bạch Mã (Phú Lộc),rain,4120015700,41287396,outside_catchment,747.7139384084289,rain_stations.csv
+750046,Vỹ Dạ,rain,4120015622,41281640,same_catchment,602.46135626584,rain_stations.csv
+750064,Điền Hương (Phong Điền),rain,4120015581,41276124,outside_catchment,325.9984688445096,rain_stations.csv
+751118,"Thôn Phò Nam A, xã Quảng Thọ",water_level,4120015600,41280433,outside_catchment,725.9992486748109,water_level_stations.csv
+750043,Phú Xuân,water_level,4120015621,41281149,downstream,1942.0413575992666,water_level_stations.csv
+750044,An Cựu,water_level,4120015622,41282073,same_catchment,588.6801944650553,water_level_stations.csv
+74647404,Trạm Tứ Phú (Sông Bồ),water_level,4120015600,41280537,outside_catchment,298.3088501738605,water_level_stations.csv
+74647402,Cảng Cá Thuận An,water_level,,41280322,outside_catchment,2766.7067518017516,water_level_stations.csv
+74647705,Trạm Ngã Ba Sình (Sông Hương),water_level,4120015621,41281441,downstream,119.97936410955622,water_level_stations.csv
+74647606,Cầu Huỳnh Liên-Văn Trạch Hòa(Sông Ô Lâu),water_level,4121093412,41279959,outside_catchment,58.38376916388002,water_level_stations.csv
+75882244,"Xóm Gióng, Phường Thủy Dương",water_level,4120015622,41282345,same_catchment,378.31420066660087,water_level_stations.csv
+751116,"Khu đô thị An Cựu City, TP Huế",water_level,4120015622,41282267,same_catchment,511.0910470612378,water_level_stations.csv
+74648201,Cảng Tư Hiền,water_level,4120015640,41285349,outside_catchment,3440.160266121297,water_level_stations.csv
+11223344,Khu TĐC Hương Sơ(Thành phố Huế),water_level,4120015621,41281149,downstream,941.7048386472746,water_level_stations.csv
+55889944,"Thủ Lễ, xã Quảng Phước",water_level,4120015600,41279761,outside_catchment,794.9927216333722,water_level_stations.csv
+97203841,Cầu Hòa Xuân 1(Sông Ô Lâu),water_level,4120015582,41277278,outside_catchment,2.175280082779992,water_level_stations.csv
+751117,"Thôn Trung Làng, xã Quảng Thái",water_level,4120015590,41277705,outside_catchment,76.87260407696274,water_level_stations.csv
+751115,"Chung cư Xuân Phú, TP Huế",water_level,4120015622,41282073,same_catchment,76.8468339449937,water_level_stations.csv
+75996644,Xã Thủy Thanh (TX Hương Thủy),water_level,4120015622,41282168,same_catchment,1101.5279569264014,water_level_stations.csv
+74647403,Trạm Dã Viên (Sông Hương),water_level,4120015622,41282167,same_catchment,6.378844230831245,water_level_stations.csv
+28f350b6-8149-45b0-98d2-49c3096cd9a3,Cảng Thuận An,wind,,41280322,outside_catchment,2652.1079393563778,wind_stations.csv
+2d9b1c98-16ec-4681-9d23-0769a49aedaa,Cảng Tư Hiền,wind,4120015640,41285349,outside_catchment,3429.7528016100337,wind_stations.csv
+63586eaa-f1cc-11f0-8f75-0692ec44dcd5,Cảng Chân Mây,wind,4120015720,41285628,outside_catchment,2247.3237618619664,wind_stations.csv
+63604a34-f1cc-11f0-8f75-0692ec44dcd5,VPTT PCTTHUE,wind,4129148771,41282167,upstream,724.0094609143163,wind_stations.csv
+1,Thủy điện Hương Điền,reservoir,4121576470,41282451,outside_catchment,146.14446639512948,reservoirs.csv
+10,Thủy điện A Lin Thượng,reservoir,4121098420,41285054,outside_catchment,32.05824809620452,reservoirs.csv
+11,Đập A Lin 3,reservoir,4121096620,41283768,outside_catchment,65.81898251166116,reservoirs.csv
+12,Đập A LIN B1,reservoir,4121098880,41286504,outside_catchment,1.2531458851083326,reservoirs.csv
+13,Thủy điện A LIN B2,reservoir,4121096620,41283268,outside_catchment,41.59519060308027,reservoirs.csv
+14,Thủy điện Rào Trăng 3,reservoir,4121096620,41283270,outside_catchment,124.0432130384399,reservoirs.csv
+15,Thủy điện Rào Trăng 4,reservoir,4121096620,41283591,outside_catchment,37.657642990472105,reservoirs.csv
+16,Trạm Dã Viên (Sông Hương),reservoir,4120015622,41282167,same_catchment,6.378844230831245,name_match:water_level:74647403
+17,Trạm Tứ Phú (Sông Bồ),reservoir,4120015600,41280537,outside_catchment,298.3088501738605,name_match:water_level:74647404
+19,Cảng cá Thuận An,reservoir,,41280322,outside_catchment,2766.7067518017516,name_match:water_level:74647402
+2,Thủy điện Bình Điền,reservoir,4121577532,41285438,upstream,194.34182510690948,reservoirs.csv
+20,Cảng Tư Hiền,reservoir,4120015640,41285349,outside_catchment,3429.7528016100337,name_match:wind:2d9b1c98-16ec-4681-9d23-0769a49aedaa
+3,Hồ Tả Trạch,reservoir,4121096532,41285625,upstream,53.21293508539885,reservoirs.csv
+4,Đập Thảo Long,reservoir,4120015610,41280322,outside_catchment,711.3661761295771,reservoirs.csv
+5,Thủy điện A Lưới,reservoir,4121096670,41286614,outside_catchment,594.5462341899772,reservoirs.csv
+6,Thủy điện Thượng Lộ,reservoir,4121099032,41289561,upstream,30.485601581152718,reservoirs.csv
+7,Thủy điện Thượng Nhật,reservoir,4121099080,41290114,upstream,10.238061254286125,reservoirs.csv
+8,Thủy điện A Roàng,reservoir,4121577980,41289650,outside_catchment,22.142299631856563,reservoirs.csv
+9,Thủy điện Sông Bồ,reservoir,4121577980,41287043,outside_catchment,416.93096810114594,reservoirs.csv

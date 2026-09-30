@@ -1,0 +1,21 @@
+station_id,station_name,type,basin_id,river_reach_id,relation_to_da_vien,river_snap_distance_m,coordinate_source,candidate_reason
+750024,An Tây (Thuận Hóa),rain,4120015622,41282345,same_catchment,1961.907124842517,rain_stations.csv,rain_inside_target_level12_basin
+750027,Thủy Thanh (Hương Thủy),rain,4120015622,41282168,same_catchment,864.7923127593816,rain_stations.csv,rain_inside_target_level12_basin
+750046,Vỹ Dạ,rain,4120015622,41281640,same_catchment,602.46135626584,rain_stations.csv,rain_inside_target_level12_basin
+750006,Hương Nguyên (A Lưới),rain,4121578501,41290436,upstream,707.49491840168,rain_stations.csv,topology_upstream
+750028,Hương Sơn (Phú Lộc),rain,4121099080,41289173,upstream,440.2022035372186,rain_stations.csv,topology_upstream
+750015,Hồ Tà Rinh (Phú Lộc),rain,4121099080,41290023,upstream,559.8921758036252,rain_stations.csv,topology_upstream
+750013,Lưu vực Thủy điện Thượng Nhật (Phú Lộc),rain,4121099080,41291069,upstream,64.15643217347491,rain_stations.csv,topology_upstream
+750063,Phú Sơn (Hương Thủy),rain,4121096532,41284771,upstream,1649.771021607978,rain_stations.csv,topology_upstream
+677493,TT Khe Tre (Phú Lộc),rain,4121099032,41288888,upstream,46.17970557531806,rain_stations.csv,topology_upstream
+750029,Thượng Quảng (Phú Lộc),rain,4121099080,41289846,upstream,3.2473925211677246,rain_stations.csv,topology_upstream
+750061,Thủy điện Bình Điền (Hương Trà),rain,4121577531,41285621,upstream,128.18435373597222,rain_stations.csv,topology_upstream
+750042,Trạm kiểm lâm Khe Mỏ Rang,rain,4121099032,41289375,upstream,45.09937611887401,rain_stations.csv,topology_upstream
+228006,VPTT PCTTHUE,rain,4129148771,41282167,upstream,724.0094609143163,rain_stations.csv,topology_upstream
+750012,"Đập, Thủy điện Thượng Nhật (Phú Lộc)",rain,4121099080,41290114,upstream,452.16130411058236,rain_stations.csv,topology_upstream
+3,Hồ Tả Trạch,reservoir,4121096532,41285625,upstream,53.21293508539885,reservoirs.csv,topology_upstream
+2,Thủy điện Bình Điền,reservoir,4121577532,41285438,upstream,194.34182510690948,reservoirs.csv,topology_upstream
+6,Thủy điện Thượng Lộ,reservoir,4121099032,41289561,upstream,30.485601581152718,reservoirs.csv,topology_upstream
+7,Thủy điện Thượng Nhật,reservoir,4121099080,41290114,upstream,10.238061254286125,reservoirs.csv,topology_upstream
+74647403,Trạm Dã Viên (Sông Hương),water_level,4120015622,41282167,same_catchment,6.378844230831245,water_level_stations.csv,autoregressive_target_lags
+63604a34-f1cc-11f0-8f75-0692ec44dcd5,VPTT PCTTHUE,wind,4129148771,41282167,upstream,724.0094609143163,wind_stations.csv,topology_upstream

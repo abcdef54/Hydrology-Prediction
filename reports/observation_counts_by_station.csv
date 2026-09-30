@@ -1,0 +1,97 @@
+station_type,station_id,station_name,observation_count,metadata_status
+rain,14690,Hồ chứa nước Thủy Yên,47902,matched
+rain,14696,Hồ chứa nước Khe Ngang,48028,matched
+rain,14699,Hồ chứa nước Truồi,47839,matched
+rain,228005,Cảng Chân Mây,27382,matched
+rain,228006,VPTT PCTTHUE,36052,matched
+rain,567011,Quan Tượng Đài (Phú Xuân),47932,matched
+rain,677493,TT Khe Tre (Phú Lộc),48028,matched
+rain,677851,TT Sịa (Quảng Điền),48000,matched
+rain,678628,Tà Lương (A Lưới),48028,matched
+rain,681524,Hồ Thọ Sơn (Hương Trà),48022,matched
+rain,682816,Hồ Hòa Mỹ (Phong Điền),47914,matched
+rain,750001,TT Phú Đa (Phú Vang),46446,matched
+rain,750002,Hồ Mỹ Xuyên (Phong Điền),48024,matched
+rain,750003,Thị trấn A Lưới (A Lưới),47910,matched
+rain,750005,Hồng Vân (A Lưới),48028,matched
+rain,750006,Hương Nguyên (A Lưới),46780,matched
+rain,750007,Nhâm (A Lưới),48028,matched
+rain,750008,A Đớt (A Lưới),48028,matched
+rain,750009,Lộc Tiến (Phú Lộc),46559,matched
+rain,750010,Giang Hải (Phú Lộc),48026,matched
+rain,750011,Hồ A Lá (A Lưới),48028,matched
+rain,750012,"Đập, Thủy điện Thượng Nhật (Phú Lộc)",45836,matched
+rain,750013,Lưu vực Thủy điện Thượng Nhật (Phú Lộc),41836,matched
+rain,750014,Hồ chứa nước Phú Bài (Hương Thủy),47263,matched
+rain,750015,Hồ Tà Rinh (Phú Lộc),47278,matched
+rain,750016,Trạm bơm Sơn Bổn,47992,matched
+rain,750021,Đồn Biên phòng Lăng Cô (Phú Lộc),48028,matched
+rain,750022,Đồn Biên phòng Cảng Chân Mây (Phú Lộc),46754,matched
+rain,750023,Quảng Phú (Quảng Điền),47479,matched
+rain,750024,An Tây (Thuận Hóa),47761,matched
+rain,750025,Thị trấn Phong Điền (Phong Điền),47705,matched
+rain,750026,Bình Tiến (Hương Trà),48027,matched
+rain,750027,Thủy Thanh (Hương Thủy),45111,matched
+rain,750028,Hương Sơn (Phú Lộc),47512,matched
+rain,750029,Thượng Quảng (Phú Lộc),47779,matched
+rain,750030,Vườn Quốc gia Bạch Mã (Phú Lộc),48028,matched
+rain,750031,Không có trong station metadata,27994,observations_without_metadata
+rain,750032,Trạm bơm Quảng Thành (Quảng Điền),48027,matched
+rain,750033,VP QLKTCTTL TP Huế (TP Huế),48011,matched
+rain,750034,Trạm bơm Vinh Hà (Phú Vang),48027,matched
+rain,750035,Cảng Tư Hiền,47951,matched
+rain,750040,Hương Chữ (Hương Trà),47202,matched
+rain,750041,Bạch Mã,48025,matched
+rain,750042,Trạm kiểm lâm Khe Mỏ Rang,47894,matched
+rain,750045,Đan Điền,48028,matched
+rain,750046,Vỹ Dạ,48028,matched
+rain,750047,Lộc An,47267,matched
+rain,750059,Cảng Thuận An,48022,matched
+rain,750061,Thủy điện Bình Điền (Hương Trà),48017,matched
+rain,750062,Hồng Thái (A Lưới),48006,matched
+rain,750063,Phú Sơn (Hương Thủy),46315,matched
+rain,750064,Điền Hương (Phong Điền),47191,matched
+rain,750065,Xuân Lộc (Phú Lộc),41347,matched
+rain,750066,Đỉnh Bạch Mã (Phú Lộc),48028,matched
+rain,958573,Đập Thủy điện Rào Trăng 3 (Phong Điền),48024,matched
+rain,959428,Đập Thủy điện Rào Trăng 4 (Phong Điền),46820,matched
+water_level,750043,Phú Xuân,45986,matched
+water_level,750044,An Cựu,45987,matched
+water_level,751115,"Chung cư Xuân Phú, TP Huế",43791,matched
+water_level,751116,"Khu đô thị An Cựu City, TP Huế",45988,matched
+water_level,751117,"Thôn Trung Làng, xã Quảng Thái",45988,matched
+water_level,751118,"Thôn Phò Nam A, xã Quảng Thọ",45989,matched
+water_level,11223344,Khu TĐC Hương Sơ(Thành phố Huế),45558,matched
+water_level,55889944,"Thủ Lễ, xã Quảng Phước",44879,matched
+water_level,74647402,Cảng Cá Thuận An,45960,matched
+water_level,74647403,Trạm Dã Viên (Sông Hương),45982,matched
+water_level,74647404,Trạm Tứ Phú (Sông Bồ),45990,matched
+water_level,74647606,Cầu Huỳnh Liên-Văn Trạch Hòa(Sông Ô Lâu),45979,matched
+water_level,74647705,Trạm Ngã Ba Sình (Sông Hương),45981,matched
+water_level,74648201,Cảng Tư Hiền,45975,matched
+water_level,75882244,"Xóm Gióng, Phường Thủy Dương",45312,matched
+water_level,75996644,Xã Thủy Thanh (TX Hương Thủy),37265,matched
+water_level,97203841,Cầu Hòa Xuân 1(Sông Ô Lâu),20072,matched
+wind,28f350b6-8149-45b0-98d2-49c3096cd9a3,Cảng Thuận An,44205,matched
+wind,2d9b1c98-16ec-4681-9d23-0769a49aedaa,Cảng Tư Hiền,43803,matched
+wind,63586eaa-f1cc-11f0-8f75-0692ec44dcd5,Cảng Chân Mây,3983,matched
+wind,63604a34-f1cc-11f0-8f75-0692ec44dcd5,VPTT PCTTHUE,3983,matched
+reservoir,1,Thủy điện Hương Điền,4690,matched
+reservoir,2,Thủy điện Bình Điền,2534,matched
+reservoir,3,Hồ Tả Trạch,2257,matched
+reservoir,4,Đập Thảo Long,2937,matched
+reservoir,5,Thủy điện A Lưới,3026,matched
+reservoir,6,Thủy điện Thượng Lộ,3041,matched
+reservoir,7,Thủy điện Thượng Nhật,1136,matched
+reservoir,8,Thủy điện A Roàng,2086,matched
+reservoir,9,Thủy điện Sông Bồ,423,matched
+reservoir,10,Thủy điện A Lin Thượng,4251,matched
+reservoir,11,Đập A Lin 3,2336,matched
+reservoir,12,Đập A LIN B1,957,matched
+reservoir,13,Thủy điện A LIN B2,4181,matched
+reservoir,14,Thủy điện Rào Trăng 3,1097,matched
+reservoir,15,Thủy điện Rào Trăng 4,2221,matched
+reservoir,16,Trạm Dã Viên (Sông Hương),1376,matched
+reservoir,17,Trạm Tứ Phú (Sông Bồ),1345,matched
+reservoir,19,Cảng cá Thuận An,0,metadata_only_no_observations
+reservoir,20,Cảng Tư Hiền,0,metadata_only_no_observations

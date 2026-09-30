@@ -1,0 +1,1178 @@
+[
+  {
+    "file": "rain_observations.csv",
+    "rows": 2603597,
+    "columns": 4,
+    "dtypes": {
+      "id": "int64",
+      "station_id": "int64",
+      "depth": "float64",
+      "time_point": "str"
+    },
+    "timestamp": {
+      "column": "time_point",
+      "invalid_count": 0,
+      "start": "2025-10-31 15:10:00+00:00",
+      "end": "2026-09-30 04:00:00+00:00",
+      "duration_days": 333.53472222222223,
+      "nominal_interval_minutes": 10.0
+    },
+    "identifier_columns": [
+      "station_id",
+      "id"
+    ],
+    "duplicate_rows": 0,
+    "duplicate_ids": {
+      "station_id": 2603541,
+      "id": 0
+    },
+    "missing": {
+      "id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "station_id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "depth": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "time_point": {
+        "count": 0,
+        "ratio": 0.0
+      }
+    },
+    "categories": {},
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  },
+  {
+    "file": "rain_stations.csv",
+    "rows": 55,
+    "columns": 12,
+    "dtypes": {
+      "id": "int64",
+      "area": "str",
+      "city": "str",
+      "code": "int64",
+      "name": "str",
+      "uuid": "str",
+      "number": "int64",
+      "address": "str",
+      "altitude": "float64",
+      "waterStationType": "float64",
+      "geom": "str",
+      "phuongxa": "float64"
+    },
+    "timestamp": {},
+    "identifier_columns": [
+      "code",
+      "id"
+    ],
+    "duplicate_rows": 0,
+    "duplicate_ids": {
+      "code": 0,
+      "id": 0
+    },
+    "missing": {
+      "id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "area": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "city": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "code": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "name": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "uuid": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "number": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "address": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "altitude": {
+        "count": 55,
+        "ratio": 1.0
+      },
+      "waterStationType": {
+        "count": 55,
+        "ratio": 1.0
+      },
+      "geom": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "phuongxa": {
+        "count": 55,
+        "ratio": 1.0
+      }
+    },
+    "categories": {
+      "area": [
+        "A Lưới 1",
+        "A Lưới 2",
+        "A Lưới 3",
+        "A Lưới 4",
+        "A Lưới 5",
+        "An Cựu",
+        "Bình Điền",
+        "Chân Mây - Lăng Cô",
+        "Hóa Châu",
+        "Hưng Lộc",
+        "Khe Tre",
+        "Kim Long",
+        "Kim Trà",
+        "Long Quảng",
+        "Lộc An",
+        "Nam Đông",
+        "Phong Dinh",
+        "Phong Phú",
+        "Phong Điền",
+        "Phú Bài",
+        "Phú Lộc",
+        "Phú Vang",
+        "Phú Xuân",
+        "Quảng Điền",
+        "Thanh Thủy",
+        "Thuận An",
+        "Thuận Hóa",
+        "Vinh Lộc",
+        "Vỹ Dạ",
+        "Đan Điền"
+      ],
+      "city": [
+        "Thành phố Huế"
+      ]
+    },
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  },
+  {
+    "file": "reservoir_observations.csv",
+    "rows": 39894,
+    "columns": 26,
+    "dtypes": {
+      "sttbanghi": "int64",
+      "id": "int64",
+      "chucnang": "int64",
+      "tenchucnang": "str",
+      "loaicongtrinh": "float64",
+      "tenloaicongtrinh": "str",
+      "tencongtrinh": "int64",
+      "tentencongtrinh": "str",
+      "ngaylaysolieu": "str",
+      "gio": "str",
+      "htl": "float64",
+      "hhl": "float64",
+      "qden": "float64",
+      "qdi": "float64",
+      "socuamo": "str",
+      "mucnuocsong": "float64",
+      "thoigianbatdau": "str",
+      "thoigianketthuc": "float64",
+      "luuluongdieutiet": "float64",
+      "fildinhkem": "float64",
+      "ghichu": "float64",
+      "username": "float64",
+      "hovaten": "str",
+      "ngaycapnhat": "str",
+      "trangthai": "float64",
+      "tentrangthai": "str"
+    },
+    "timestamp": {
+      "column": "ngaylaysolieu",
+      "invalid_count": 30,
+      "start": "2023-01-27 07:00:00+00:00",
+      "end": "2026-10-19 13:00:00+00:00",
+      "duration_days": 1361.25,
+      "nominal_interval_minutes": 60.0
+    },
+    "identifier_columns": [
+      "id",
+      "tencongtrinh"
+    ],
+    "duplicate_rows": 0,
+    "duplicate_ids": {
+      "id": 0,
+      "tencongtrinh": 39877
+    },
+    "missing": {
+      "sttbanghi": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "chucnang": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "tenchucnang": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "loaicongtrinh": {
+        "count": 7,
+        "ratio": 0.00017546498220283752
+      },
+      "tenloaicongtrinh": {
+        "count": 7,
+        "ratio": 0.00017546498220283752
+      },
+      "tencongtrinh": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "tentencongtrinh": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "ngaylaysolieu": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "gio": {
+        "count": 1,
+        "ratio": 2.506642602897679e-05
+      },
+      "htl": {
+        "count": 2429,
+        "ratio": 0.060886348824384616
+      },
+      "hhl": {
+        "count": 35344,
+        "ratio": 0.8859477615681556
+      },
+      "qden": {
+        "count": 5348,
+        "ratio": 0.13405524640296787
+      },
+      "qdi": {
+        "count": 5251,
+        "ratio": 0.1316238030781571
+      },
+      "socuamo": {
+        "count": 36961,
+        "ratio": 0.9264801724570111
+      },
+      "mucnuocsong": {
+        "count": 35650,
+        "ratio": 0.8936180879330226
+      },
+      "thoigianbatdau": {
+        "count": 39893,
+        "ratio": 0.999974933573971
+      },
+      "thoigianketthuc": {
+        "count": 39894,
+        "ratio": 1.0
+      },
+      "luuluongdieutiet": {
+        "count": 39894,
+        "ratio": 1.0
+      },
+      "fildinhkem": {
+        "count": 39894,
+        "ratio": 1.0
+      },
+      "ghichu": {
+        "count": 39894,
+        "ratio": 1.0
+      },
+      "username": {
+        "count": 1808,
+        "ratio": 0.04532009826039003
+      },
+      "hovaten": {
+        "count": 1758,
+        "ratio": 0.04406677695894119
+      },
+      "ngaycapnhat": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "trangthai": {
+        "count": 2,
+        "ratio": 5.013285205795358e-05
+      },
+      "tentrangthai": {
+        "count": 3,
+        "ratio": 7.519927808693036e-05
+      }
+    },
+    "categories": {
+      "tenchucnang": [
+        "Mực nước"
+      ],
+      "tenloaicongtrinh": [
+        "Hồ",
+        "Sông",
+        "Thủy điện",
+        "Đập"
+      ],
+      "tentencongtrinh": [
+        "Hồ Tả Trạch",
+        "Thủy điện A LIN B2",
+        "Thủy điện A Lin Thượng",
+        "Thủy điện A Lưới",
+        "Thủy điện A Roàng",
+        "Thủy điện Bình Điền",
+        "Thủy điện Hương Điền",
+        "Thủy điện Rào Trăng 3",
+        "Thủy điện Rào Trăng 4",
+        "Thủy điện Sông Bồ",
+        "Thủy điện Thượng Lộ",
+        "Thủy điện Thượng Nhật",
+        "Trạm Dã Viên (Sông Hương)",
+        "Trạm Tứ Phú (Sông Bồ)",
+        "Đập A LIN B1",
+        "Đập A Lin 3",
+        "Đập Thảo Long"
+      ],
+      "socuamo": [
+        "0/12",
+        "0/15",
+        "0/18",
+        "1",
+        "1/12",
+        "1/14",
+        "1/15",
+        "10/15",
+        "11/15",
+        "12/15",
+        "13/15",
+        "15",
+        "15-15",
+        "15/15",
+        "15:15",
+        "2",
+        "2/15",
+        "23,02",
+        "3/15",
+        "4/15",
+        "5/15",
+        "6/15",
+        "7/15",
+        "8/15",
+        "9/15",
+        "Cửa đóng toàn bộ"
+      ],
+      "thoigianbatdau": [
+        "06/12/2023"
+      ],
+      "tentrangthai": [
+        "Hiển thị",
+        "Đã xóa"
+      ]
+    },
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  },
+  {
+    "file": "reservoirs.csv",
+    "rows": 19,
+    "columns": 17,
+    "dtypes": {
+      "sttbanghi": "int64",
+      "id": "int64",
+      "loaicongtrinhid": "int64",
+      "tenloaicongtrinhid": "str",
+      "tencongtrinh": "str",
+      "mndbt": "str",
+      "mnc": "str",
+      "nguongtran": "str",
+      "nguongxaday": "str",
+      "socua": "str",
+      "authuyen": "str",
+      "khaudo": "str",
+      "baodongmuc1": "float64",
+      "baodongmuc2": "float64",
+      "baodongmuc3": "float64",
+      "kinhdo": "float64",
+      "vido": "float64"
+    },
+    "timestamp": {},
+    "identifier_columns": [
+      "id",
+      "tencongtrinh"
+    ],
+    "duplicate_rows": 0,
+    "duplicate_ids": {
+      "id": 0,
+      "tencongtrinh": 0
+    },
+    "missing": {
+      "sttbanghi": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "loaicongtrinhid": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "tenloaicongtrinhid": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "tencongtrinh": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "mndbt": {
+        "count": 2,
+        "ratio": 0.10526315789473684
+      },
+      "mnc": {
+        "count": 2,
+        "ratio": 0.10526315789473684
+      },
+      "nguongtran": {
+        "count": 2,
+        "ratio": 0.10526315789473684
+      },
+      "nguongxaday": {
+        "count": 2,
+        "ratio": 0.10526315789473684
+      },
+      "socua": {
+        "count": 2,
+        "ratio": 0.10526315789473684
+      },
+      "authuyen": {
+        "count": 2,
+        "ratio": 0.10526315789473684
+      },
+      "khaudo": {
+        "count": 2,
+        "ratio": 0.10526315789473684
+      },
+      "baodongmuc1": {
+        "count": 17,
+        "ratio": 0.8947368421052632
+      },
+      "baodongmuc2": {
+        "count": 17,
+        "ratio": 0.8947368421052632
+      },
+      "baodongmuc3": {
+        "count": 17,
+        "ratio": 0.8947368421052632
+      },
+      "kinhdo": {
+        "count": 4,
+        "ratio": 0.21052631578947367
+      },
+      "vido": {
+        "count": 4,
+        "ratio": 0.21052631578947367
+      }
+    },
+    "categories": {
+      "tenloaicongtrinhid": [
+        "Hồ",
+        "Sông",
+        "Thủy điện",
+        "Đập"
+      ],
+      "tencongtrinh": [
+        "Cảng Tư Hiền",
+        "Cảng cá Thuận An",
+        "Hồ Tả Trạch",
+        "Thủy điện A LIN B2",
+        "Thủy điện A Lin Thượng",
+        "Thủy điện A Lưới",
+        "Thủy điện A Roàng",
+        "Thủy điện Bình Điền",
+        "Thủy điện Hương Điền",
+        "Thủy điện Rào Trăng 3",
+        "Thủy điện Rào Trăng 4",
+        "Thủy điện Sông Bồ",
+        "Thủy điện Thượng Lộ",
+        "Thủy điện Thượng Nhật",
+        "Trạm Dã Viên (Sông Hương)",
+        "Trạm Tứ Phú (Sông Bồ)",
+        "Đập A LIN B1",
+        "Đập A Lin 3",
+        "Đập Thảo Long"
+      ],
+      "mndbt": [
+        "+114 m",
+        "+45 m",
+        "+468.5 m",
+        "+553 m",
+        "+58 m",
+        "+85 m",
+        "+88 m",
+        "0",
+        "158.5",
+        "161",
+        "283.8",
+        "592.5",
+        "602",
+        "685",
+        "99.5"
+      ],
+      "mnc": [
+        "+106 m",
+        "+23 m",
+        "+46 m",
+        "+465.5 m",
+        "+53 m",
+        "+549 m",
+        "+66 m",
+        "0",
+        "157",
+        "160",
+        "281",
+        "592.5",
+        "601.5",
+        "683",
+        "93"
+      ],
+      "nguongtran": [
+        "+104 m",
+        "+37 m",
+        "+42.75 m",
+        "+468.5 m",
+        "+538.5 m",
+        "+73 m",
+        "+88 m",
+        "0",
+        "158.5",
+        "283.8",
+        "592.5",
+        "685",
+        "88.2"
+      ],
+      "nguongxaday": [
+        "+16 m",
+        "0"
+      ],
+      "socua": [
+        "0",
+        "15 cửa"
+      ],
+      "authuyen": [
+        "0",
+        "1 âu"
+      ],
+      "khaudo": [
+        "0",
+        "31.5 m/cửa"
+      ]
+    },
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  },
+  {
+    "file": "water_level_observations.csv",
+    "rows": 742682,
+    "columns": 4,
+    "dtypes": {
+      "id": "int64",
+      "station_id": "int64",
+      "depth": "float64",
+      "time_point": "str"
+    },
+    "timestamp": {
+      "column": "time_point",
+      "invalid_count": 0,
+      "start": "2025-11-14 18:50:00+00:00",
+      "end": "2026-09-30 04:00:00+00:00",
+      "duration_days": 319.38194444444446,
+      "nominal_interval_minutes": 10.0
+    },
+    "identifier_columns": [
+      "station_id",
+      "id"
+    ],
+    "duplicate_rows": 0,
+    "duplicate_ids": {
+      "station_id": 742665,
+      "id": 0
+    },
+    "missing": {
+      "id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "station_id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "depth": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "time_point": {
+        "count": 0,
+        "ratio": 0.0
+      }
+    },
+    "categories": {},
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  },
+  {
+    "file": "water_level_stations.csv",
+    "rows": 17,
+    "columns": 14,
+    "dtypes": {
+      "id": "str",
+      "user_created": "float64",
+      "date_created": "str",
+      "user_updated": "float64",
+      "date_updated": "float64",
+      "code": "int64",
+      "name": "str",
+      "number": "int64",
+      "geom": "str",
+      "area": "str",
+      "city": "str",
+      "address": "str",
+      "altitude": "float64",
+      "water_station_type": "str"
+    },
+    "timestamp": {
+      "column": "date_created",
+      "invalid_count": 0,
+      "start": "2026-09-29 23:00:00.890000+00:00",
+      "end": "2026-09-29 23:00:00.906000+00:00",
+      "duration_days": 1.8518518518518518e-07,
+      "nominal_interval_minutes": 1.6666666666666667e-05
+    },
+    "identifier_columns": [
+      "code",
+      "id"
+    ],
+    "duplicate_rows": 0,
+    "duplicate_ids": {
+      "code": 0,
+      "id": 0
+    },
+    "missing": {
+      "id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "user_created": {
+        "count": 17,
+        "ratio": 1.0
+      },
+      "date_created": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "user_updated": {
+        "count": 17,
+        "ratio": 1.0
+      },
+      "date_updated": {
+        "count": 17,
+        "ratio": 1.0
+      },
+      "code": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "name": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "number": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "geom": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "area": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "city": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "address": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "altitude": {
+        "count": 9,
+        "ratio": 0.5294117647058824
+      },
+      "water_station_type": {
+        "count": 0,
+        "ratio": 0.0
+      }
+    },
+    "categories": {
+      "id": [
+        "1ce3d128-1e54-429a-a932-915bf3a243d6",
+        "20cd69a6-09a0-4fdc-a177-172c7e67cde7",
+        "2ad40b5c-27d3-4009-950e-cb7f81a0ea8d",
+        "4c544faa-ba5f-41a1-9782-6990af7caae1",
+        "59d6c175-bced-40c1-bb9f-72f9f2e75281",
+        "915c3f04-b125-42b8-baaa-e561b56eb1e4",
+        "abee4163-c286-48c9-827f-6f23edae6e5e",
+        "adc7aab1-f0fc-4c2b-bede-eb29783f5283",
+        "b1e02bc1-010d-4bfe-9968-5ca0fa55d59b",
+        "b3fc0f2d-a482-4a16-83a4-eca29598c624",
+        "b9e32559-3f02-42e1-a15b-32a93b9fff39",
+        "be69431a-e16c-492c-893b-3a45ac54c46f",
+        "c02e7886-57c7-4de4-907a-b196690e5ab0",
+        "dab2aa6f-e05b-4712-9cd6-7209ac533693",
+        "db6a08d7-6867-4b2d-866f-6b3195c86640",
+        "dc7f5ea4-3e35-49b6-8037-a7526c2cbc94",
+        "e3de5b5d-26ca-4485-9517-2b8e51c7c37e"
+      ],
+      "name": [
+        "An Cựu",
+        "Chung cư Xuân Phú, TP Huế",
+        "Cảng Cá Thuận An",
+        "Cảng Tư Hiền",
+        "Cầu Huỳnh Liên-Văn Trạch Hòa(Sông Ô Lâu)",
+        "Cầu Hòa Xuân 1(Sông Ô Lâu)",
+        "Khu TĐC Hương Sơ(Thành phố Huế)",
+        "Khu đô thị An Cựu City, TP Huế",
+        "Phú Xuân",
+        "Thôn Phò Nam A, xã Quảng Thọ",
+        "Thôn Trung Làng, xã Quảng Thái",
+        "Thủ Lễ, xã Quảng Phước",
+        "Trạm Dã Viên (Sông Hương)",
+        "Trạm Ngã Ba Sình (Sông Hương)",
+        "Trạm Tứ Phú (Sông Bồ)",
+        "Xã Thủy Thanh (TX Hương Thủy)",
+        "Xóm Gióng, Phường Thủy Dương"
+      ],
+      "geom": [
+        "{\"type\":\"Point\",\"coordinates\":[107.347889,16.576556]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.417806,16.673889]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.429722,16.638889]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.483889,16.524389]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.520278,16.54]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.52441,16.56392]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.56257,16.50088]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.567045,16.480762]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.571361,16.458944]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.574,16.528167]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.607593,16.461126]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.6098,16.45548]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.612778,16.468056]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.61344,16.4445]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.63527,16.554968]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.64228,16.46788]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.911435,16.351933]}"
+      ],
+      "area": [
+        "An Cựu",
+        "Chân Mây - Lăng Cô",
+        "Hóa Châu",
+        "Hương An",
+        "Hương Trà",
+        "Phong Phú",
+        "Phong Điền",
+        "Phú Xuân",
+        "Quảng Điền",
+        "Thanh Thủy",
+        "Thuận An",
+        "Thuận Hóa",
+        "Đan Điền"
+      ],
+      "city": [
+        "Thành phố Huế"
+      ],
+      "address": [
+        "Cảng Cá Thuận An, TP Huế",
+        "Cảng Cá Tư Hiền, huyện Phú Lộc",
+        "Cầu Dã Viên, thành phố Huế",
+        "Cầu Huỳnh Liên-Văn Trạch Hòa(Sông Ô Lâu), Phường Phong Thu",
+        "Cầu Hòa Xuân 1, phường Phong Phú",
+        "Cầu Tứ Phú, huyện Hương Trà",
+        "Khu vực đường Hoàng Lanh - Võ Nguyên Giáp",
+        "Ngã Ba Sình (Sông Hương), Phường Hương Phong",
+        "Phường An Cựu",
+        "Phường Hương Sơ, Thành phố Huế",
+        "Phường Phú Xuân",
+        "Phường Thủy Dương, Thị xã Hương Thủy",
+        "Thôn Phò Nam A, xã Quảng Thọ",
+        "Thôn Trung Làng, xã Quảng Thái",
+        "Trường THCS Đặng Văn Ngữ",
+        "Xã Quảng Phước, huyện Quảng Điền",
+        "Xã Thủy Thanh, Thị xã Hương Thủy"
+      ],
+      "water_station_type": [
+        "{\"desc\":\"Tháp báo lũ\",\"name\":\"flood_3m\"}",
+        "{\"desc\":\"Tháp báo ngập\",\"name\":\"flood_1m5\"}",
+        "{\"desc\":\"Trạm đo mực nước\",\"name\":\"water_level\"}"
+      ]
+    },
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  },
+  {
+    "file": "wind_observations.csv",
+    "rows": 95974,
+    "columns": 9,
+    "dtypes": {
+      "id": "int64",
+      "date_created": "float64",
+      "date_updated": "float64",
+      "wsg": "float64",
+      "ws": "float64",
+      "wd": "int64",
+      "wdg": "int64",
+      "time_point": "str",
+      "sid": "str"
+    },
+    "timestamp": {
+      "column": "time_point",
+      "invalid_count": 0,
+      "start": "2025-11-05 20:44:00+00:00",
+      "end": "2026-09-30 04:10:00+00:00",
+      "duration_days": 328.3097222222222,
+      "nominal_interval_minutes": 5.0
+    },
+    "identifier_columns": [
+      "sid",
+      "id"
+    ],
+    "duplicate_rows": 0,
+    "duplicate_ids": {
+      "sid": 95970,
+      "id": 0
+    },
+    "missing": {
+      "id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "date_created": {
+        "count": 95974,
+        "ratio": 1.0
+      },
+      "date_updated": {
+        "count": 95974,
+        "ratio": 1.0
+      },
+      "wsg": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "ws": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "wd": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "wdg": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "time_point": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "sid": {
+        "count": 0,
+        "ratio": 0.0
+      }
+    },
+    "categories": {
+      "sid": [
+        "28f350b6-8149-45b0-98d2-49c3096cd9a3",
+        "2d9b1c98-16ec-4681-9d23-0769a49aedaa",
+        "63586eaa-f1cc-11f0-8f75-0692ec44dcd5",
+        "63604a34-f1cc-11f0-8f75-0692ec44dcd5"
+      ]
+    },
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  },
+  {
+    "file": "wind_stations.csv",
+    "rows": 4,
+    "columns": 11,
+    "dtypes": {
+      "id": "str",
+      "date_created": "str",
+      "code": "int64",
+      "name": "str",
+      "number": "int64",
+      "area": "str",
+      "city": "str",
+      "address": "str",
+      "altitude": "float64",
+      "geom": "str",
+      "date_updated": "float64"
+    },
+    "timestamp": {
+      "column": "date_created",
+      "invalid_count": 0,
+      "start": "2026-08-25 23:00:00.718000+00:00",
+      "end": "2026-08-25 23:00:00.728000+00:00",
+      "duration_days": 1.1574074074074074e-07,
+      "nominal_interval_minutes": 3.3333333333333335e-05
+    },
+    "identifier_columns": [
+      "code",
+      "id"
+    ],
+    "duplicate_rows": 0,
+    "duplicate_ids": {
+      "code": 0,
+      "id": 0
+    },
+    "missing": {
+      "id": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "date_created": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "code": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "name": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "number": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "area": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "city": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "address": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "altitude": {
+        "count": 4,
+        "ratio": 1.0
+      },
+      "geom": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "date_updated": {
+        "count": 4,
+        "ratio": 1.0
+      }
+    },
+    "categories": {
+      "id": [
+        "28f350b6-8149-45b0-98d2-49c3096cd9a3",
+        "2d9b1c98-16ec-4681-9d23-0769a49aedaa",
+        "63586eaa-f1cc-11f0-8f75-0692ec44dcd5",
+        "63604a34-f1cc-11f0-8f75-0692ec44dcd5"
+      ],
+      "name": [
+        "Cảng Chân Mây",
+        "Cảng Thuận An",
+        "Cảng Tư Hiền",
+        "VPTT PCTTHUE"
+      ],
+      "area": [
+        "Chân Mây - Lăng Cô",
+        "Phú Vang",
+        "Thuận Hóa",
+        "Vinh Lộc"
+      ],
+      "city": [
+        "Thành phố Huế"
+      ],
+      "address": [
+        "02B Trần Cao Vân, phường Thuận Hóa",
+        "Cảng Chân Mây",
+        "Cảng cá Thuận An",
+        "Cảng cá Tư Hiền"
+      ],
+      "geom": [
+        "{\"type\":\"Point\",\"coordinates\":[107.589346,16.463263]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.635111,16.550444]}",
+        "{\"type\":\"Point\",\"coordinates\":[107.911559,16.351878]}",
+        "{\"type\":\"Point\",\"coordinates\":[108.020278,16.3325]}"
+      ]
+    },
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  },
+  {
+    "file": "hydrology_training_10min.csv",
+    "rows": 45992,
+    "columns": 25,
+    "dtypes": {
+      "timestamp_utc": "str",
+      "rain_depth": "float64",
+      "water_level_depth": "float64",
+      "wind_speed": "float64",
+      "wind_gust": "float64",
+      "wind_direction": "float64",
+      "wind_gust_direction": "float64",
+      "rain_lag_10m": "float64",
+      "water_level_lag_10m": "float64",
+      "rain_lag_30m": "float64",
+      "water_level_lag_30m": "float64",
+      "rain_lag_60m": "float64",
+      "water_level_lag_60m": "float64",
+      "rain_lag_180m": "float64",
+      "water_level_lag_180m": "float64",
+      "rain_sum_1h": "float64",
+      "rain_sum_3h": "float64",
+      "rain_sum_6h": "float64",
+      "rain_sum_24h": "float64",
+      "target_water_level_plus_60m": "float64",
+      "target_water_level_plus_180m": "float64",
+      "target_water_level_plus_360m": "float64",
+      "rain_missing": "int64",
+      "water_level_missing": "int64",
+      "wind_missing": "int64"
+    },
+    "timestamp": {
+      "column": "timestamp_utc",
+      "invalid_count": 0,
+      "start": "2025-11-14 18:50:00+00:00",
+      "end": "2026-09-30 04:00:00+00:00",
+      "duration_days": 319.38194444444446,
+      "nominal_interval_minutes": 10.0
+    },
+    "identifier_columns": [],
+    "duplicate_rows": 0,
+    "duplicate_ids": {},
+    "missing": {
+      "timestamp_utc": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "rain_depth": {
+        "count": 116,
+        "ratio": 0.0025221777700469646
+      },
+      "water_level_depth": {
+        "count": 14,
+        "ratio": 0.00030440076535049573
+      },
+      "wind_speed": {
+        "count": 25172,
+        "ratio": 0.5473125761001914
+      },
+      "wind_gust": {
+        "count": 25172,
+        "ratio": 0.5473125761001914
+      },
+      "wind_direction": {
+        "count": 25172,
+        "ratio": 0.5473125761001914
+      },
+      "wind_gust_direction": {
+        "count": 25172,
+        "ratio": 0.5473125761001914
+      },
+      "rain_lag_10m": {
+        "count": 117,
+        "ratio": 0.0025439206818577142
+      },
+      "water_level_lag_10m": {
+        "count": 15,
+        "ratio": 0.0003261436771612454
+      },
+      "rain_lag_30m": {
+        "count": 119,
+        "ratio": 0.0025874065054792136
+      },
+      "water_level_lag_30m": {
+        "count": 17,
+        "ratio": 0.0003696295007827448
+      },
+      "rain_lag_60m": {
+        "count": 122,
+        "ratio": 0.002652635240911463
+      },
+      "water_level_lag_60m": {
+        "count": 20,
+        "ratio": 0.0004348582362149939
+      },
+      "rain_lag_180m": {
+        "count": 134,
+        "ratio": 0.002913550182640459
+      },
+      "water_level_lag_180m": {
+        "count": 32,
+        "ratio": 0.0006957731779439903
+      },
+      "rain_sum_1h": {
+        "count": 210,
+        "ratio": 0.004566011480257436
+      },
+      "rain_sum_3h": {
+        "count": 304,
+        "ratio": 0.0066098451904679075
+      },
+      "rain_sum_6h": {
+        "count": 430,
+        "ratio": 0.009349452078622368
+      },
+      "rain_sum_24h": {
+        "count": 1089,
+        "ratio": 0.02367803096190642
+      },
+      "target_water_level_plus_60m": {
+        "count": 20,
+        "ratio": 0.0004348582362149939
+      },
+      "target_water_level_plus_180m": {
+        "count": 32,
+        "ratio": 0.0006957731779439903
+      },
+      "target_water_level_plus_360m": {
+        "count": 50,
+        "ratio": 0.0010871455905374849
+      },
+      "rain_missing": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "water_level_missing": {
+        "count": 0,
+        "ratio": 0.0
+      },
+      "wind_missing": {
+        "count": 0,
+        "ratio": 0.0
+      }
+    },
+    "categories": {},
+    "units": "Không có metadata đơn vị đáng tin cậy trong file; không suy đoán."
+  }
+]

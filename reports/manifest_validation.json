@@ -1,0 +1,50 @@
+[
+  {
+    "file": "rain_observations.csv",
+    "declared_rows": 2603597,
+    "actual_rows": 2603597,
+    "matches": true
+  },
+  {
+    "file": "rain_stations.csv",
+    "declared_rows": 55,
+    "actual_rows": 55,
+    "matches": true
+  },
+  {
+    "file": "reservoir_observations.csv",
+    "declared_rows": 39894,
+    "actual_rows": 39894,
+    "matches": true
+  },
+  {
+    "file": "reservoirs.csv",
+    "declared_rows": 19,
+    "actual_rows": 19,
+    "matches": true
+  },
+  {
+    "file": "water_level_observations.csv",
+    "declared_rows": 742682,
+    "actual_rows": 742682,
+    "matches": true
+  },
+  {
+    "file": "water_level_stations.csv",
+    "declared_rows": 17,
+    "actual_rows": 17,
+    "matches": true
+  },
+  {
+    "file": "wind_observations.csv",
+    "declared_rows": 95974,
+    "actual_rows": 95974,
+    "matches": true
+  },
+  {
+    "file": "wind_stations.csv",
+    "declared_rows": 4,
+    "actual_rows": 4,
+    "matches": true
+  }
+]

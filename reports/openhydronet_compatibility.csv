@@ -1,0 +1,11 @@
+OpenHydroNet requirement,Huế hiện có?,Source,Quality,Missing / Problem
+Historical meteorological forcing,Partial,56 rain observation IDs and 4 wind stations,~10-11 months; catchment relevance unverified; wind histories uneven,Long multi-year record and basin-verified forcings
+Forecast meteorological forcing,No,None,Absent,Operational precipitation and other weather forecasts
+Catchment/static attributes,No,Station points only,No basin descriptors,"Area, elevation, soil, geology, land cover and compatible attributes"
+Catchment boundaries,No,None,Absent,Dã Viên contributing basin boundary and verified routing
+Streamflow/discharge target,No,Water-level depth only,Different physical target; units unconfirmed,Discharge series or validated rating curve
+Precipitation,Partial,2.60M observations across 56 IDs,Units undocumented; one ID lacks metadata; catchment links UNKNOWN,Gauge/radar/reanalysis mapped to the verified contributing catchment
+Temperature,No,None,Absent,Historical plus forecast temperature if matching pretrained inputs
+Radiation/vapor pressure/other forcing,No,None,Absent,Exact variables/providers expected by selected pretrained run
+Time resolution,Mismatch,10-minute table,OpenHydroNet reference pipeline is not plug-compatible,Custom dataset/resampling and scientifically justified resolution
+Normalizer/scaler compatibility,No,Local raw units,Feature names/units differ from pretrained scaler,"Matching features, units, transformations and pretrained scaler"

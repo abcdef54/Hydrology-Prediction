@@ -1,0 +1,112 @@
+{
+  "rain_lag_10m": {
+    "comparable_rows": 45875,
+    "matching_rows": 45875,
+    "match_ratio": 1.0
+  },
+  "water_level_lag_10m": {
+    "comparable_rows": 45977,
+    "matching_rows": 45977,
+    "match_ratio": 1.0
+  },
+  "rain_lag_30m": {
+    "comparable_rows": 45873,
+    "matching_rows": 45873,
+    "match_ratio": 1.0
+  },
+  "water_level_lag_30m": {
+    "comparable_rows": 45975,
+    "matching_rows": 45975,
+    "match_ratio": 1.0
+  },
+  "rain_lag_60m": {
+    "comparable_rows": 45870,
+    "matching_rows": 45870,
+    "match_ratio": 1.0
+  },
+  "water_level_lag_60m": {
+    "comparable_rows": 45972,
+    "matching_rows": 45972,
+    "match_ratio": 1.0
+  },
+  "rain_lag_180m": {
+    "comparable_rows": 45858,
+    "matching_rows": 45858,
+    "match_ratio": 1.0
+  },
+  "water_level_lag_180m": {
+    "comparable_rows": 45960,
+    "matching_rows": 45960,
+    "match_ratio": 1.0
+  },
+  "target_water_level_plus_60m": {
+    "comparable_rows": 45972,
+    "matching_rows": 45972,
+    "match_ratio": 1.0
+  },
+  "target_water_level_plus_180m": {
+    "comparable_rows": 45960,
+    "matching_rows": 45960,
+    "match_ratio": 1.0
+  },
+  "target_water_level_plus_360m": {
+    "comparable_rows": 45942,
+    "matching_rows": 45942,
+    "match_ratio": 1.0
+  },
+  "rain_sum_1h": {
+    "matches_current_inclusive_window": {
+      "comparable_rows": 45774,
+      "matching_rows": 41333,
+      "match_ratio": 0.9029798575610609
+    },
+    "matches_strictly_past_window": {
+      "comparable_rows": 45782,
+      "matching_rows": 45782,
+      "match_ratio": 1.0
+    },
+    "interpretation": "Current-inclusive is valid only when issue-time rain is available; strictly-past is safer operationally."
+  },
+  "rain_sum_3h": {
+    "matches_current_inclusive_window": {
+      "comparable_rows": 45682,
+      "matching_rows": 40764,
+      "match_ratio": 0.8923427170439122
+    },
+    "matches_strictly_past_window": {
+      "comparable_rows": 45688,
+      "matching_rows": 45688,
+      "match_ratio": 1.0
+    },
+    "interpretation": "Current-inclusive is valid only when issue-time rain is available; strictly-past is safer operationally."
+  },
+  "rain_sum_6h": {
+    "matches_current_inclusive_window": {
+      "comparable_rows": 45556,
+      "matching_rows": 40295,
+      "match_ratio": 0.8845157608218457
+    },
+    "matches_strictly_past_window": {
+      "comparable_rows": 45562,
+      "matching_rows": 45562,
+      "match_ratio": 1.0
+    },
+    "interpretation": "Current-inclusive is valid only when issue-time rain is available; strictly-past is safer operationally."
+  },
+  "rain_sum_24h": {
+    "matches_current_inclusive_window": {
+      "comparable_rows": 44898,
+      "matching_rows": 39253,
+      "match_ratio": 0.8742705688449374
+    },
+    "matches_strictly_past_window": {
+      "comparable_rows": 44903,
+      "matching_rows": 44903,
+      "match_ratio": 1.0
+    },
+    "interpretation": "Current-inclusive is valid only when issue-time rain is available; strictly-past is safer operationally."
+  },
+  "direct_target_in_features": [],
+  "split_policy": "Baseline script uses chronological 70/15/15, purges train-boundary rows by forecast horizon, and fits imputers/scalers/models on train only.",
+  "interpolation": "No evidence of interpolated long gaps: missing values remain explicit; rebuild script performs no temporal interpolation."
+}

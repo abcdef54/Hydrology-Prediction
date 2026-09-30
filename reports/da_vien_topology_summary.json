@@ -1,0 +1,158 @@
+{
+  "hydrobasins_level": 12,
+  "da_vien_basin_id": 4120015622,
+  "da_vien_river_reach_id": 41282167,
+  "da_vien_river_snap_distance_m": 6.378844230831245,
+  "upstream_basin_count_including_target": 19,
+  "upstream_polygon_sub_area_sum_km2": 1587.3,
+  "da_vien_hydrobasins_reported_up_area_km2": 1709.4,
+  "upstream_river_reach_count_including_target": 318,
+  "rain_stations_in_upstream_catchment": 14,
+  "strictly_upstream_rain_stations": 11,
+  "upstream_water_level_stations": 0,
+  "upstream_reservoirs": 4,
+  "maximum_river_snap_distance_used_for_same_basin_classification_m": 5000.0,
+  "classification_rule": "upstream/downstream follows NEXT_DOWN topology; same_catchment means the same HydroBASINS level-12 unit where reach topology cannot resolve a direction",
+  "candidate_input_stations": [
+    {
+      "station_id": "750024",
+      "station_name": "An Tây (Thuận Hóa)",
+      "type": "rain",
+      "relation_to_da_vien": "same_catchment",
+      "candidate_reason": "rain_inside_target_level12_basin"
+    },
+    {
+      "station_id": "750027",
+      "station_name": "Thủy Thanh (Hương Thủy)",
+      "type": "rain",
+      "relation_to_da_vien": "same_catchment",
+      "candidate_reason": "rain_inside_target_level12_basin"
+    },
+    {
+      "station_id": "750046",
+      "station_name": "Vỹ Dạ",
+      "type": "rain",
+      "relation_to_da_vien": "same_catchment",
+      "candidate_reason": "rain_inside_target_level12_basin"
+    },
+    {
+      "station_id": "750006",
+      "station_name": "Hương Nguyên (A Lưới)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "750028",
+      "station_name": "Hương Sơn (Phú Lộc)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "750015",
+      "station_name": "Hồ Tà Rinh (Phú Lộc)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "750013",
+      "station_name": "Lưu vực Thủy điện Thượng Nhật (Phú Lộc)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "750063",
+      "station_name": "Phú Sơn (Hương Thủy)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "677493",
+      "station_name": "TT Khe Tre (Phú Lộc)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "750029",
+      "station_name": "Thượng Quảng (Phú Lộc)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "750061",
+      "station_name": "Thủy điện Bình Điền (Hương Trà)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "750042",
+      "station_name": "Trạm kiểm lâm Khe Mỏ Rang",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "228006",
+      "station_name": "VPTT PCTTHUE",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "750012",
+      "station_name": "Đập, Thủy điện Thượng Nhật (Phú Lộc)",
+      "type": "rain",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "3",
+      "station_name": "Hồ Tả Trạch",
+      "type": "reservoir",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "2",
+      "station_name": "Thủy điện Bình Điền",
+      "type": "reservoir",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "6",
+      "station_name": "Thủy điện Thượng Lộ",
+      "type": "reservoir",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "7",
+      "station_name": "Thủy điện Thượng Nhật",
+      "type": "reservoir",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    },
+    {
+      "station_id": "74647403",
+      "station_name": "Trạm Dã Viên (Sông Hương)",
+      "type": "water_level",
+      "relation_to_da_vien": "same_catchment",
+      "candidate_reason": "autoregressive_target_lags"
+    },
+    {
+      "station_id": "63604a34-f1cc-11f0-8f75-0692ec44dcd5",
+      "station_name": "VPTT PCTTHUE",
+      "type": "wind",
+      "relation_to_da_vien": "upstream",
+      "candidate_reason": "topology_upstream"
+    }
+  ]
+}

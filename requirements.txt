@@ -1,0 +1,6 @@
+numpy>=2.0
+pandas>=2.2
+matplotlib>=3.9
+scikit-learn>=1.7
+geopandas>=1.0
+pyogrio>=0.10
