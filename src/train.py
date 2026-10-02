@@ -70,24 +70,26 @@ def get_dataloader(
     eval_shuffle: bool = False,
     test_shuffle: bool = False,
     persistent_workers: bool = False,
-    seq_len: int = 1,
+    seq_len: int = 24,
 ):
     train_df, eval_df, test_df = load_dataset(horizon)
-    train_dataset = HydrologyDataset(train_df, fit_scaler=True, seq_len=seq_len)
+    train_dataset = HydrologyDataset(train_df, fit_scalers=True, seq_len=seq_len)
     eval_dataset = HydrologyDataset(
         eval_df,
         feature_cols=train_dataset.feature_cols,
         target_cols=train_dataset.target_cols,
-        scaler=train_dataset.scaler,
-        fit_scaler=False,
+        feature_scaler=train_dataset.feature_scaler,
+        target_scaler=train_dataset.target_scaler,
+        fit_scalers=False,
         seq_len=seq_len,
     )
     test_dataset = HydrologyDataset(
         test_df,
         feature_cols=train_dataset.feature_cols,
         target_cols=train_dataset.target_cols,
-        scaler=train_dataset.scaler,
-        fit_scaler=False,
+        feature_scaler=train_dataset.feature_scaler,
+        target_scaler=train_dataset.target_scaler,
+        fit_scalers=False,
         seq_len=seq_len,
     )
 
@@ -243,8 +245,17 @@ def train_lstm(
     print(f"Test Loss (MSE): {avg_test_loss:.4f}")
 
     if all_preds and hasattr(test_dataloader.dataset, "target_cols"):
-        preds_arr = torch.cat(all_preds, dim=0).numpy()
-        targets_arr = torch.cat(all_targets, dim=0).numpy()
+        preds_scaled = torch.cat(all_preds, dim=0).numpy()
+        targets_scaled = torch.cat(all_targets, dim=0).numpy()
+
+        target_scaler = getattr(test_dataloader.dataset, "target_scaler", None)
+        if target_scaler is not None:
+            preds_arr = target_scaler.inverse_transform(preds_scaled)
+            targets_arr = target_scaler.inverse_transform(targets_scaled)
+        else:
+            preds_arr = preds_scaled
+            targets_arr = targets_scaled
+
         target_cols = test_dataloader.dataset.target_cols
         timestamps = getattr(test_dataloader.dataset, "timestamps", None)
 
@@ -284,6 +295,13 @@ if __name__ == "__main__":
         train_lgbm(model, train_df, eval_df)
         evaluate_tabular(model, test_df)
     else:
+        if args.horizon == "10min":
+            seq_len = 144
+        elif args.horizon == "30min":
+            seq_len = 48
+        elif args.horizon == "1h":
+            seq_len = 24
+
         train_dataloader, eval_dataloader, test_dataloader = get_dataloader(
             args.horizon,
             args.batch_size,
@@ -294,6 +312,7 @@ if __name__ == "__main__":
             eval_shuffle=False,
             test_shuffle=False,
             persistent_workers=False,
+            seq_len=seq_len
         )
         input_size = getattr(train_dataloader.dataset, "num_features", args.local_hindcast_size)
         output_size = getattr(train_dataloader.dataset, "num_targets", args.output_size)

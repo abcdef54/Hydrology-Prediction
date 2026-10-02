@@ -8,52 +8,85 @@ from sklearn.preprocessing import StandardScaler
 
 
 class HydrologyDataset(Dataset):
-    """PyTorch Dataset for Hydrological time series with feature scaling and NaN handling."""
-
     def __init__(
         self,
         df: pd.DataFrame,
         feature_cols: list[str] | None = None,
         target_cols: list[str] | None = None,
-        scaler: StandardScaler | None = None,
-        fit_scaler: bool = False,
-        seq_len: int = 1,
+        feature_scaler: StandardScaler | None = None,
+        target_scaler: StandardScaler | None = None,
+        fit_scalers: bool = False,
+        seq_len: int = 24,
     ) -> None:
         super().__init__()
-        self.seq_len = max(1, seq_len)
 
-        if target_cols is None:
-            self.target_cols = [c for c in df.columns if c.startswith("target_")]
+        self.seq_len = seq_len
+
+        self.target_cols = target_cols or [
+            column
+            for column in df.columns
+            if column.startswith("target_")
+        ]
+
+        self.feature_cols = feature_cols or [
+            column
+            for column in df.columns
+            if column not in self.target_cols
+            and not column.startswith("timestamp")
+        ]
+
+        X_raw = df[self.feature_cols].to_numpy(dtype=np.float32)
+        y_raw = df[self.target_cols].to_numpy(dtype=np.float32)
+
+        if fit_scalers:
+            self.feature_scaler = StandardScaler()
+            self.feature_scaler.fit(X_raw)
+
+            valid_targets = np.isfinite(y_raw).all(axis=1)
+
+            self.target_scaler = StandardScaler()
+            self.target_scaler.fit(y_raw[valid_targets])
+
         else:
-            self.target_cols = target_cols
+            if feature_scaler is None or target_scaler is None:
+                raise ValueError(
+                    "feature_scaler and target_scaler are required "
+                    "when fit_scalers=False."
+                )
 
-        if feature_cols is None:
-            self.feature_cols = [
-                c for c in df.columns
-                if c not in self.target_cols and not c.startswith("timestamp")
-            ]
+            self.feature_scaler = feature_scaler
+            self.target_scaler = target_scaler
+
+        X_scaled = self.feature_scaler.transform(X_raw)
+        y_scaled = self.target_scaler.transform(y_raw)
+
+        # StandardScaler preserves NaN.
+        # LSTM cannot consume NaN, so replace missing normalized values
+        # with 0. Missing flags in the dataset tell the model they were absent.
+        self.X = np.nan_to_num(
+            X_scaled,
+            nan=0.0,
+        ).astype(np.float32)
+
+        self.y = y_scaled.astype(np.float32)
+
+        valid_target_rows = np.isfinite(self.y).all(axis=1)
+
+        possible_end_indices = np.arange(len(df))
+        valid_sequence_rows = possible_end_indices >= self.seq_len - 1
+
+        self.end_indices = possible_end_indices[
+            valid_target_rows & valid_sequence_rows
+        ]
+
+        if "timestamp_utc" in df.columns:
+            self.timestamps = (
+                df["timestamp_utc"]
+                .iloc[self.end_indices]
+                .reset_index(drop=True)
+            )
         else:
-            self.feature_cols = feature_cols
-
-        features = df[self.feature_cols].copy()
-        targets = df[self.target_cols].copy()
-
-        # Handle missing values (forward fill, back fill, and fill remainder with 0)
-        features = features.ffill().bfill().fillna(0.0)
-        targets = targets.ffill().bfill().fillna(0.0)
-
-        X_raw = features.to_numpy(dtype=np.float32).copy()
-        y_raw = targets.to_numpy(dtype=np.float32).copy()
-
-        if fit_scaler or scaler is None:
-            self.scaler = StandardScaler()
-            self.X = self.scaler.fit_transform(X_raw).astype(np.float32).copy()
-        else:
-            self.scaler = scaler
-            self.X = self.scaler.transform(X_raw).astype(np.float32).copy()
-
-        self.y = y_raw
-        self.timestamps = df["timestamp_utc"].reset_index(drop=True) if "timestamp_utc" in df.columns else None
+            self.timestamps = None
 
     @property
     def num_features(self) -> int:
@@ -64,11 +97,19 @@ class HydrologyDataset(Dataset):
         return self.y.shape[1]
 
     def __len__(self) -> int:
-        return len(self.X) - self.seq_len + 1
+        return len(self.end_indices)
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
-        start_idx = idx
-        end_idx = idx + self.seq_len
-        xb = torch.from_numpy(self.X[start_idx:end_idx])  # Shape: (seq_len, num_features)
-        yb = torch.from_numpy(self.y[end_idx - 1])        # Target at sequence end
-        return xb, yb
+    def __getitem__(
+        self,
+        idx: int,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        end_idx = self.end_indices[idx]
+        start_idx = end_idx - self.seq_len + 1
+
+        features = self.X[start_idx:end_idx + 1]
+        targets = self.y[end_idx]
+
+        return (
+            torch.from_numpy(features),
+            torch.from_numpy(targets),
+        )
