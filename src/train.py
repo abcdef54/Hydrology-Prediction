@@ -28,22 +28,25 @@ DATASET_PATH_1H = "./train_data/1h/"
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--horizon", type=str, required=True, choices=["10min", "30min", "1h"])
-parser.add_argument("--batch_size", type=int, default=32)
-parser.add_argument("--num_worker", type=int, default=0)
-parser.add_argument("--num_epochs", type=int, default=100)
-parser.add_argument("--learning_rate", type=float, default=0.001)
-parser.add_argument("--weight_decay", type=float, default=0.01)
-parser.add_argument("--early_stopping", type=int, default=10)
-parser.add_argument("--gradient_accumulation", type=int, default=1)
-parser.add_argument("--train_method", type=str, required=True, choices=["xgb", "lgbm", "lstm", "lstm_adapter"])
-parser.add_argument("--pretrained_model", type=str, required=False)
+parser.add_argument("--batch-size", type=int, default=64)
+parser.add_argument("--num-worker", type=int, default=0)
+parser.add_argument("--num-epochs", type=int, default=100)
+parser.add_argument("--early-stopping", type=int, default=10)
+parser.add_argument("--gradient-accumulation", type=int, default=1)
+parser.add_argument("--train-method", type=str, required=True, choices=["xgb", "lgbm", "lstm", "lstm_adapter"])
+parser.add_argument("--pretrained-model", type=str, required=False)
 parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
-parser.add_argument("--local_hindcast_size", type=int, default=178)
-parser.add_argument("--pretrained_hindcast_size", type=int, default=64)
-parser.add_argument("--local_forecast_size", type=int, default=178)
-parser.add_argument("--pretrained_forecast_size", type=int, default=64)
-parser.add_argument("--output_size", type=int, default=3)
-
+parser.add_argument("--local-hindcast-size", type=int, default=178)
+parser.add_argument("--pretrained-hindcast-size", type=int, default=64)
+parser.add_argument("--local-forecast-size", type=int, default=178)
+parser.add_argument("--pretrained-forecast-size", type=int, default=64)
+parser.add_argument("--lstm-output-size", type=int, default=3)
+parser.add_argument("--lstm-hidden-size", type=int, default=128, required=False, help="LSTM Hidden Size")
+parser.add_argument("--lstm-num-layers", type=int, default=2, required=False)
+parser.add_argument("--lstm-drop-out", type=float, default=0.2, required=False)
+parser.add_argument("--lstm-lr", type=float, required=False, default=1e-4)
+parser.add_argument("--lstm-weight-decay", type=float, default=0.01, required=False)
+parser.add_argument("--lstm-seq-len", type=int, default=None, required=False)
 
 
 def load_dataset(horizon: str):
@@ -295,12 +298,15 @@ if __name__ == "__main__":
         train_lgbm(model, train_df, eval_df)
         evaluate_tabular(model, test_df)
     else:
-        if args.horizon == "10min":
-            seq_len = 144
-        elif args.horizon == "30min":
-            seq_len = 48
-        elif args.horizon == "1h":
-            seq_len = 24
+        if args.lstm_seq_len is None:
+            if args.horizon == "10min":
+                seq_len = 144
+            elif args.horizon == "30min":
+                seq_len = 48
+            elif args.horizon == "1h":
+                seq_len = 24
+        else:
+            seq_len = args.lstm_seq_len
 
         train_dataloader, eval_dataloader, test_dataloader = get_dataloader(
             args.horizon,
@@ -318,8 +324,14 @@ if __name__ == "__main__":
         output_size = getattr(train_dataloader.dataset, "num_targets", args.output_size)
 
         if args.train_method == "lstm":
-            model = LSTM(input_size=input_size, output_size=output_size)
-            optimizer = optim.Adam(model.parameters(), lr=args.learning_rate, weight_decay=args.weight_decay)
+            model = LSTM(
+                input_size=input_size,
+                hidden_size=args.lstm_hidden_size,
+                num_layers=args.lstm_num_layers,
+                dropout=args.lstm_drop_out,
+                output_size=output_size,
+            )
+            optimizer = optim.AdamW(model.parameters(), lr=args.lstm_learning_rate, weight_decay=args.lstm_weight_decay)
             scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
             train_lstm(
                 model,
