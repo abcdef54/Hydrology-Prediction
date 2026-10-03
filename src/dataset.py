@@ -17,6 +17,7 @@ class HydrologyDataset(Dataset):
         target_scaler: StandardScaler | None = None,
         fit_scalers: bool = False,
         seq_len: int = 24,
+        require_current_level: bool = False,
     ) -> None:
         super().__init__()
 
@@ -71,6 +72,11 @@ class HydrologyDataset(Dataset):
         self.y = y_scaled.astype(np.float32)
 
         valid_target_rows = np.isfinite(self.y).all(axis=1)
+        if require_current_level:
+            if "water_level_depth" not in self.feature_cols:
+                raise ValueError("water_level_depth is required for persistence residual training")
+            level_index = self.feature_cols.index("water_level_depth")
+            valid_target_rows &= np.isfinite(X_raw[:, level_index])
 
         possible_end_indices = np.arange(len(df))
         valid_sequence_rows = possible_end_indices >= self.seq_len - 1

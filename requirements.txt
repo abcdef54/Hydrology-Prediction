@@ -13,3 +13,5 @@ pydantic
 ruamel.yaml
 tqdm
 more_itertools
+mlflow
+https://github.com/google-research/flood-forecasting.git

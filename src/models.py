@@ -8,32 +8,29 @@ from googlehydrology.modelzoo.mean_embedding_forecast_lstm import MeanEmbeddingF
 
 
 class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):
+    """Adapt observed history to a pretrained MEF recurrent backbone.
+
+    This dataset has no future forecasts. The forecast LSTM therefore receives
+    a zero forecast embedding plus the last hindcast state.
+    """
+
     def __init__(
         self,
         pretrained_model: MeanEmbeddingForecastLSTM,
         local_hindcast_size: int,
-        pretrained_hindcast_size: int,
-        local_forecast_size: int,
-        pretrained_forecast_size: int,
         output_size: int,
         freeze_backbone: bool = True,
     ) -> None:
         super().__init__()
-        
         self.backbone = pretrained_model
-
         self.hindcast_adapter = nn.Sequential(
-            nn.Linear(local_hindcast_size, pretrained_hindcast_size),
-            nn.LayerNorm(pretrained_hindcast_size)
+            nn.Linear(local_hindcast_size, self.backbone.hindcast_lstm.input_size),
+            nn.LayerNorm(self.backbone.hindcast_lstm.input_size),
         )
-        
-        self.forecast_adapter = nn.Sequential(
-            nn.Linear(local_forecast_size, pretrained_forecast_size),
-            nn.LayerNorm(pretrained_forecast_size)
-        )
-
-        hidden_size = self.backbone.config_data.hidden_size
-
+        hidden_size = self.backbone.hindcast_lstm.hidden_size
+        self.forecast_embedding_size = self.backbone.forecast_lstm.input_size - hidden_size
+        if self.forecast_embedding_size < 0:
+            raise ValueError("MEF forecast input is smaller than the hindcast state")
         self.output_head = nn.Linear(hidden_size, output_size)
 
         if freeze_backbone:
@@ -42,13 +39,8 @@ class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):
     def freeze_backbone(self) -> None:
         for param in self.backbone.parameters():
             param.requires_grad = False
-        
         for param in self.hindcast_adapter.parameters():
             param.requires_grad = True
-        
-        for param in self.forecast_adapter.parameters():
-            param.requires_grad = True
-        
         for param in self.output_head.parameters():
             param.requires_grad = True
 
@@ -56,44 +48,22 @@ class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):
         for param in self.backbone.parameters():
             param.requires_grad = True
 
-    def forward(
-        self, 
-        x_hindcast_local: torch.Tensor,
-        x_forecast_local: torch.Tensor,
-    ) -> torch.Tensor:
-        # Ensure 3D shape (batch_size, seq_len, num_features)
+    def forward(self, x_hindcast_local: torch.Tensor) -> torch.Tensor:
         if x_hindcast_local.dim() == 2:
             x_hindcast_local = x_hindcast_local.unsqueeze(1)
-        if x_forecast_local.dim() == 2:
-            x_forecast_local = x_forecast_local.unsqueeze(1)
-
-        # 1. Project local features to backbone input dimension
         x_hindcast_encoded = self.hindcast_adapter(x_hindcast_local)
-        x_forecast_encoded = self.forecast_adapter(x_forecast_local)
-
-        # 2. Process hindcast sequence via pretrained hindcast LSTM
         hindcast_output, (h_hind, c_hind) = self.backbone.hindcast_lstm(x_hindcast_encoded)
-
-        # 3. Align forecast input dimensions with backbone forecast LSTM
-        # If backbone expects hindcast context concatenated along feature axis:
-        if x_forecast_encoded.shape[-1] == self.backbone.forecast_lstm.input_size:
-            forecast_input = x_forecast_encoded
-        elif x_forecast_encoded.shape[-1] + self.backbone.config_data.hidden_size == self.backbone.forecast_lstm.input_size:
-            hindcast_context = hindcast_output[:, -1:, :].expand(-1, x_forecast_encoded.shape[1], -1)
-            forecast_input = torch.cat([x_forecast_encoded, hindcast_context], dim=-1)
-        else:
-            forecast_input = x_forecast_encoded
-
-        # 4. Process forecast sequence initialized with hindcast hidden state
+        no_future_forecast = hindcast_output.new_zeros(
+            (len(x_hindcast_local), 1, self.forecast_embedding_size)
+        )
+        forecast_input = torch.cat(
+            [no_future_forecast, hindcast_output[:, -1:, :]], dim=-1
+        )
         forecast_output, _ = self.backbone.forecast_lstm(
             forecast_input,
             (h_hind, c_hind)
         )
-
-        # 5. Map final forecast representation to downstream targets
-        final_representation = forecast_output[:, -1, :]
-        predictions = self.output_head(final_representation)
-        return predictions
+        return self.output_head(forecast_output[:, -1, :])
 
 
 
@@ -148,6 +118,40 @@ class LSTM(torch.nn.Module):
 
         predictions = self.linear(self.head_dropout_layer(final_hidden_state))
         return predictions
+
+
+class ResidualLSTM(LSTM):
+    """Forecast a correction to the current water level in target-scaled units."""
+
+    def __init__(
+        self,
+        *args,
+        level_feature_index: int,
+        persistence_scale: list[float],
+        persistence_offset: list[float],
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        if not 0 <= level_feature_index < self.input_size:
+            raise ValueError("level_feature_index is outside the input features")
+        if len(persistence_scale) != self.output_size or len(persistence_offset) != self.output_size:
+            raise ValueError("persistence coefficients must match output_size")
+        self.level_feature_index = level_feature_index
+        self.register_buffer("persistence_scale", torch.tensor(persistence_scale, dtype=torch.float32))
+        self.register_buffer("persistence_offset", torch.tensor(persistence_offset, dtype=torch.float32))
+        # The untrained model is exactly the persistence forecast.
+        nn.init.zeros_(self.linear.weight)
+        nn.init.zeros_(self.linear.bias)
+
+    def persistence(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        current_level = x[:, -1, self.level_feature_index].unsqueeze(-1)
+        return current_level * self.persistence_scale + self.persistence_offset
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.persistence(x) + super().forward(x)
+
 
 class XGBoost:
     def __init__(self) ->  None:
