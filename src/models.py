@@ -105,14 +105,29 @@ class LSTM(torch.nn.Module):
         num_layers: int = 2,
         output_size: int = 3,
         dropout: float = 0.2,
+        input_dropout: float = 0.0,
+        head_dropout: float = 0.0,
     ):
         super().__init__()
+
+        for name, rate in (
+            ("dropout", dropout),
+            ("input_dropout", input_dropout),
+            ("head_dropout", head_dropout),
+        ):
+            if not 0.0 <= rate < 1.0:
+                raise ValueError(f"{name} must be between 0 (inclusive) and 1 (exclusive)")
 
         self.input_size = input_size
         self.output_size = output_size
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.dropout = dropout
+        self.input_dropout = input_dropout
+        self.head_dropout = head_dropout
+        # Drop whole input channels for each sequence during training.
+        self.input_dropout_layer = nn.Dropout1d(p=input_dropout)
+        self.head_dropout_layer = nn.Dropout(p=head_dropout)
 
         self.lstm = torch.nn.LSTM(
             input_size=self.input_size,
@@ -126,11 +141,12 @@ class LSTM(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 2:
             x = x.unsqueeze(1)
+        x = self.input_dropout_layer(x.transpose(1, 2)).transpose(1, 2)
         sequence_output, _ = self.lstm(x)
 
         final_hidden_state = sequence_output[:, -1, :]
 
-        predictions = self.linear(final_hidden_state)
+        predictions = self.linear(self.head_dropout_layer(final_hidden_state))
         return predictions
 
 class XGBoost:

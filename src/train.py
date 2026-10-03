@@ -1,6 +1,10 @@
 import os
 import sys
+import random
 from pathlib import Path
+
+# Set this before importing PyTorch so CUDA LSTM kernels can be deterministic.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:2")
 
 # Ensure project root is in sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -8,6 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import argparse
+import numpy as np
 import pandas as pd
 import xgboost as xgb
 import lightgbm as gbm
@@ -44,9 +49,29 @@ parser.add_argument("--lstm-output-size", type=int, default=3)
 parser.add_argument("--lstm-hidden-size", type=int, default=128, required=False, help="LSTM Hidden Size")
 parser.add_argument("--lstm-num-layers", type=int, default=2, required=False)
 parser.add_argument("--lstm-drop-out", type=float, default=0.2, required=False)
+parser.add_argument("--lstm-input-dropout", type=float, default=0.0, help="Drop input feature channels across each training sequence")
+parser.add_argument("--lstm-head-dropout", type=float, default=0.0, help="Drop final LSTM features before the output layer")
 parser.add_argument("--lstm-lr", type=float, required=False, default=1e-4)
 parser.add_argument("--lstm-weight-decay", type=float, default=0.01, required=False)
 parser.add_argument("--lstm-seq-len", type=int, default=None, required=False)
+parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible training")
+
+
+def set_seed(seed: int) -> None:
+    if not 0 <= seed < 2**32:
+        raise ValueError("--seed must be between 0 and 2**32 - 1")
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
+
+
+def seed_worker(_worker_id: int) -> None:
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
 
 
 def load_dataset(horizon: str):
@@ -56,7 +81,6 @@ def load_dataset(horizon: str):
         base_path = DATASET_PATH_30MIN
     elif horizon == "1h":
         base_path = DATASET_PATH_1H
-    
     train = pd.read_csv(os.path.join(base_path, "train.csv"))
     eval = pd.read_csv(os.path.join(base_path, "val.csv"))
     test = pd.read_csv(os.path.join(base_path, "test.csv"))
@@ -74,6 +98,7 @@ def get_dataloader(
     test_shuffle: bool = False,
     persistent_workers: bool = False,
     seq_len: int = 24,
+    seed: int = 42,
 ):
     train_df, eval_df, test_df = load_dataset(horizon)
     train_dataset = HydrologyDataset(train_df, fit_scalers=True, seq_len=seq_len)
@@ -97,6 +122,9 @@ def get_dataloader(
     )
 
     use_persistent = persistent_workers if num_worker > 0 else False
+    train_generator = torch.Generator().manual_seed(seed)
+    eval_generator = torch.Generator().manual_seed(seed + 1)
+    test_generator = torch.Generator().manual_seed(seed + 2)
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -106,6 +134,8 @@ def get_dataloader(
         pin_memory=pin_memory,
         drop_last=drop_last,
         persistent_workers=use_persistent,
+        worker_init_fn=seed_worker,
+        generator=train_generator,
     )
     eval_dataloader = DataLoader(
         eval_dataset,
@@ -115,6 +145,8 @@ def get_dataloader(
         pin_memory=pin_memory,
         drop_last=False,
         persistent_workers=use_persistent,
+        worker_init_fn=seed_worker,
+        generator=eval_generator,
     )
     test_dataloader = DataLoader(
         test_dataset,
@@ -124,16 +156,18 @@ def get_dataloader(
         pin_memory=pin_memory,
         drop_last=False,
         persistent_workers=use_persistent,
+        worker_init_fn=seed_worker,
+        generator=test_generator,
     )
     return train_dataloader, eval_dataloader, test_dataloader
 
-def train_xgb(model: XGBoost, train_df: pd.DataFrame, eval_df: pd.DataFrame) -> xgb.XGBRegressor:
-    model.train(train_df, eval_df)
+def train_xgb(model: XGBoost, train_df: pd.DataFrame, eval_df: pd.DataFrame, seed: int = 42) -> xgb.XGBRegressor:
+    model.train(train_df, eval_df, random_state=seed)
     return model
 
 
-def train_lgbm(model: LightGBM, train_df: pd.DataFrame, eval_df: pd.DataFrame) -> LightGBM:
-    model.train(train_df, eval_df)
+def train_lgbm(model: LightGBM, train_df: pd.DataFrame, eval_df: pd.DataFrame, seed: int = 42) -> LightGBM:
+    model.train(train_df, eval_df, random_state=seed)
     return model
 
 
@@ -192,6 +226,8 @@ def train_lstm(
         print(f"Output size: {model.output_size}")
         print(f"Seq Len: {train_dataloader.dataset.seq_len}")
         print(f"Dropout: {model.dropout}")
+        print(f"Input dropout: {model.input_dropout}")
+        print(f"Head dropout: {model.head_dropout}")
         print(f"Learning rate: {optim.defaults['lr']}")
         print(f"Weight decay: {optim.defaults['weight_decay']}")
         print(f"Gradient accumulation: {gradient_accumulation}")
@@ -328,16 +364,18 @@ def train_lstm(
 
 if __name__ == "__main__":
     args = parser.parse_args()
+    set_seed(args.seed)
+    print(f"Seed: {args.seed}")
 
     if args.train_method == "xgb":
         train_df, eval_df, test_df = load_dataset(args.horizon)
         model = XGBoost()
-        train_xgb(model, train_df, eval_df)
+        train_xgb(model, train_df, eval_df, seed=args.seed)
         evaluate_tabular(model, test_df)
     elif args.train_method == "lgbm":
         train_df, eval_df, test_df = load_dataset(args.horizon)
         model = LightGBM()
-        train_lgbm(model, train_df, eval_df)
+        train_lgbm(model, train_df, eval_df, seed=args.seed)
         evaluate_tabular(model, test_df)
     else:
         if args.lstm_seq_len is None:
@@ -360,7 +398,8 @@ if __name__ == "__main__":
             eval_shuffle=False,
             test_shuffle=False,
             persistent_workers=False,
-            seq_len=seq_len
+            seq_len=seq_len,
+            seed=args.seed,
         )
         input_size = getattr(train_dataloader.dataset, "num_features", args.local_hindcast_size)
         output_size = getattr(train_dataloader.dataset, "num_targets", args.lstm_output_size)
@@ -371,6 +410,8 @@ if __name__ == "__main__":
                 hidden_size=args.lstm_hidden_size,
                 num_layers=args.lstm_num_layers,
                 dropout=args.lstm_drop_out,
+                input_dropout=args.lstm_input_dropout,
+                head_dropout=args.lstm_head_dropout,
                 output_size=output_size,
             )
             optimizer = optim.AdamW(model.parameters(), lr=args.lstm_lr, weight_decay=args.lstm_weight_decay)
@@ -414,5 +455,3 @@ if __name__ == "__main__":
                 args.gradient_accumulation,
                 args.device,
             )
-
-    
