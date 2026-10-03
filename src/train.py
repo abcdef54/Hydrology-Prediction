@@ -321,7 +321,7 @@ if __name__ == "__main__":
             seq_len=seq_len
         )
         input_size = getattr(train_dataloader.dataset, "num_features", args.local_hindcast_size)
-        output_size = getattr(train_dataloader.dataset, "num_targets", args.output_size)
+        output_size = getattr(train_dataloader.dataset, "num_targets", args.lstm_output_size)
 
         if args.train_method == "lstm":
             model = LSTM(
@@ -331,7 +331,7 @@ if __name__ == "__main__":
                 dropout=args.lstm_drop_out,
                 output_size=output_size,
             )
-            optimizer = optim.AdamW(model.parameters(), lr=args.lstm_learning_rate, weight_decay=args.lstm_weight_decay)
+            optimizer = optim.AdamW(model.parameters(), lr=args.lstm_lr, weight_decay=args.lstm_weight_decay)
             scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
             train_lstm(
                 model,
