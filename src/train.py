@@ -172,12 +172,31 @@ def train_lstm(
     device: torch.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ):
     model.train().to(device)
+    print(f"Training LSTM using device: {device} for {num_epochs} epochs")
     losses = []
     val_losses = []
     best_val_loss = float("inf")
     save_dir = f"./model/{horizon}"
     os.makedirs(save_dir, exist_ok=True)
     best_model_path = os.path.join(save_dir, f"{model.__class__.__name__}_best.pt")
+
+    print("="*50)
+    print("Training settings")
+    print(f"Device: {device}")
+    print(f"Number of epochs: {num_epochs}")
+    print(f"Number of layers: {model.lstm.num_layers}")
+    print(f"Hidden size: {model.lstm.hidden_size}")
+    print(f"Input size: {model.lstm.input_size}")
+    print(f"Output size: {model.lstm.output_size}")
+    print(f"Seq Len: {train_dataloader.dataset.seq_len}")
+    print(f"Dropout: {model.lstm.dropout}")
+    print(f"Learning rate: {optim.defaults['lr']}")
+    print(f"Weight decay: {optim.defaults['weight_decay']}")
+    print(f"Gradient accumulation: {gradient_accumulation}")
+    print(f"Number of training batches: {len(train_dataloader)}")
+    print(f"Number of eval batches: {len(eval_dataloader)}")
+    print(f"Number of test batches: {len(test_dataloader)}")
+    print("="*50)
 
     for epoch in tqdm(range(num_epochs), desc="Training LSTM"):
         model.train()
