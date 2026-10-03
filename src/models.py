@@ -108,14 +108,20 @@ class LSTM(torch.nn.Module):
     ):
         super().__init__()
 
+        self.input_size = input_size
+        self.output_size = output_size
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.dropout = dropout
+
         self.lstm = torch.nn.LSTM(
-            input_size=input_size,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            dropout=dropout,
+            input_size=self.input_size,
+            hidden_size=self.hidden_size,
+            num_layers=self.num_layers,
+            dropout=self.dropout,
             batch_first=True,
         )
-        self.linear = torch.nn.Linear(hidden_size, output_size)
+        self.linear = torch.nn.Linear(self.hidden_size, self.output_size)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 2:
