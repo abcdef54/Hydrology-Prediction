@@ -1,10 +1,12 @@
 from __future__ import annotations
+from dataclasses import asdict, dataclass
 import torch
 import torch.nn as nn
 import xgboost as xgb
 import lightgbm as gbm
 import pandas as pd
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import MeanEmbeddingForecastLSTM
+from src.utils import select_feature_columns
 
 
 class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):
@@ -153,45 +155,76 @@ class ResidualLSTM(LSTM):
         return self.persistence(x) + super().forward(x)
 
 
+@dataclass(frozen=True)
+class XGBoostSettings:
+    n_estimators: int = 2000
+    learning_rate: float = 0.5
+    max_depth: int = 9
+    min_child_weight: float = 5.0
+    subsample: float = 0.9
+    colsample_bytree: float = 0.9
+    reg_alpha: float = 1.0
+    reg_lambda: float = 1.5
+    early_stopping_rounds: int = 100
+    n_jobs: int = -1
+
+
+@dataclass(frozen=True)
+class LightGBMSettings:
+    n_estimators: int = 2000
+    learning_rate: float = 0.05
+    num_leaves: int = 31
+    max_depth: int = 6
+    subsample: float = 0.75
+    subsample_freq: int = 1
+    colsample_bytree: float = 0.75
+    reg_alpha: float = 0.5
+    reg_lambda: float = 1.5
+    early_stopping_rounds: int = 150
+    n_jobs: int = -1
+    verbose: int = 1
+
+
+def tree_feature_columns(train_dataset: pd.DataFrame, feature_set: str) -> list[str]:
+    selected = select_feature_columns(train_dataset.columns, feature_set)
+    if selected is not None:
+        return selected
+    return [
+        column for column in train_dataset.columns
+        if not column.startswith("target_") and not column.startswith("timestamp")
+    ]
+
+
 class XGBoost:
-    def __init__(self) ->  None:
+    def __init__(self, settings: XGBoostSettings | None = None, feature_set: str = "all") -> None:
+        self.settings = settings or XGBoostSettings()
+        self.feature_set = feature_set
         self.models: dict[str, xgb.XGBRegressor] = {}
-        self.feature_columns: list[str] = None
-        self.target_columns: list[str] = None
+        self.feature_columns: list[str] = []
+        self.target_columns: list[str] = []
 
     def train(self, train_dataset: pd.DataFrame, eval_dataset: pd.DataFrame, random_state: int = 42) -> XGBoost:
         self.target_columns = [col for col in train_dataset.columns if col.startswith("target_")]
-        self.feature_columns = [
-            col for col in train_dataset.columns
-            if col not in self.target_columns and not col.startswith("timestamp")
-        ]
+        self.feature_columns = tree_feature_columns(train_dataset, self.feature_set)
+        print(f"Training XGBoost: {self.feature_set} feature set, {len(self.feature_columns)} inputs")
+        print(f"XGBoost settings: {self.settings}")
         X = train_dataset[self.feature_columns]
         y = train_dataset[self.target_columns]
+        model_parameters = asdict(self.settings)
+        stopping_rounds = model_parameters.pop("early_stopping_rounds")
+        model_parameters["early_stopping_rounds"] = stopping_rounds or None
         for target_column in self.target_columns:
             model = xgb.XGBRegressor(
                 objective="reg:squarederror",
-
-                n_estimators=2000,
-                learning_rate=0.5,
-
-                max_depth=9,
-                min_child_weight=5,
-
-                subsample=0.9,
-                colsample_bytree=0.9,
-
-                reg_alpha=1.0,
-                reg_lambda=1.5,
-
-                early_stopping_rounds=100,
-
-                n_jobs=-1,
                 random_state=random_state,
+                **model_parameters,
             )
+            print(f"Fitting {target_column}")
             model.fit(
-                X, 
-                y[target_column], 
-                eval_set=[(eval_dataset[self.feature_columns], eval_dataset[target_column])]
+                X,
+                y[target_column],
+                eval_set=[(eval_dataset[self.feature_columns], eval_dataset[target_column])],
+                verbose=False,
             )
             self.models[target_column] = model
         return self
@@ -206,40 +239,34 @@ class XGBoost:
 
 
 class LightGBM:
-    def __init__(self) -> None:
+    def __init__(self, settings: LightGBMSettings | None = None, feature_set: str = "all") -> None:
+        self.settings = settings or LightGBMSettings()
+        self.feature_set = feature_set
         self.models: dict[str, gbm.LGBMRegressor] = {}
-        self.target_columns: list[str] = None
-        self.feature_columns: list[str] = None
+        self.target_columns: list[str] = []
+        self.feature_columns: list[str] = []
     
     def train(self, train_dataset: pd.DataFrame, eval_dataset: pd.DataFrame, random_state: int = 42) -> LightGBM:
         self.target_columns = [col for col in train_dataset.columns if col.startswith("target_")]
-        self.feature_columns = [
-            col for col in train_dataset.columns
-            if col not in self.target_columns and not col.startswith("timestamp")
-        ]
+        self.feature_columns = tree_feature_columns(train_dataset, self.feature_set)
+        print(f"Training LightGBM: {self.feature_set} feature set, {len(self.feature_columns)} inputs")
+        print(f"LightGBM settings: {self.settings}")
         X = train_dataset[self.feature_columns]
         y = train_dataset[self.target_columns]
-        
+        model_parameters = asdict(self.settings)
+        stopping_rounds = model_parameters.pop("early_stopping_rounds")
         for target_column in self.target_columns:
+            callbacks = [gbm.early_stopping(stopping_rounds, verbose=False)] if stopping_rounds else []
             model = gbm.LGBMRegressor(
                 objective='regression',
-                n_estimators=2000,
-                learning_rate=0.05,
-                subsample=0.75,
-                subsample_freq=1,
-                colsample_bytree=0.75,
-                reg_alpha=0.5,
-                reg_lambda=1.5,
-                num_leaves=31,
-                max_depth=6,
-                verbose=1,
-                early_stopping_rounds=150,
-                n_jobs=-1,
                 random_state=random_state,
+                **model_parameters,
             )
+            print(f"Fitting {target_column}")
             model.fit(
                 X, y[target_column],
                 eval_set=[(eval_dataset[self.feature_columns], eval_dataset[target_column])],
+                callbacks=callbacks,
             )
             self.models[target_column] = model
         return self

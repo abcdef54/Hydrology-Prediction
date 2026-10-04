@@ -19,7 +19,10 @@ from torch import nn
 from torch import optim
 
 from src.metrics import evaluate_all
-from src.models import LightGBM, LSTM, MeanEmbeddingForecastLSTMWithAdapter, ResidualLSTM, XGBoost
+from src.models import (
+    LightGBM, LightGBMSettings, LSTM, MeanEmbeddingForecastLSTMWithAdapter,
+    ResidualLSTM, XGBoost, XGBoostSettings,
+)
 from src.trainers import LSTMTrainer, MEFLSTMAdapterTrainer, ResidualLSTMTrainer, VanillaLSTMTrainer
 from src.utils import FEATURE_SETS, get_dataloader, load_dataset, load_mef_backbone, set_seed
 
@@ -43,10 +46,44 @@ parser.add_argument("--lstm-drop-out", type=float, default=0.2)
 parser.add_argument("--lstm-input-dropout", type=float, default=0.0)
 parser.add_argument("--lstm-head-dropout", type=float, default=0.0)
 parser.add_argument("--lstm-correction-penalty", type=float, default=0.0)
-parser.add_argument("--lstm-feature-set", choices=FEATURE_SETS, default="all")
+parser.add_argument(
+    "--feature-set", "--lstm-feature-set", dest="feature_set",
+    choices=FEATURE_SETS, default="all",
+    help="Input groups for tree and LSTM models",
+)
 parser.add_argument("--lstm-lr", type=float, default=1e-4)
 parser.add_argument("--lstm-weight-decay", type=float, default=0.01)
 parser.add_argument("--lstm-seq-len", type=int)
+
+xgb_defaults = XGBoostSettings()
+xgb_args = parser.add_argument_group("XGBoost settings")
+xgb_args.add_argument("--xgb-n-estimators", type=int, default=xgb_defaults.n_estimators)
+xgb_args.add_argument("--xgb-learning-rate", type=float, default=xgb_defaults.learning_rate)
+xgb_args.add_argument("--xgb-max-depth", type=int, default=xgb_defaults.max_depth)
+xgb_args.add_argument("--xgb-min-child-weight", type=float, default=xgb_defaults.min_child_weight)
+xgb_args.add_argument("--xgb-subsample", type=float, default=xgb_defaults.subsample)
+xgb_args.add_argument("--xgb-colsample-bytree", type=float, default=xgb_defaults.colsample_bytree)
+xgb_args.add_argument("--xgb-reg-alpha", type=float, default=xgb_defaults.reg_alpha)
+xgb_args.add_argument("--xgb-reg-lambda", type=float, default=xgb_defaults.reg_lambda)
+xgb_args.add_argument("--xgb-early-stopping-rounds", type=int, default=xgb_defaults.early_stopping_rounds,
+                      help="Set to 0 to disable early stopping")
+xgb_args.add_argument("--xgb-n-jobs", type=int, default=xgb_defaults.n_jobs)
+
+lgbm_defaults = LightGBMSettings()
+lgbm_args = parser.add_argument_group("LightGBM settings")
+lgbm_args.add_argument("--lgbm-n-estimators", type=int, default=lgbm_defaults.n_estimators)
+lgbm_args.add_argument("--lgbm-learning-rate", type=float, default=lgbm_defaults.learning_rate)
+lgbm_args.add_argument("--lgbm-num-leaves", type=int, default=lgbm_defaults.num_leaves)
+lgbm_args.add_argument("--lgbm-max-depth", type=int, default=lgbm_defaults.max_depth)
+lgbm_args.add_argument("--lgbm-subsample", type=float, default=lgbm_defaults.subsample)
+lgbm_args.add_argument("--lgbm-subsample-freq", type=int, default=lgbm_defaults.subsample_freq)
+lgbm_args.add_argument("--lgbm-colsample-bytree", type=float, default=lgbm_defaults.colsample_bytree)
+lgbm_args.add_argument("--lgbm-reg-alpha", type=float, default=lgbm_defaults.reg_alpha)
+lgbm_args.add_argument("--lgbm-reg-lambda", type=float, default=lgbm_defaults.reg_lambda)
+lgbm_args.add_argument("--lgbm-early-stopping-rounds", type=int, default=lgbm_defaults.early_stopping_rounds,
+                       help="Set to 0 to disable early stopping")
+lgbm_args.add_argument("--lgbm-n-jobs", type=int, default=lgbm_defaults.n_jobs)
+lgbm_args.add_argument("--lgbm-verbose", type=int, default=lgbm_defaults.verbose)
 
 
 def validate_args(args: argparse.Namespace) -> None:
@@ -55,15 +92,41 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.lstm_correction_penalty and args.train_method != "residual_lstm":
         parser.error("--lstm-correction-penalty requires --train-method residual_lstm")
     if args.train_method == "residual_lstm":
-        groups = args.lstm_feature_set.split("+")
-        if args.lstm_feature_set != "all" and "water_level" not in groups:
-            parser.error("residual_lstm requires water_level in --lstm-feature-set")
+        groups = args.feature_set.split("+")
+        if args.feature_set != "all" and "water_level" not in groups:
+            parser.error("residual_lstm requires water_level in --feature-set")
     if args.train_method == "lstm_adapter":
         if not args.pretrained_model or not args.pretrained_config:
             parser.error("lstm_adapter requires --pretrained-model and --pretrained-config")
         for path in (args.pretrained_model, args.pretrained_config):
             if not Path(path).is_file():
                 parser.error(f"MEF file not found: {path}")
+
+    if args.train_method == "xgb":
+        if args.xgb_n_estimators < 1 or args.xgb_early_stopping_rounds < 0:
+            parser.error("XGBoost estimators must be positive and early stopping must be non-negative")
+        if args.xgb_learning_rate <= 0 or args.xgb_max_depth < 0 or args.xgb_min_child_weight < 0:
+            parser.error("XGBoost learning rate must be positive; depth and child weight must be non-negative")
+        proportions = (args.xgb_subsample, args.xgb_colsample_bytree)
+        regularizers = (args.xgb_reg_alpha, args.xgb_reg_lambda)
+    elif args.train_method == "lgbm":
+        if args.lgbm_n_estimators < 1 or args.lgbm_early_stopping_rounds < 0:
+            parser.error("LightGBM estimators must be positive and early stopping must be non-negative")
+        if args.lgbm_learning_rate <= 0 or args.lgbm_num_leaves < 2:
+            parser.error("LightGBM learning rate must be positive and num leaves must be at least 2")
+        if args.lgbm_max_depth != -1 and args.lgbm_max_depth < 1:
+            parser.error("LightGBM max depth must be -1 or positive")
+        if args.lgbm_subsample_freq < 0:
+            parser.error("LightGBM subsample frequency must be non-negative")
+        proportions = (args.lgbm_subsample, args.lgbm_colsample_bytree)
+        regularizers = (args.lgbm_reg_alpha, args.lgbm_reg_lambda)
+    else:
+        return
+
+    if any(not 0 < value <= 1 for value in proportions):
+        parser.error("Tree sampling fractions must be in (0, 1]")
+    if any(value < 0 for value in regularizers):
+        parser.error("Tree regularization values must be non-negative")
 
 
 def evaluate_tabular(model: XGBoost | LightGBM, test_df: pd.DataFrame) -> pd.DataFrame:
@@ -88,7 +151,36 @@ def evaluate_tabular(model: XGBoost | LightGBM, test_df: pd.DataFrame) -> pd.Dat
 
 def train_tabular(args: argparse.Namespace) -> None:
     train_df, eval_df, test_df = load_dataset(args.horizon)
-    model = XGBoost() if args.train_method == "xgb" else LightGBM()
+    if args.train_method == "xgb":
+        settings = XGBoostSettings(
+            n_estimators=args.xgb_n_estimators,
+            learning_rate=args.xgb_learning_rate,
+            max_depth=args.xgb_max_depth,
+            min_child_weight=args.xgb_min_child_weight,
+            subsample=args.xgb_subsample,
+            colsample_bytree=args.xgb_colsample_bytree,
+            reg_alpha=args.xgb_reg_alpha,
+            reg_lambda=args.xgb_reg_lambda,
+            early_stopping_rounds=args.xgb_early_stopping_rounds,
+            n_jobs=args.xgb_n_jobs,
+        )
+        model = XGBoost(settings=settings, feature_set=args.feature_set)
+    else:
+        settings = LightGBMSettings(
+            n_estimators=args.lgbm_n_estimators,
+            learning_rate=args.lgbm_learning_rate,
+            num_leaves=args.lgbm_num_leaves,
+            max_depth=args.lgbm_max_depth,
+            subsample=args.lgbm_subsample,
+            subsample_freq=args.lgbm_subsample_freq,
+            colsample_bytree=args.lgbm_colsample_bytree,
+            reg_alpha=args.lgbm_reg_alpha,
+            reg_lambda=args.lgbm_reg_lambda,
+            early_stopping_rounds=args.lgbm_early_stopping_rounds,
+            n_jobs=args.lgbm_n_jobs,
+            verbose=args.lgbm_verbose,
+        )
+        model = LightGBM(settings=settings, feature_set=args.feature_set)
     model.train(train_df, eval_df, random_state=args.seed)
     evaluate_tabular(model, test_df)
 
@@ -101,8 +193,8 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         else args.lstm_seq_len
     )
     includes_current_level = (
-        args.lstm_feature_set == "all"
-        or "water_level" in args.lstm_feature_set.split("+")
+        args.feature_set == "all"
+        or "water_level" in args.feature_set.split("+")
     )
     train_loader, eval_loader, test_loader = get_dataloader(
         args.horizon,
@@ -117,7 +209,7 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         seq_len=sequence_length,
         seed=args.seed,
         require_current_level=includes_current_level,
-        feature_set=args.lstm_feature_set,
+        feature_set=args.feature_set,
     )
     input_size = train_loader.dataset.num_features
     output_size = train_loader.dataset.num_targets
