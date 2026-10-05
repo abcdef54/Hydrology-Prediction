@@ -8,6 +8,7 @@ scikit-learn>=1.7
 geopandas>=1.0
 pyogrio>=0.10
 xarray
+h5netcdf[h5py]
 dask
 pydantic
 ruamel.yaml

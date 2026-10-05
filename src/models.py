@@ -22,8 +22,18 @@ class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):
         local_hindcast_size: int,
         output_size: int,
         freeze_backbone: bool = True,
+        input_dropout: float = 0.0,
+        head_dropout: float = 0.0,
     ) -> None:
         super().__init__()
+        for name, rate in (("input_dropout", input_dropout), ("head_dropout", head_dropout)):
+            if not 0.0 <= rate < 1.0:
+                raise ValueError(f"{name} must be between 0 (inclusive) and 1 (exclusive)")
+
+        self.input_dropout = input_dropout
+        self.head_dropout = head_dropout
+        self.input_dropout_layer = nn.Dropout1d(p=input_dropout)
+        self.head_dropout_layer = nn.Dropout(p=head_dropout)
         self.backbone = pretrained_model
         self.hindcast_adapter = nn.Sequential(
             nn.Linear(local_hindcast_size, self.backbone.hindcast_lstm.input_size),
@@ -53,6 +63,10 @@ class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):
     def forward(self, x_hindcast_local: torch.Tensor) -> torch.Tensor:
         if x_hindcast_local.dim() == 2:
             x_hindcast_local = x_hindcast_local.unsqueeze(1)
+        # Drop whole feature channels across the history of each training sample.
+        x_hindcast_local = self.input_dropout_layer(
+            x_hindcast_local.transpose(1, 2)
+        ).transpose(1, 2)
         x_hindcast_encoded = self.hindcast_adapter(x_hindcast_local)
         hindcast_output, (h_hind, c_hind) = self.backbone.hindcast_lstm(x_hindcast_encoded)
         no_future_forecast = hindcast_output.new_zeros(
@@ -65,7 +79,8 @@ class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):
             forecast_input,
             (h_hind, c_hind)
         )
-        return self.output_head(forecast_output[:, -1, :])
+        final_hidden_state = self.head_dropout_layer(forecast_output[:, -1, :])
+        return self.output_head(final_hidden_state)
 
 
 

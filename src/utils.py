@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 from itertools import combinations
 from src.dataset import HydrologyDataset
+from googlehydrology.datautils.scaler import LEGACY_SCALER_FILE_NAME, SCALER_FILE_NAME
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import MeanEmbeddingForecastLSTM
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import Config
 
@@ -70,14 +71,33 @@ def select_feature_columns(columns, feature_set: str) -> list[str] | None:
 
 
 def load_mef_backbone(config_path: str, checkpoint_path: str) -> MeanEmbeddingForecastLSTM:
+    """Load a pretrained run with its scaler beside the checkpoint."""
     config_file = Path(config_path)
     checkpoint_file = Path(checkpoint_path)
     if not config_file.is_file() or not checkpoint_file.is_file():
         raise FileNotFoundError("MEF config and checkpoint must both be existing files")
-    backbone = MeanEmbeddingForecastLSTM(Config(config_file))
+    pretrained_dir = checkpoint_file.resolve().parent
+    if not any(
+        (pretrained_dir / name).exists()
+        for name in (SCALER_FILE_NAME, LEGACY_SCALER_FILE_NAME)
+    ):
+        raise FileNotFoundError(
+            f"Pretrained MEF scaler missing in {pretrained_dir}. "
+            "Download the matching scaler.nc beside the checkpoint."
+        )
+    config = Config(config_file)
+    config.run_dir = pretrained_dir
+    config.base_run_dir = pretrained_dir
+    backbone = MeanEmbeddingForecastLSTM(config)
     state_dict = torch.load(checkpoint_file, map_location="cpu", weights_only=True)
     if "model_state_dict" in state_dict:
         state_dict = state_dict["model_state_dict"]
+    # torch.compile adds a wrapper prefix to the saved parameter names.
+    if all(name.startswith("_orig_mod.") for name in state_dict):
+        state_dict = {
+            name.removeprefix("_orig_mod."): parameter
+            for name, parameter in state_dict.items()
+        }
     backbone.load_state_dict(state_dict)
     return backbone
 

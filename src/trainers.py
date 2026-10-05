@@ -1,7 +1,12 @@
 """Training and evaluation for the sequence forecasting models."""
 
+import math
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
+import joblib
+import mlflow
+import mlflow.pytorch
 import pandas as pd
 import torch
 from torch import nn
@@ -50,10 +55,14 @@ class LSTMTrainer:
         self.device = torch.device(device)
 
         self.feature_set = getattr(train_dataloader.dataset, "feature_set", "all")
-        checkpoint_name = type(model).__name__
+        self.checkpoint_name = type(model).__name__
+        if isinstance(model, MeanEmbeddingForecastLSTMWithAdapter) and any(
+            parameter.requires_grad for parameter in model.backbone.parameters()
+        ):
+            self.checkpoint_name += "_unfrozen"
         if self.feature_set != "all":
-            checkpoint_name += f"_{self.feature_set}"
-        self.checkpoint_path = Path(checkpoint_dir) / horizon / f"{checkpoint_name}_best.pt"
+            self.checkpoint_name += f"_{self.feature_set}"
+        self.checkpoint_path = Path(checkpoint_dir) / horizon / f"{self.checkpoint_name}_best.pt"
 
         self.best_val_loss = float("inf")
         self.best_training_val_loss = float("inf")
@@ -79,18 +88,77 @@ class LSTMTrainer:
         self.print_settings()
         self.prepare_checkpoint()
 
-        for epoch in tqdm(range(1, self.num_epochs + 1), desc=f"Training {type(self.model).__name__}"):
+        epoch = self.train_epochs()
+        self.restore_best_checkpoint()
+        results = self.test()
+        mlflow.log_metrics(
+            {
+                "epochs_completed": epoch,
+                "best_checkpoint_epoch": self.best_checkpoint_epoch,
+                "best_val_loss": self.best_val_loss
+            }
+        )
+
+        run_name = f"{self.checkpoint_name}_{self.horizon}_{self.feature_set}"
+        metrics = {}
+        for target_name, target_metrics in results.iterrows():
+            for metric_name, value in target_metrics.items():
+                numeric_value = float(value)
+                if math.isfinite(numeric_value):
+                    metrics[f"test/{target_name}/{metric_name}"] = numeric_value
+        mlflow.log_metrics(metrics)
+        mlflow.log_table(results.reset_index(), f"{run_name}_test_results.json")
+        self.log_model()
+        return self.model
+
+    def train_epochs(self) -> int:
+        return self.run_epochs(start_epoch=1, num_epochs=self.num_epochs)
+
+    def run_epochs(self, start_epoch: int, num_epochs: int, stage: int | None = None) -> int:
+        if num_epochs < 1:
+            raise ValueError("Training requires at least one epoch")
+        final_epoch = start_epoch + num_epochs - 1
+        for epoch in tqdm(range(start_epoch, final_epoch + 1), desc=f"Training {type(self.model).__name__}"):
             train_loss = self.train_epoch(epoch)
             val_loss = self.evaluate_loss(self.eval_dataloader)
-            print(f"Epoch {epoch}/{self.num_epochs} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f}")
+            print(f"Epoch {epoch}/{final_epoch} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f}")
+            metrics = {"train_loss": train_loss, "val_loss": val_loss}
+            if stage is not None:
+                metrics["training_stage"] = stage
+            mlflow.log_metrics(metrics, step=epoch)
             self.record_validation(epoch, val_loss)
             if self.early_stopping and self.epochs_without_improvement >= self.early_stopping:
-                print(f"Early stopping triggered after {epoch} epochs.")
+                print(f"Early stopping triggered after epoch {epoch}.")
                 break
+        return epoch
 
-        self.restore_best_checkpoint()
-        self.test()
-        return self.model
+    def log_model(self) -> None:
+        """Save the selected model together with its fitted preprocessing."""
+        dataset = self.train_dataloader.dataset
+        source_dir = Path(__file__).resolve().parent
+        input_example = dataset[0][0].unsqueeze(0).numpy()
+        with TemporaryDirectory(prefix="hydrology-model-") as directory:
+            preprocessing_path = Path(directory) / "preprocessing.joblib"
+            joblib.dump(
+                {
+                    "feature_scaler": dataset.feature_scaler,
+                    "target_scaler": dataset.target_scaler,
+                    "feature_columns": dataset.feature_cols,
+                    "target_columns": dataset.target_cols,
+                    "sequence_length": dataset.seq_len,
+                    "missing_scaled_value": 0.0,
+                },
+                preprocessing_path,
+            )
+            model_info = mlflow.pytorch.log_model(
+                self.model,
+                name="best_model",
+                serialization_format="pickle",
+                code_paths=[str(source_dir)],
+                extra_files=[str(preprocessing_path), str(source_dir.parent / "requirements.txt")],
+                input_example=input_example,
+            )
+        mlflow.set_tag("model_uri/best_model", model_info.model_uri)
 
     def print_settings(self) -> None:
         dataset = self.train_dataloader.dataset
@@ -128,7 +196,7 @@ class LSTMTrainer:
         self.model.train()
         batch_losses = []
         for batch_number, (inputs, targets) in enumerate(
-            tqdm(self.train_dataloader, desc=f"Epoch {epoch}/{self.num_epochs}", leave=False)
+            tqdm(self.train_dataloader, desc=f"Epoch {epoch}", leave=False)
         ):
             inputs, targets = inputs.to(self.device), targets.to(self.device)
             if batch_number % self.gradient_accumulation == 0:
@@ -177,14 +245,14 @@ class LSTMTrainer:
         elif self.best_checkpoint_epoch == 0 and self.epochs_without_improvement == 0:
             print("Validation improved, but persistence is still the best checkpoint.")
 
-    def restore_best_checkpoint(self) -> None:
+    def restore_best_checkpoint(self, purpose: str = "testing") -> None:
         if self.best_checkpoint_epoch is None:
             raise ValueError("No checkpoint was selected; train for at least one epoch")
         if self.best_checkpoint_epoch == 0:
             print("Best checkpoint: initial persistence baseline (no trained epoch beat it).")
         else:
             print(f"Best checkpoint: epoch {self.best_checkpoint_epoch}.")
-        print(f"\nLoading best checkpoint from {self.checkpoint_path} for testing...")
+        print(f"\nLoading best checkpoint from {self.checkpoint_path} for {purpose}...")
         state_dict = torch.load(self.checkpoint_path, map_location=self.device, weights_only=True)
         self.model.load_state_dict(state_dict)
 
@@ -203,6 +271,8 @@ class LSTMTrainer:
         predicted_scaled = torch.cat(predictions).numpy()
         target_scaled = torch.cat(targets).numpy()
         mse = ((predicted_scaled - target_scaled) ** 2).mean()
+        mlflow.log_metric("test_loss", float(mse))
+        mlflow.set_tag("test_loss_scale", "scaled_target_units")
         print(f"Test Loss (MSE): {mse:.4f}")
 
         dataset = self.test_dataloader.dataset
@@ -295,14 +365,87 @@ class ResidualLSTMTrainer(LSTMTrainer):
 
 
 class MEFLSTMAdapterTrainer(LSTMTrainer):
-    def __init__(self, model: MeanEmbeddingForecastLSTMWithAdapter, **kwargs) -> None:
+    def __init__(
+        self, model: MeanEmbeddingForecastLSTMWithAdapter,
+        two_stage: bool = False, finetune_epochs: int = 30,
+        backbone_lr: float = 1e-5, adapter_lr: float = 1e-4,
+        finetune_backbone: str = "forecast", **kwargs,
+    ) -> None:
         if not isinstance(model, MeanEmbeddingForecastLSTMWithAdapter):
             raise TypeError("MEFLSTMAdapterTrainer requires a MEF LSTM adapter model")
+        if finetune_epochs < 1 or not all(
+            math.isfinite(rate) and rate > 0 for rate in (backbone_lr, adapter_lr)
+        ):
+            raise ValueError("Fine-tuning epochs and learning rates must be positive")
+        if finetune_backbone not in ("forecast", "all"):
+            raise ValueError("finetune_backbone must be forecast or all")
+        self.two_stage = two_stage
+        self.finetune_epochs = finetune_epochs
+        self.backbone_lr = backbone_lr
+        self.adapter_lr = adapter_lr
+        self.finetune_backbone = finetune_backbone
+        if two_stage:
+            model.freeze_backbone()
         super().__init__(model=model, **kwargs)
+        if two_stage:
+            self.checkpoint_name += "_two_stage"
+            self.checkpoint_path = self.checkpoint_path.with_name(f"{self.checkpoint_name}_best.pt")
+
+    def train_epochs(self) -> int:
+        if not self.two_stage:
+            return super().train_epochs()
+
+        print("Stage 1: frozen backbone; training adapter and output head.")
+        stage_one_epoch = self.run_epochs(1, self.num_epochs, stage=1)
+        self.restore_best_checkpoint(purpose="stage-two fine tuning")
+        mlflow.log_metrics({"stage_one_epochs": stage_one_epoch, "stage_one_best_val_loss": self.best_val_loss})
+
+        # Only recurrent modules used by the adapter's forward pass need gradients.
+        self.model.freeze_backbone()
+        backbone_parameters = list(self.model.backbone.forecast_lstm.parameters())
+        if self.finetune_backbone == "all":
+            backbone_parameters += list(self.model.backbone.hindcast_lstm.parameters())
+        for parameter in backbone_parameters:
+            parameter.requires_grad = True
+        adapter_parameters = list(self.model.hindcast_adapter.parameters()) + list(self.model.output_head.parameters())
+        weight_decay = self.optimizer.defaults["weight_decay"]
+        self.optimizer = torch.optim.AdamW(
+            [{"params": backbone_parameters, "lr": self.backbone_lr},
+             {"params": adapter_parameters, "lr": self.adapter_lr}],
+            weight_decay=weight_decay,
+        )
+        self.scheduler = torch.optim.lr_scheduler.StepLR(self.optimizer, step_size=10, gamma=0.9)
+        self.epochs_without_improvement = 0
+        self.best_training_val_loss = self.best_val_loss
+        print(
+            f"Stage 2: {self.finetune_backbone} recurrent backbone; "
+            f"backbone LR={self.backbone_lr}, adapter/head LR={self.adapter_lr}. "
+            f"Validation score to beat: {self.best_val_loss:.4f}"
+        )
+        final_epoch = self.run_epochs(stage_one_epoch + 1, self.finetune_epochs, stage=2)
+        best_stage = 1 if self.best_checkpoint_epoch <= stage_one_epoch else 2
+        mlflow.set_tag("best_checkpoint_stage", best_stage)
+        mlflow.log_metric("stage_two_epochs", final_epoch - stage_one_epoch)
+        print(f"Best checkpoint belongs to stage {best_stage}.")
+        return final_epoch
 
     def model_settings(self) -> dict[str, object]:
-        return {
+        backbone_trainable = any(
+            parameter.requires_grad for parameter in self.model.backbone.parameters()
+        )
+        settings = {
             "Hidden size": self.model.backbone.hindcast_lstm.hidden_size,
-            "Backbone": "frozen",
+            "Backbone": "unfrozen" if backbone_trainable else "frozen",
+            "Input dropout": self.model.input_dropout,
+            "Head dropout": self.model.head_dropout,
             "Future forecast inputs": "unavailable (zero embedding)",
         }
+        if self.two_stage:
+            settings.update({
+                "Training stages": 2,
+                "Fine-tuning epochs": self.finetune_epochs,
+                "Fine-tuning backbone": self.finetune_backbone,
+                "Fine-tuning backbone LR": self.backbone_lr,
+                "Fine-tuning adapter/head LR": self.adapter_lr,
+            })
+        return settings

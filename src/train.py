@@ -1,8 +1,10 @@
 """Command-line entry point for hydrology model training."""
 
 import os
+import math
 import sys
 from pathlib import Path
+from dataclasses import asdict
 
 # Set this before importing PyTorch so CUDA LSTM kernels can be deterministic.
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:2")
@@ -12,7 +14,9 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 import argparse
-
+import mlflow
+import mlflow.xgboost
+import mlflow.lightgbm
 import pandas as pd
 import torch
 from torch import nn
@@ -27,7 +31,15 @@ from src.trainers import LSTMTrainer, MEFLSTMAdapterTrainer, ResidualLSTMTrainer
 from src.utils import FEATURE_SETS, get_dataloader, load_dataset, load_mef_backbone, set_seed
 
 
+MLFLOW_TRACKING_URI = "http://localhost:5000"
+mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+
+
 parser = argparse.ArgumentParser()
+parser.add_argument(
+    "--mlflow-ex-name", type=str.strip, required=True,
+    help="MLflow experiment name, for example 30min or 1h",
+)
 parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible training")
 parser.add_argument("--horizon", required=True, choices=["10min", "30min", "1h"])
 parser.add_argument("--train-method", required=True, choices=["xgb", "lgbm", "lstm", "residual_lstm", "lstm_adapter"])
@@ -39,6 +51,20 @@ parser.add_argument("--gradient-accumulation", type=int, default=1)
 parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
 parser.add_argument("--pretrained-model", help="MEF checkpoint state_dict path for lstm_adapter")
 parser.add_argument("--pretrained-config", help="MEF YAML configuration path for lstm_adapter")
+parser.add_argument(
+    "--mef-unfreeze-backbone", action="store_true",
+    help="Train the pretrained MEF backbone as well as the adapter and output head",
+)
+parser.add_argument("--mef-two-stage", action="store_true",
+                    help="Train frozen MEF first, then fine-tune from its best checkpoint")
+parser.add_argument("--mef-finetune-epochs", type=int, default=30,
+                    help="Additional stage-two epochs; --num-epochs controls stage one")
+parser.add_argument("--mef-finetune-backbone", choices=["forecast", "all"], default="forecast",
+                    help="Recurrent MEF modules to unfreeze in stage two")
+parser.add_argument("--mef-backbone-lr", type=float, default=1e-5,
+                    help="Stage-two learning rate for unfrozen recurrent weights")
+parser.add_argument("--mef-adapter-lr", type=float, default=1e-4,
+                    help="Stage-two learning rate for the adapter and output head")
 parser.add_argument("--lstm-output-size", type=int, default=3)
 parser.add_argument("--lstm-hidden-size", type=int, default=128)
 parser.add_argument("--lstm-num-layers", type=int, default=2)
@@ -87,6 +113,19 @@ lgbm_args.add_argument("--lgbm-verbose", type=int, default=lgbm_defaults.verbose
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    if not args.mlflow_ex_name:
+        parser.error("--mlflow-ex-name must not be empty")
+    if args.mef_unfreeze_backbone and args.train_method != "lstm_adapter":
+        parser.error("--mef-unfreeze-backbone requires --train-method lstm_adapter")
+    if args.mef_two_stage:
+        if args.train_method != "lstm_adapter":
+            parser.error("--mef-two-stage requires --train-method lstm_adapter")
+        if args.mef_unfreeze_backbone:
+            parser.error("--mef-two-stage starts frozen; omit --mef-unfreeze-backbone")
+        if args.num_epochs < 1 or args.mef_finetune_epochs < 1:
+            parser.error("Both training stages require at least one epoch")
+        if not (0 < args.mef_backbone_lr < float("inf") and 0 < args.mef_adapter_lr < float("inf")):
+            parser.error("MEF fine-tuning learning rates must be finite and positive")
     if args.lstm_correction_penalty < 0:
         parser.error("--lstm-correction-penalty must be non-negative")
     if args.lstm_correction_penalty and args.train_method != "residual_lstm":
@@ -131,6 +170,12 @@ def validate_args(args: argparse.Namespace) -> None:
 
 def evaluate_tabular(model: XGBoost | LightGBM, test_df: pd.DataFrame) -> pd.DataFrame:
     predictions = model.predict(test_df)
+    observed = test_df[model.target_columns].to_numpy(dtype=float)
+    predicted = predictions[model.target_columns].to_numpy(dtype=float)
+    test_loss = float(((predicted - observed) ** 2).mean())
+    mlflow.log_metric("test_loss", test_loss)
+    mlflow.set_tag("test_loss_scale", "original_target_units")
+    print(f"Test Loss (MSE, original target units): {test_loss:.4f}")
     timestamps = test_df["timestamp_utc"] if "timestamp_utc" in test_df.columns else None
     summaries = []
     for target_name in model.target_columns:
@@ -181,8 +226,47 @@ def train_tabular(args: argparse.Namespace) -> None:
             verbose=args.lgbm_verbose,
         )
         model = LightGBM(settings=settings, feature_set=args.feature_set)
-    model.train(train_df, eval_df, random_state=args.seed)
-    evaluate_tabular(model, test_df)
+
+    run_name = f"{args.train_method}_{args.horizon}_{args.feature_set}"
+    with mlflow.start_run(run_name=run_name):
+        mlflow.log_params(
+            {
+                "train_method": args.train_method,
+                "horizon": args.horizon,
+                "feature_set": args.feature_set,
+                "seed": args.seed,
+                "train_size": len(train_df),
+                "eval_size": len(eval_df),
+                "test_size": len(test_df),
+                **asdict(model.settings)
+            }
+        )
+        model.train(train_df, eval_df, random_state=args.seed)
+
+        mlflow.log_param("input_size", len(model.feature_columns))
+        mlflow.log_dict({"feature_columns": model.feature_columns}, "features.json")
+
+        summary = evaluate_tabular(model, test_df)
+
+        metrics = {}
+        for target_name, target_metrics in summary.iterrows():
+            for metric_name, value in target_metrics.items():
+                numeric_value = float(value)
+                if math.isfinite(numeric_value):
+                    metrics[f"test/{target_name}/{metric_name}"] = numeric_value
+
+        mlflow.log_metrics(metrics)
+        mlflow.log_table(summary.reset_index(), f"{run_name}_test_results.json")
+
+        for target_name, estimator in model.models.items():
+            model_name = f"{args.train_method}_{target_name}"
+
+            if args.train_method == "xgb":
+                model_info = mlflow.xgboost.log_model(estimator, name=model_name)
+            else:
+                model_info = mlflow.lightgbm.log_model(estimator, name=model_name)
+
+            mlflow.set_tag(f"model_uri/{target_name}", model_info.model_uri)
 
 
 def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
@@ -219,6 +303,9 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
             load_mef_backbone(args.pretrained_config, args.pretrained_model),
             input_size,
             output_size,
+            freeze_backbone=not args.mef_unfreeze_backbone,
+            input_dropout=args.lstm_input_dropout,
+            head_dropout=args.lstm_head_dropout,
         )
         parameters = (parameter for parameter in model.parameters() if parameter.requires_grad)
         trainer_class = MEFLSTMAdapterTrainer
@@ -269,6 +356,13 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
     )
     if trainer_class is ResidualLSTMTrainer:
         return ResidualLSTMTrainer(**trainer_options, correction_penalty=args.lstm_correction_penalty)
+    if trainer_class is MEFLSTMAdapterTrainer:
+        return MEFLSTMAdapterTrainer(
+            **trainer_options, two_stage=args.mef_two_stage,
+            finetune_epochs=args.mef_finetune_epochs,
+            backbone_lr=args.mef_backbone_lr, adapter_lr=args.mef_adapter_lr,
+            finetune_backbone=args.mef_finetune_backbone,
+        )
     return trainer_class(**trainer_options)
 
 
@@ -277,10 +371,42 @@ def main() -> None:
     validate_args(args)
     set_seed(args.seed)
     print(f"Seed: {args.seed}")
+    mlflow.set_experiment(args.mlflow_ex_name)
+    print(f"MLflow experiment: {args.mlflow_ex_name}")
     if args.train_method in ("xgb", "lgbm"):
         train_tabular(args)
     else:
-        build_sequence_trainer(args).train()
+        trainer = build_sequence_trainer(args)
+        dataset = trainer.train_dataloader.dataset
+        run_name = f"{args.train_method}_{args.horizon}_{args.feature_set}"
+        if args.train_method == "lstm_adapter":
+            backbone_mode = "two_stage" if args.mef_two_stage else (
+                "unfrozen" if args.mef_unfreeze_backbone else "frozen"
+            )
+            run_name += f"_{backbone_mode}"
+
+        with mlflow.start_run(run_name=run_name):
+            mlflow.log_params(
+                {
+                    "train_method": args.train_method,
+                    "horizon": args.horizon,
+                    "feature_set": args.feature_set,
+                    "seed": args.seed,
+                    "batch_size": args.batch_size,
+                    "num_epochs": args.num_epochs,
+                    "early_stopping": args.early_stopping,
+                    "gradient_accumulation": args.gradient_accumulation,
+                    "sequence_length": dataset.seq_len,
+                    "input_size": dataset.num_features,
+                    "output_size": dataset.num_targets,
+                    "learning_rate": trainer.optimizer.defaults["lr"],
+                    "weight_decay": trainer.optimizer.defaults["weight_decay"],
+                    "device": str(trainer.device),
+                    **trainer.model_settings()
+                }
+            )
+            mlflow.log_dict({"feature_columns": dataset.feature_cols}, "features.json")
+            trainer.train()
 
 
 if __name__ == "__main__":
