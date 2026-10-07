@@ -10,3 +10,6 @@ model/
 Hue*?
 
 .agents/
+
+# Archived GIS data is retained locally, outside version control.
+archive/
