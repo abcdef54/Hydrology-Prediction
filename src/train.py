@@ -28,7 +28,10 @@ from src.models import (
     ResidualLSTM, XGBoost, XGBoostSettings,
 )
 from src.trainers import LSTMTrainer, MEFLSTMAdapterTrainer, ResidualLSTMTrainer, VanillaLSTMTrainer
-from src.utils import FEATURE_SETS, get_dataloader, load_dataset, load_mef_backbone, set_seed
+from src.utils import (
+    FEATURE_SETS, dataset_directory, get_dataloader, load_dataset,
+    load_mef_backbone, normalize_feature_set, set_seed,
+)
 
 
 MLFLOW_TRACKING_URI = "http://localhost:5000"
@@ -42,6 +45,8 @@ parser.add_argument(
 )
 parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible training")
 parser.add_argument("--horizon", required=True, choices=["10min", "30min", "1h"])
+parser.add_argument("--dataset-dir", type=Path,
+                    help="Directory containing train.csv, val.csv and test.csv; overrides the horizon default")
 parser.add_argument("--train-method", required=True, choices=["xgb", "lgbm", "lstm", "residual_lstm", "lstm_adapter"])
 parser.add_argument("--batch-size", type=int, default=64)
 parser.add_argument("--num-worker", type=int, default=0)
@@ -74,8 +79,8 @@ parser.add_argument("--lstm-head-dropout", type=float, default=0.0)
 parser.add_argument("--lstm-correction-penalty", type=float, default=0.0)
 parser.add_argument(
     "--feature-set", "--lstm-feature-set", dest="feature_set",
-    choices=FEATURE_SETS, default="all",
-    help="Input groups for tree and LSTM models",
+    type=normalize_feature_set, choices=FEATURE_SETS, default="all",
+    help="Input groups for tree and LSTM models; water is an alias for water_level",
 )
 parser.add_argument("--lstm-lr", type=float, default=1e-4)
 parser.add_argument("--lstm-weight-decay", type=float, default=0.01)
@@ -113,6 +118,10 @@ lgbm_args.add_argument("--lgbm-verbose", type=int, default=lgbm_defaults.verbose
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    if args.dataset_dir is not None:
+        for split in ("train", "val", "test"):
+            if not (args.dataset_dir / f"{split}.csv").is_file():
+                parser.error(f"Dataset split not found: {args.dataset_dir / (split + '.csv')}")
     if not args.mlflow_ex_name:
         parser.error("--mlflow-ex-name must not be empty")
     if args.mef_unfreeze_backbone and args.train_method != "lstm_adapter":
@@ -194,8 +203,23 @@ def evaluate_tabular(model: XGBoost | LightGBM, test_df: pd.DataFrame) -> pd.Dat
     return summary
 
 
+def log_dataset_source(args: argparse.Namespace) -> None:
+    directory = dataset_directory(args.horizon, args.dataset_dir).resolve()
+    mlflow.log_param("dataset_dir", str(directory))
+    manifest = directory / "manifest.json"
+    if manifest.is_file():
+        mlflow.log_artifact(str(manifest), artifact_path="dataset")
+
+
 def train_tabular(args: argparse.Namespace) -> None:
-    train_df, eval_df, test_df = load_dataset(args.horizon)
+    train_df, eval_df, test_df = load_dataset(args.horizon, args.dataset_dir)
+    # The hourly sequence files retain missing-target rows to preserve cadence.
+    # Trees need complete labels, but missing predictors must remain available.
+    targets = [column for column in train_df if column.startswith("target_")]
+    train_df, eval_df, test_df = [frame.dropna(subset=targets).copy()
+                                 for frame in (train_df, eval_df, test_df)]
+    if any(frame.empty for frame in (train_df, eval_df, test_df)):
+        raise ValueError("Each dataset split must contain complete target rows")
     if args.train_method == "xgb":
         settings = XGBoostSettings(
             n_estimators=args.xgb_n_estimators,
@@ -229,6 +253,7 @@ def train_tabular(args: argparse.Namespace) -> None:
 
     run_name = f"{args.train_method}_{args.horizon}_{args.feature_set}"
     with mlflow.start_run(run_name=run_name):
+        log_dataset_source(args)
         mlflow.log_params(
             {
                 "train_method": args.train_method,
@@ -294,6 +319,7 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         seed=args.seed,
         require_current_level=includes_current_level,
         feature_set=args.feature_set,
+        dataset_dir=args.dataset_dir,
     )
     input_size = train_loader.dataset.num_features
     output_size = train_loader.dataset.num_targets
@@ -354,6 +380,8 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         gradient_accumulation=args.gradient_accumulation,
         device=args.device,
     )
+    if args.dataset_dir is not None:
+        trainer_options["checkpoint_dir"] = Path("model") / args.dataset_dir.resolve().name
     if trainer_class is ResidualLSTMTrainer:
         return ResidualLSTMTrainer(**trainer_options, correction_penalty=args.lstm_correction_penalty)
     if trainer_class is MEFLSTMAdapterTrainer:
@@ -386,6 +414,7 @@ def main() -> None:
             run_name += f"_{backbone_mode}"
 
         with mlflow.start_run(run_name=run_name):
+            log_dataset_source(args)
             mlflow.log_params(
                 {
                     "train_method": args.train_method,

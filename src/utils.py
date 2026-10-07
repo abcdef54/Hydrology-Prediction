@@ -1,4 +1,5 @@
 import os
+import json
 import random
 import numpy as np
 import pandas as pd
@@ -17,7 +18,7 @@ DATASET_PATH_30MIN = "./train_data/30min/"
 DATASET_PATH_1H = "./train_data/1h/"
 
 
-FEATURE_GROUPS = ("water_level", "rain", "wind", "reservoir")
+FEATURE_GROUPS = ("water_level", "rain", "wind", "reservoir", "flood_season")
 FEATURE_SETS = ["all"] + [
     "+".join(groups)
     for size in range(1, len(FEATURE_GROUPS) + 1)
@@ -42,30 +43,50 @@ def seed_worker(_worker_id: int) -> None:
     random.seed(worker_seed)
 
 
-def load_dataset(horizon: str):
-    if horizon == "10min":
-        base_path = DATASET_PATH_10MIN
-    elif horizon == "30min":
-        base_path = DATASET_PATH_30MIN
-    elif horizon == "1h":
-        base_path = DATASET_PATH_1H
+def dataset_directory(horizon: str, dataset_dir: str | Path | None = None) -> Path:
+    paths = {"10min": DATASET_PATH_10MIN, "30min": DATASET_PATH_30MIN, "1h": DATASET_PATH_1H}
+    if horizon not in paths:
+        raise ValueError(f"Unknown temporal resolution: {horizon}")
+    return Path(dataset_dir) if dataset_dir is not None else Path(paths[horizon])
+
+
+def load_dataset(horizon: str, dataset_dir: str | Path | None = None):
+    base_path = dataset_directory(horizon, dataset_dir)
+    manifest_path = base_path / "manifest.json"
+    if manifest_path.is_file():
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        expected_minutes = {"10min": 10, "30min": 30, "1h": 60}[horizon]
+        resolution = manifest.get("resolution_minutes")
+        if resolution is not None and resolution != expected_minutes:
+            raise ValueError(f"Dataset resolution is {resolution} minutes, but --horizon is {horizon}")
     train = pd.read_csv(os.path.join(base_path, "train.csv"))
     eval = pd.read_csv(os.path.join(base_path, "val.csv"))
     test = pd.read_csv(os.path.join(base_path, "test.csv"))
     return train, eval, test
 
 
+def normalize_feature_set(feature_set: str) -> str:
+    """Accept water as an alias and put groups in a consistent order."""
+    if feature_set == "all":
+        return feature_set
+    groups = ["water_level" if group == "water" else group for group in feature_set.split("+")]
+    if len(set(groups)) != len(groups) or any(group not in FEATURE_GROUPS for group in groups):
+        raise ValueError(f"Unknown or duplicate feature groups: {feature_set}")
+    return "+".join(group for group in FEATURE_GROUPS if group in groups)
+
+
 def select_feature_columns(columns, feature_set: str) -> list[str] | None:
+    feature_set = normalize_feature_set(feature_set)
     if feature_set == "all":
         return None
 
     groups = feature_set.split("+")
     selected = [
         column for column in columns
-        if any(column.startswith(f"{group}_") for group in groups)
+        if any(column == group or column.startswith(f"{group}_") for group in groups)
     ]
     for group in groups:
-        if not any(column.startswith(f"{group}_") for column in selected):
+        if not any(column == group or column.startswith(f"{group}_") for column in selected):
             raise ValueError(f"No {group} features found for {feature_set}")
     return selected
 
@@ -116,8 +137,10 @@ def get_dataloader(
     seed: int = 42,
     require_current_level: bool = False,
     feature_set: str = "all",
+    dataset_dir: str | Path | None = None,
 ):
-    train_df, eval_df, test_df = load_dataset(horizon)
+    train_df, eval_df, test_df = load_dataset(horizon, dataset_dir)
+    feature_set = normalize_feature_set(feature_set)
     if feature_set not in FEATURE_SETS:
         raise ValueError(f"Unknown LSTM feature set: {feature_set}")
     feature_cols = select_feature_columns(train_df.columns, feature_set)
