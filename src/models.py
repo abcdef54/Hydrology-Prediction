@@ -170,6 +170,95 @@ class ResidualLSTM(LSTM):
         return self.persistence(x) + super().forward(x)
 
 
+class AttentionLSTM1(LSTM):
+    def __init__(
+        self,
+        *args,
+        **kwargs,
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.attention_score = nn.Linear(self.hidden_size, 1)        
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        x = self.input_dropout_layer(x.transpose(1, 2)).transpose(1, 2)
+        sequence_output, _ = self.lstm(x)
+
+        attention_logits = self.attention_score(sequence_output)
+        attention_weights = torch.softmax(attention_logits, dim=1)
+
+        context = torch.sum(sequence_output * attention_weights, dim=1)
+        out = self.linear(self.head_dropout_layer(context))
+
+        return out
+
+
+class AttentionLSTM2(ResidualLSTM):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.attention_score = nn.Linear(self.hidden_size, 1)        
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        persistence = self.persistence(x)
+        x = self.input_dropout_layer(x.transpose(1, 2)).transpose(1, 2)
+        sequence_output, _ = self.lstm(x)
+
+        attention_logits = self.attention_score(sequence_output)
+        attention_weights = torch.softmax(attention_logits, dim=1)
+
+        context = torch.sum(sequence_output * attention_weights, dim=1)
+        out = self.linear(self.head_dropout_layer(context))
+
+        return persistence + out
+
+
+
+class AttentionLSTM3(AttentionLSTM2):
+    def __init__(
+        self,
+        head_dim: int,
+        *args,
+        **kwargs
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self.head_dim = head_dim
+
+        self.horizon_heads = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(self.hidden_size, self.head_dim),
+                nn.ReLU(),
+                self.head_dropout_layer,
+                nn.Linear(self.head_dim, 1)
+            )
+            for _ in range(self.output_size)
+        ])
+
+        for head in self.horizon_heads:
+            output_layer = head[-1]
+            nn.init.zeros_(output_layer.weight)
+            nn.init.zeros_(output_layer.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if x.dim() == 2:
+            x = x.unsqueeze(1)
+        persistence = self.persistence(x)
+        x = self.input_dropout_layer(x.transpose(1, 2)).transpose(1, 2)
+        sequence_output, _ = self.lstm(x)
+        
+        attention_logits = self.attention_score(sequence_output)
+        attention_weights = torch.softmax(attention_logits, dim=1)
+
+        context = torch.sum(sequence_output * attention_weights, dim=1)
+        out = torch.cat(
+            [head(context) for head in self.horizon_heads],
+            dim=-1
+        )
+        return persistence + out        
+
+
 @dataclass(frozen=True)
 class XGBoostSettings:
     n_estimators: int = 2000
