@@ -1,5 +1,0 @@
-station_type,total_stations,stations_with_observations,stations_without_observations,total_observations,minimum_observations,median_observations,maximum_observations
-rain,56,56,0,2603597,27382,47923.0,48028
-water_level,17,17,0,742682,20072,45979.0,45990
-wind,4,4,0,95974,3983,23893.0,44205
-reservoir,19,17,2,39894,0,2221.0,4690

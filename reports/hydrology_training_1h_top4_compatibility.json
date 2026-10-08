@@ -1,0 +1,78 @@
+{
+  "feature_ablation_checks": [
+    {
+      "feature_set": "water",
+      "inputs": 4,
+      "sequence_counts": [
+        5199,
+        983,
+        983
+      ]
+    },
+    {
+      "feature_set": "water+rain",
+      "inputs": 28,
+      "sequence_counts": [
+        5199,
+        983,
+        983
+      ]
+    },
+    {
+      "feature_set": "water+wind",
+      "inputs": 22,
+      "sequence_counts": [
+        5199,
+        983,
+        983
+      ]
+    },
+    {
+      "feature_set": "water+flood_season",
+      "inputs": 5,
+      "sequence_counts": [
+        5199,
+        983,
+        983
+      ]
+    },
+    {
+      "feature_set": "water+rain+wind",
+      "inputs": 46,
+      "sequence_counts": [
+        5199,
+        983,
+        983
+      ]
+    },
+    {
+      "feature_set": "water+rain+flood_season",
+      "inputs": 29,
+      "sequence_counts": [
+        5199,
+        983,
+        983
+      ]
+    },
+    {
+      "feature_set": "water+wind+flood_season",
+      "inputs": 23,
+      "sequence_counts": [
+        5199,
+        983,
+        983
+      ]
+    },
+    {
+      "feature_set": "water+rain+wind+flood_season",
+      "inputs": 47,
+      "sequence_counts": [
+        5199,
+        983,
+        983
+      ]
+    }
+  ],
+  "unit_tests": 7,
+  "verification": "All 8 combinations share sequence endpoints; finite batches, tree selectors, CPU forward passes, local-month boundary, independent raw rain and water checks passed; no models trained."
+}
