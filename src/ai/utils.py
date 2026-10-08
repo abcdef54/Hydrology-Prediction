@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import DataLoader
 from pathlib import Path
 from itertools import combinations
-from src.dataset import HydrologyDataset
+from src.ai.dataset import HydrologyDataset
 from googlehydrology.datautils.scaler import LEGACY_SCALER_FILE_NAME, SCALER_FILE_NAME
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import MeanEmbeddingForecastLSTM
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import Config

@@ -6,7 +6,7 @@ import xgboost as xgb
 import lightgbm as gbm
 import pandas as pd
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import MeanEmbeddingForecastLSTM
-from src.utils import select_feature_columns
+from src.ai.utils import select_feature_columns
 
 
 class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):

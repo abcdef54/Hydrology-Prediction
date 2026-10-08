@@ -9,7 +9,7 @@ from dataclasses import asdict
 # Set this before importing PyTorch so CUDA LSTM kernels can be deterministic.
 os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:2")
 
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
@@ -22,13 +22,13 @@ import torch
 from torch import nn
 from torch import optim
 
-from src.metrics import evaluate_all
-from src.models import (
+from src.ai.metrics import evaluate_all
+from src.ai.models import (
     LightGBM, LightGBMSettings, LSTM, MeanEmbeddingForecastLSTMWithAdapter,
     ResidualLSTM, XGBoost, XGBoostSettings,
 )
-from src.trainers import LSTMTrainer, MEFLSTMAdapterTrainer, ResidualLSTMTrainer, VanillaLSTMTrainer
-from src.utils import (
+from src.ai.trainers import LSTMTrainer, MEFLSTMAdapterTrainer, ResidualLSTMTrainer, VanillaLSTMTrainer
+from src.ai.utils import (
     FEATURE_SETS, dataset_directory, get_dataloader, load_dataset,
     load_mef_backbone, normalize_feature_set, set_seed,
 )

@@ -15,8 +15,8 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.metrics import evaluate_all
-from src.models import LSTM, MeanEmbeddingForecastLSTMWithAdapter, ResidualLSTM
+from src.ai.metrics import evaluate_all
+from src.ai.models import LSTM, MeanEmbeddingForecastLSTMWithAdapter, ResidualLSTM
 
 
 class LSTMTrainer:
@@ -154,7 +154,7 @@ class LSTMTrainer:
                 self.model,
                 name="best_model",
                 serialization_format="pickle",
-                code_paths=[str(source_dir)],
+                code_paths=[str(source_dir.parent)],
                 extra_files=[str(preprocessing_path), str(source_dir.parent / "requirements.txt")],
                 input_example=input_example,
             )

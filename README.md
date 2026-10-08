@@ -1,6 +1,6 @@
 # Hydrology workspace
 
-- `src/`: model training and evaluation code.
+- `src/ai/`: model training and evaluation code.
 - `scripts/`: hourly top-four-rain dataset builder, MLflow metrics notebook, and seasonal analysis notebook.
 - `data/`: original observations, metadata, SQLite master, and provenance/checksums.
 - `train_data/1h/` and `train_data/1h_top4/`: train/validation/test splits.
@@ -17,7 +17,7 @@ Run MLflow from this directory:
 Open http://localhost:5000. Training uses this local tracking server.
 
 For the current dataset, pass `--horizon 1h --dataset-dir train_data/1h_top4`
-to `.venv/bin/python src/train.py`; use `--help` for the other required options.
+to `.venv/bin/python src/ai/train.py`; use `--help` for the other required options.
 
 Open `scripts/mlflow_metrics.ipynb` to evaluate saved runs. New exports go to
 `reports/mlflow_metrics/`. Open `scripts/seasonal_analysis.ipynb` for rainfall
