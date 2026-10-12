@@ -3,7 +3,7 @@
 import math
 from pathlib import Path
 from tempfile import TemporaryDirectory
-
+from typing import Protocol
 import joblib
 import mlflow
 import mlflow.pytorch
@@ -18,6 +18,13 @@ from tqdm import tqdm
 from src.ai.metrics import evaluate_all
 from src.ai.models import LSTM, MeanEmbeddingForecastLSTMWithAdapter, ResidualLSTM
 
+
+class SequenceTrainer(Protocol):
+    def train(self) -> nn.Module:
+        ...
+
+    def test(self) -> pd.DataFrame:
+        ...
 
 class LSTMTrainer:
     """Share the epoch loop and checkpoint selection across sequence models."""

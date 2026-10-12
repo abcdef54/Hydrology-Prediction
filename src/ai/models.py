@@ -1,5 +1,6 @@
 from __future__ import annotations
 from dataclasses import asdict, dataclass
+from typing import Protocol
 import torch
 import torch.nn as nn
 import xgboost as xgb
@@ -7,6 +8,11 @@ import lightgbm as gbm
 import pandas as pd
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import MeanEmbeddingForecastLSTM
 from src.ai.utils import select_feature_columns
+
+
+class WaterLevelPredictionModel(Protocol):
+    def __call__(self, *arg, **kwargs) -> torch.Tensor:
+        ...
 
 
 class MeanEmbeddingForecastLSTMWithAdapter(nn.Module):
