@@ -1,0 +1,17 @@
+[
+  {
+    "station_id": "0074647403",
+    "model_type": "residual_lstm",
+    "model_version": "6472d6d3d42f44c3a29f730b4d0ca828",
+    "model_path": "model/1h_top4/1h/ResidualLSTM_water_level+rain+flood_season_best.pt",
+    "preprocessing_path": "mlartifacts/4/models/m-e1b3dfb6d3304356b4d6a3124c09a324/artifacts/extra_files/preprocessing.joblib",
+    "sequence_length": 96,
+    "rain_station_ids": ["750062", "750007", "750003", "750011"],
+    "forecast_horizons_minutes": [60, 180, 360, 720, 1440],
+    "feature_schema_version": "water-rain-season-hourly-v1",
+    "rain_windows_hours": [3, 6, 12, 24],
+    "water_lags_hours": [1, 3],
+    "flood_season_months": [9, 10, 11, 12],
+    "calendar_timezone": "Asia/Ho_Chi_Minh"
+  }
+]

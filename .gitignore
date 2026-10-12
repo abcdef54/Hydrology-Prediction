@@ -12,3 +12,6 @@ mlartifacts/
 archive/
 
 ARCHITECTURE.md
+
+# Local data import utilities and reports are not published.
+scripts/local/
