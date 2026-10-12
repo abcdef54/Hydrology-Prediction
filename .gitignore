@@ -3,13 +3,12 @@ data/
 __pycache__/
 
 mlartifacts/
-model/
 *.docx
 *.db
-
-Hue*?
-
+.env
 .agents/
 
 # Archived GIS data is retained locally, outside version control.
 archive/
+
+ARCHITECTURE.md
