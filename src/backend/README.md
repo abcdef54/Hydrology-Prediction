@@ -103,6 +103,31 @@ curl --get 'http://127.0.0.1:8000/api/v1/stations/0074647403/observations' \
   để lấy đủ feature theo giờ. Giá trị gốc trên bảng có thể khác giá trị theo giờ
   trong form. API lịch sử không xác nhận thời điểm có đủ dữ liệu để dự báo.
 
+## API kiểm tra thời điểm có thể dự báo
+
+```bash
+curl --get 'http://127.0.0.1:8000/api/v1/stations/0074647403/prediction-availability' \
+  --data-urlencode 'start=2026-09-13T00:00:00+07:00' \
+  --data-urlencode 'end=2026-09-14T00:00:00+07:00'
+```
+
+- `start`, `end` bắt buộc có múi giờ, `start < end`, không quá 7 ngày và
+  `end` không trong tương lai. API kiểm tra các mốc đúng giờ trong `[start, end)`,
+  trả theo thứ tự tăng dần. Ví dụ từ 09:30 đến 11:00 chỉ kiểm tra 10:00.
+- Response có phiên bản model/schema và `sequence_length` lấy từ cấu hình riêng
+  của trạm, được kiểm tra khớp metadata preprocessing. Không cố định 96 cho mọi trạm.
+- Mỗi dòng trong `availability` có `reference_time`, `input_ready`,
+  `available_timesteps` (tối đa bằng sequence length), `anchor_observed_at`, `reason`.
+  Thiếu lịch sử trả `input_ready = false`, `reason = INSUFFICIENT_HISTORY`.
+- Dùng đúng `PredictionInputService.prepare()` như API đầu vào, cho phép gaps
+  và thiếu mưa/lag giống training. Không tải trọng số hoặc chạy dự báo.
+  Có thể đủ lịch sử nhưng anchor cũ; `input_ready` không có nghĩa dữ liệu còn mới.
+- Mã trạm không tồn tại trả 404; trạm chưa bật dự báo/model preprocessing không
+  khả dụng trả 503; tham số sai trả 422. POST dự báo vẫn phải kiểm tra lại vì
+  dữ liệu có thể thay đổi sau khi đọc availability.
+- Giới hạn 7 ngày nhằm giữ chi phí kiểm tra từng giờ ở mức hữu hạn. Frontend
+  có thể gọi từng khoảng khi người dùng chuyển thời gian xem.
+
 ## API đầu vào dự báo
 
 ```text

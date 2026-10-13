@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException
 
 from src.backend.api.prediction_inputs import router as prediction_inputs_router
 from src.backend.api.observations import router as observations_router
+from src.backend.api.prediction_availability import router as prediction_availability_router
 from src.backend.api.predictions import router as predictions_router
 from src.backend.api.schemas import ErrorDetail, ErrorResponse
 from src.backend.api.stations import router as stations_router
@@ -126,6 +127,7 @@ def create_app(
 
     application.include_router(stations_router)
     application.include_router(observations_router)
+    application.include_router(prediction_availability_router)
     application.include_router(prediction_inputs_router)
     application.include_router(predictions_router)
     return application

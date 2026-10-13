@@ -1,6 +1,6 @@
 """Public input-form values use original units, never standardized tensor values."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Annotated, Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
@@ -100,6 +100,38 @@ class PredictionInputsQuery(BaseModel):
         default=None,
         description="ISO 8601 with timezone; rounded down to the hour. Omit for latest data.",
     )
+
+
+class PredictionAvailabilityQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    start: AwareDatetime
+    end: AwareDatetime
+
+    @model_validator(mode="after")
+    def validate_time_range(self):
+        if self.start >= self.end:
+            raise ValueError("start must be earlier than end.")
+        if self.end - self.start > timedelta(days=7):
+            raise ValueError("Availability range must not exceed 7 days.")
+        return self
+
+
+class PredictionAvailabilityPoint(BaseModel):
+    reference_time: AwareDatetime
+    input_ready: bool
+    available_timesteps: int = Field(description="Capped at the required sequence length.")
+    anchor_observed_at: AwareDatetime | None
+    reason: Literal["INSUFFICIENT_HISTORY"] | None
+
+
+class PredictionAvailabilityResponse(BaseModel):
+    station_id: str
+    model_version: str
+    feature_schema_version: str
+    sequence_length: int
+    start: AwareDatetime
+    end: AwareDatetime
+    availability: list[PredictionAvailabilityPoint]
 
 
 class InputFeature(BaseModel):
