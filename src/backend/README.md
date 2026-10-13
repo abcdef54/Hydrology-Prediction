@@ -205,6 +205,10 @@ PostgreSQL local nằm trong `scripts/local/verify_prediction_inputs_api.py` và
 
 ## API chạy dự báo
 
+Database đã có hai bảng lưu dự báo (`forecasts`, `forecast_points`, migration
+`0003`). API hiện chưa sử dụng hai bảng này; phần lưu và dùng lại dự báo sẽ được
+nối vào service trong task riêng. Chi tiết ràng buộc nằm trong `db/README.md`.
+
 ```text
 POST /api/v1/predictions
 ```

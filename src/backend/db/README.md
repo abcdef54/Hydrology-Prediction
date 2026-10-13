@@ -2,7 +2,8 @@
 
 ## Cấu trúc
 
-- `models.py`: hai ORM model `Station` và `Observation`, gồm khóa và ràng buộc dữ liệu.
+- `models.py`: ORM model `Station`, `Observation`, `Forecast`, `ForecastPoint`,
+  gồm khóa và ràng buộc dữ liệu.
 - `session.py`: tạo engine và session SQLAlchemy; lấy kết nối từ `DATABASE_URL`.
 - `alembic/versions/`: migration Python tạo bảng và thêm metadata 5 trạm.
 - `tests/test_schema.py`: kiểm tra trực tiếp trên PostgreSQL; rollback dữ liệu thử.
@@ -51,6 +52,8 @@ Python. Không tự `stamp head` lên một database SQL cũ: Alembic chưa xác
 |---|---|---|
 | `Station` | Metadata, loại trạm, nguồn, vị trí và đơn vị | `id` dạng chuỗi |
 | `Observation` | Giá trị `depth` gốc và thời điểm đo tại từng trạm | `(station_id, observed_at)` |
+| `Forecast` | Danh tính mô hình/pipeline/đầu vào và thời điểm tạo dự báo | UUID `id` |
+| `ForecastPoint` | Giá trị dự báo mm tại từng horizon | `(forecast_id, horizon_minutes)` |
 
 Metadata khởi tạo gồm Dã Viên và bốn trạm mưa Hồng Thái, Nhâm, Thị trấn A Lưới,
 Hồ A Lá, theo API khảo sát ngày 12/10/2026. Mã `0074647403` giữ số 0 đầu. Hồ A Lá
@@ -92,6 +95,32 @@ chọn giờ đã hoàn tất, chuẩn bị 29 feature và áp scaler thuộc ta
 user overrides vào bảng quan trắc.
 
 ## Kiểm tra
+
+### Lưu dự báo — migration `0003`
+
+Migration thêm `hydrology.forecasts` và `hydrology.forecast_points`, không sửa
+dữ liệu quan trắc hoặc tạo dự báo. UUID được SQLAlchemy sinh khi insert.
+
+- `Forecast` lưu `station_id`, `model_version`, `feature_schema_version`,
+  `pipeline_version`, `input_hash`, `anchor_observed_at`, `generated_at`.
+  `input_hash` là SHA-256 gồm 64 ký tự hex thường. Unique constraint trên trạm,
+  ba phiên bản và hash ngăn lưu cùng dự báo nhiều lần. Index trạm/model/anchor
+  phục vụ đọc lịch sử. Mọi timestamp dùng TIMESTAMPTZ.
+- `ForecastPoint` lưu `forecast_id`, `horizon_minutes`, `forecast_at`,
+  `water_level_mm`. Horizon phải dương; mực nước phải hữu hạn, được phép âm hoặc 0.
+  Foreign key không cho lưu điểm thiếu bản ghi cha hoặc xóa cha đang có điểm.
+- Service sẽ phải tính hash từ toàn bộ chuỗi và timestamp, nhận diện scaler/
+  preprocessing trong `pipeline_version`, tính `forecast_at = anchor + horizon`,
+  và lưu cha cùng tất cả horizon trong một transaction. Schema không tự kiểm tra
+  đủ horizon của mô hình hoặc quan hệ thời gian giữa hai bảng.
+- Chỉ lưu dự báo từ quan trắc gốc; không lưu overrides. Cơ chế lưu/đọc, xử lý
+  xung đột khi request đồng thời và Redis thuộc task tiếp theo, chưa nối vào API.
+
+Đã áp dụng revision `0003` trên database ứng dụng: 14 test database đạt,
+`alembic check` không thấy khác biệt ORM/schema. Giữ nguyên 5 trạm và 237954
+quan trắc; sau rollback test có 0 dự báo và 0 điểm dự báo.
+
+### Chạy test database
 
 Dùng `DATABASE_URL` trỏ đến database thử nghiệm đã migrate:
 

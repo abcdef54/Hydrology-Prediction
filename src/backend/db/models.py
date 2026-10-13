@@ -1,6 +1,7 @@
 """Raw observations; no hourly aggregation or model preprocessing here."""
 
 from datetime import datetime
+from uuid import UUID, uuid4
 
 import sqlalchemy as sa
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -134,3 +135,68 @@ class Observation(Base):
     updated_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now(), server_onupdate=sa.FetchedValue()
     )
+
+
+class Forecast(Base):
+    """A saved forecast from unedited observations and a specific model/input contract.
+
+    Input hashes are SHA-256 hexadecimal digests. Pipeline versions must identify
+    the scaler and preprocessing; generating that identity belongs to the service.
+    User override forecasts are not stored here.
+    """
+
+    __tablename__ = "forecasts"
+    __table_args__ = (
+        sa.CheckConstraint("btrim(model_version) <> ''", name="model_version_not_blank"),
+        sa.CheckConstraint("btrim(feature_schema_version) <> ''", name="schema_version_not_blank"),
+        sa.CheckConstraint("btrim(pipeline_version) <> ''", name="pipeline_version_not_blank"),
+        sa.CheckConstraint("input_hash ~ '^[0-9a-f]{64}$'", name="input_hash_sha256"),
+        sa.CheckConstraint("isfinite(anchor_observed_at)", name="anchor_finite"),
+        sa.CheckConstraint("isfinite(generated_at)", name="generated_finite"),
+        sa.UniqueConstraint(
+            "station_id",
+            "model_version",
+            "feature_schema_version",
+            "pipeline_version",
+            "input_hash",
+            name="uq_forecasts_input_identity",
+        ),
+        sa.Index(
+            "ix_forecasts_station_model_anchor", "station_id", "model_version", "anchor_observed_at"
+        ),
+    )
+    id: Mapped[UUID] = mapped_column(sa.Uuid, primary_key=True, default=uuid4)
+    station_id: Mapped[str] = mapped_column(sa.ForeignKey("hydrology.stations.id"))
+    model_version: Mapped[str] = mapped_column(sa.Text)
+    feature_schema_version: Mapped[str] = mapped_column(sa.Text)
+    pipeline_version: Mapped[str] = mapped_column(sa.Text)
+    input_hash: Mapped[str] = mapped_column(sa.Text)
+    anchor_observed_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    generated_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), server_default=sa.func.now()
+    )
+
+
+class ForecastPoint(Base):
+    """One horizon in millimetres; measured truth stays in observations.
+
+    The service must write every horizon with the parent in one transaction and
+    calculate forecast_at from anchor + horizon. Foreign keys prevent orphaned
+    points and accidental deletion of a parent that still has points.
+    """
+
+    __tablename__ = "forecast_points"
+    __table_args__ = (
+        sa.CheckConstraint("horizon_minutes > 0", name="horizon_positive"),
+        sa.CheckConstraint("isfinite(forecast_at)", name="forecast_at_finite"),
+        sa.CheckConstraint(
+            "water_level_mm > '-Infinity'::float8 AND water_level_mm < 'Infinity'::float8",
+            name="water_level_finite",
+        ),
+    )
+    forecast_id: Mapped[UUID] = mapped_column(
+        sa.ForeignKey("hydrology.forecasts.id"), primary_key=True
+    )
+    horizon_minutes: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
+    forecast_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
+    water_level_mm: Mapped[float] = mapped_column(sa.Double)
