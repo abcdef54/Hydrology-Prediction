@@ -33,8 +33,38 @@ class InputPreprocessor:
 
     @classmethod
     def from_file(cls, config: StationModelConfig) -> "InputPreprocessor":
-        """Load the preprocessing.joblib belonging to the verified checkpoint."""
-        saved = joblib.load(config.preprocessing_path)
+        """Load the trusted preprocessing artifact belonging to this model.
+
+        Args:
+            config: Station/model contract, including preprocessing_path.
+
+        Returns:
+            Preprocessor using the saved feature scaler without fitting it again.
+
+        Raises:
+            OSError: If the artifact cannot be read.
+            KeyError: If required preprocessing metadata is absent.
+            ValueError: If metadata or scaler statistics violate the input contract.
+        """
+        return cls.from_saved(config, joblib.load(config.preprocessing_path))
+
+    @classmethod
+    def from_saved(cls, config: StationModelConfig, saved: dict) -> "InputPreprocessor":
+        """Validate a loaded artifact snapshot against this station's input contract.
+
+        Args:
+            config: Expected station/model feature order and sequence length.
+            saved: Trusted joblib payload containing the fitted feature scaler,
+                feature columns, sequence length and missing-value policy.
+
+        Returns:
+            Preprocessor that uses the supplied saved feature scaler.
+
+        Raises:
+            KeyError: If required metadata is absent.
+            ValueError: If feature order, sequence length, missing-value policy
+                or scaler statistics do not match the serving contract.
+        """
         if saved.get("missing_scaled_value") != 0.0:
             raise ValueError("Expected missing normalized values to be replaced with zero.")
         if tuple(saved["feature_columns"]) != config.feature_columns:

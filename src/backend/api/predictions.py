@@ -22,12 +22,26 @@ def get_prediction_service(request: Request, config: StationModelConfig) -> Pred
     The lock covers first loading only. Failed loads are not retained, so a later
     request may retry once the artifact is available. Inference results and user
     overrides are not stored in this dictionary.
+
+    Args:
+        request: HTTP request whose app state owns the engine and runtime registry.
+        config: Station-specific model and preprocessing configuration to resolve.
+
+    Returns:
+        Prediction service for this station and current artifact snapshot.
+
+    Raises:
+        HTTPException: With status 503 when model artifacts cannot be loaded.
     """
     with request.app.state.prediction_service_lock:
         service = request.app.state.prediction_services.get(config.station_id)
-        if service is not None and service.runtime.config == config:
-            return service
         try:
+            if (
+                service is not None
+                and service.runtime.config == config
+                and service.runtime.artifacts_match_config()
+            ):
+                return service
             runtime = ResidualLSTMRuntime(config, device=request.app.state.prediction_device)
         except (OSError, ValueError, KeyError, EOFError, RuntimeError, pickle.UnpicklingError):
             raise HTTPException(
@@ -48,9 +62,24 @@ def predict_water_level(
 ) -> PredictionResponse:
     """Predict supported horizons in mm from the actual last input timestamp.
 
-    No training, database writes or future observations are used. Invalid user
+    Original-input forecasts are reused or saved in PostgreSQL. Override scenarios
+    are never stored. No training or future observations are used. Invalid user
     edits return 422; observation/preprocessing or inference failures return 503.
     Missing rain/lag inputs follow the saved training preprocessing.
+
+    Args:
+        request: HTTP request providing app resources and the freshness threshold.
+        prediction_request: Station ID, optional timezone-aware reference time and
+            optional last-timestep edits in original feature units.
+
+    Returns:
+        Horizon predictions in mm, storage metadata, applied overrides and freshness
+        calculated for the current request.
+
+    Raises:
+        HTTPException: For invalid requests/edits (422), unknown stations (404),
+            insufficient history (400) or unavailable model/input execution (503).
+        sqlalchemy.exc.SQLAlchemyError: Database failures handled as 503 by the app.
     """
     current_time = datetime.now(timezone.utc)
     reference_time = prediction_request.reference_time

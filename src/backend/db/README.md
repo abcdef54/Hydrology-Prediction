@@ -113,8 +113,9 @@ dữ liệu quan trắc hoặc tạo dự báo. UUID được SQLAlchemy sinh kh
   preprocessing trong `pipeline_version`, tính `forecast_at = anchor + horizon`,
   và lưu cha cùng tất cả horizon trong một transaction. Schema không tự kiểm tra
   đủ horizon của mô hình hoặc quan hệ thời gian giữa hai bảng.
-- Chỉ lưu dự báo từ quan trắc gốc; không lưu overrides. Cơ chế lưu/đọc, xử lý
-  xung đột khi request đồng thời và Redis thuộc task tiếp theo, chưa nối vào API.
+- Chỉ lưu dự báo từ quan trắc gốc; không lưu overrides. Cơ chế lưu/đọc đã được nối
+  vào `PredictionService`: insert cha với ON CONFLICT DO NOTHING, ghi các horizon
+  cùng transaction; khi trùng thì đọc lại kết quả đã commit. Redis chưa triển khai.
 
 Đã áp dụng revision `0003` trên database ứng dụng: 14 test database đạt,
 `alembic check` không thấy khác biệt ORM/schema. Giữ nguyên 5 trạm và 237954

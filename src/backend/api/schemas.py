@@ -2,6 +2,7 @@
 
 from datetime import datetime, timedelta
 from typing import Annotated, Any, Literal
+from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
@@ -205,3 +206,7 @@ class PredictionResponse(BaseModel):
     is_stale: bool
     input_age_minutes: float
     stale_after_minutes: float
+    forecast_id: UUID | None = None
+    generated_at: AwareDatetime | None = None
+    pipeline_version: str | None = None
+    reused: bool = False

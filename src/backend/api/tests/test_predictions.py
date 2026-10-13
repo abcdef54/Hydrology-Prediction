@@ -4,6 +4,7 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from unittest import TestCase, main
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
@@ -80,6 +81,22 @@ class PredictionsApiTests(TestCase):
             self.forecast.anchor_observed_at + timedelta(hours=1),
         )
         self.service.predict.assert_called_once_with(self.forecast.requested_reference_time, {})
+
+    def test_reused_forecast_metadata_and_current_freshness_are_returned(self):
+        forecast_id = uuid4()
+        self.service.predict.return_value = replace(
+            self.forecast,
+            forecast_id=forecast_id,
+            generated_at=self.forecast.anchor_observed_at,
+            pipeline_version="test-pipeline",
+            reused=True,
+        )
+        response = self.client.post(self.url, json=self.body)
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["forecast_id"], str(forecast_id))
+        self.assertTrue(response.json()["reused"])
+        self.assertEqual(response.json()["pipeline_version"], "test-pipeline")
+        self.assertFalse(response.json()["is_stale"])
 
     def test_latest_and_explicit_null_reference_use_latest_data(self):
         self.service.predict.return_value = replace(self.forecast, requested_reference_time=None)

@@ -1,8 +1,9 @@
 """Station-specific, evaluation-only Residual LSTM forecasting in millimeters."""
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from datetime import datetime, timedelta
+from io import BytesIO
+import hashlib
 
 import joblib
 import numpy as np
@@ -13,37 +14,45 @@ from src.ai.lstm import ResidualLSTM
 from src.backend.prediction.config import StationModelConfig
 from src.backend.prediction.inputs import PreparedInput, PredictionInputService
 from src.backend.prediction.preprocessing import InputPreprocessor
-
-
-@dataclass(frozen=True)
-class ForecastPoint:
-    horizon_minutes: int
-    forecast_at: datetime
-    water_level_mm: float
-
-
-@dataclass(frozen=True)
-class ForecastResult:
-    station_id: str
-    model_version: str
-    feature_schema_version: str
-    requested_reference_time: datetime | None
-    hourly_reference_time: datetime
-    anchor_observed_at: datetime
-    predictions: tuple[ForecastPoint, ...]
-    unit: str = "mm"
+from src.backend.prediction.results import ForecastPoint, ForecastResult
+from src.backend.prediction.persistence import (
+    build_pipeline_version,
+    build_input_hash,
+    load_forecast,
+    save_forecast,
+)
 
 
 class ResidualLSTMRuntime:
-    """Load once per configured station; reuse without an optimizer or training loss."""
+    """Load once per configured station without an optimizer or training loss.
+
+    Args:
+        config: This station's checkpoint, scaler, architecture and feature contract.
+        device: PyTorch device for inference; defaults to CPU.
+
+    Raises:
+        OSError: If an artifact or pipeline source file cannot be read.
+        ValueError: If architecture, metadata or scalers violate the model contract.
+        RuntimeError: If weights cannot be loaded or the device cannot be used.
+    """
 
     def __init__(self, config: StationModelConfig, device: str = "cpu"):
         if config.model_type != "residual_lstm":
             raise ValueError(f"Unsupported inference model type: {config.model_type}")
         self.config = config
         self.device = torch.device(device)
-        self.preprocessor = InputPreprocessor.from_file(config)
-        saved = joblib.load(config.preprocessing_path)
+        # Hash and load the same bytes, so saved results identify the loaded artifacts.
+        model_bytes = config.model_path.read_bytes()
+        preprocessing_bytes = config.preprocessing_path.read_bytes()
+        self.artifact_hashes = (
+            hashlib.sha256(model_bytes).hexdigest(),
+            hashlib.sha256(preprocessing_bytes).hexdigest(),
+        )
+        saved = joblib.load(BytesIO(preprocessing_bytes))
+        self.preprocessor = InputPreprocessor.from_saved(config, saved)
+        self.pipeline_version = build_pipeline_version(
+            config, self.artifact_hashes, str(self.device)
+        )
         expected_targets = [
             f"target_water_level_plus_{minutes}m" for minutes in config.forecast_horizons_minutes
         ]
@@ -59,10 +68,16 @@ class ResidualLSTMRuntime:
         ):
             raise ValueError("Saved target scaler is invalid for this model.")
         required_parameters = {
-            "hidden_size", "num_layers", "dropout", "input_dropout", "head_dropout"
+            "hidden_size",
+            "num_layers",
+            "dropout",
+            "input_dropout",
+            "head_dropout",
         }
         if set(config.model_parameters) != required_parameters:
-            raise ValueError("Residual LSTM configuration must specify all architecture parameters.")
+            raise ValueError(
+                "Residual LSTM configuration must specify all architecture parameters."
+            )
         level_index = config.feature_columns.index("water_level_depth")
         feature_scaler = self.preprocessor.feature_scaler
         persistence_scale = feature_scaler.scale_[level_index] / self.target_scaler.scale_
@@ -77,12 +92,14 @@ class ResidualLSTMRuntime:
             persistence_offset=persistence_offset.tolist(),
             **config.model_parameters,
         )
-        state = torch.load(config.model_path, map_location="cpu", weights_only=True)
+        state = torch.load(BytesIO(model_bytes), map_location="cpu", weights_only=True)
         for name in ("persistence_scale", "persistence_offset"):
             expected = getattr(model, name)
             actual = state[name]
             if actual.shape != expected.shape or not torch.allclose(actual, expected):
-                raise ValueError("Checkpoint persistence coefficients do not match the saved scalers.")
+                raise ValueError(
+                    "Checkpoint persistence coefficients do not match the saved scalers."
+                )
         model.load_state_dict(state, strict=True)
         if any(not torch.isfinite(value).all() for value in model.state_dict().values()):
             raise ValueError("Checkpoint contains non-finite weights.")
@@ -90,7 +107,37 @@ class ResidualLSTMRuntime:
         self.model.requires_grad_(False)
         self.model.eval()
 
+    def artifacts_match_config(self) -> bool:
+        """Check whether configured files still match the loaded artifact snapshot.
+
+        Returns:
+            True when both checkpoint and preprocessing SHA-256 digests match
+            the bytes loaded by this runtime; False when either has changed.
+
+        Raises:
+            OSError: If either configured artifact cannot be read.
+        """
+        current_hashes = tuple(
+            hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in (self.config.model_path, self.config.preprocessing_path)
+        )
+        return current_hashes == self.artifact_hashes
+
     def predict(self, prepared: PreparedInput) -> ForecastResult:
+        """Run evaluation-only inference and inverse-transform the output to mm.
+
+        Args:
+            prepared: Validated input chain belonging to this station/model, with
+                a tensor shaped (1, sequence_length, feature_count) and timestamps.
+
+        Returns:
+            Forecast for each configured horizon, dated from the actual input
+            anchor. No storage metadata is attached by this runtime method.
+
+        Raises:
+            ValueError: If input identity, shape, timestamps or output are invalid.
+            RuntimeError: If PyTorch inference or device operations fail.
+        """
         if (
             prepared.station_id != self.config.station_id
             or prepared.model_version != self.config.model_version
@@ -137,7 +184,15 @@ class ResidualLSTMRuntime:
 
 
 class PredictionService:
+    """Prepare station inputs and reuse or persist original-observation forecasts.
+
+    Args:
+        engine: PostgreSQL engine for reading inputs and storing forecast results.
+        runtime: Loaded station-specific model and its saved preprocessing contract.
+    """
+
     def __init__(self, engine: Engine, runtime: ResidualLSTMRuntime):
+        self.engine = engine
         self.runtime = runtime
         self.inputs = PredictionInputService(engine, runtime.preprocessor)
 
@@ -146,5 +201,42 @@ class PredictionService:
         reference_time: datetime | None = None,
         overrides: Mapping[str, float | None] | None = None,
     ) -> ForecastResult:
+        """Predict from original observations or an edited last-timestep scenario.
+
+        Args:
+            reference_time: Timezone-aware historical instant, rounded down to the
+                hour by input preparation; None selects the latest usable hour.
+            overrides: Optional feature-name/value edits in original units applied
+                only to the last timestep. Any nonempty mapping bypasses storage.
+
+        Returns:
+            Forecast values in millimetres and current request context. Original
+            inputs receive storage metadata; edited scenarios are not persisted.
+
+        Raises:
+            InsufficientHistoryError: If fewer valid timesteps than required exist.
+            InvalidOverrideError: If an edit violates the preprocessing contract.
+            ValueError: If inputs, model output or stored results are invalid.
+            RuntimeError: If model execution fails.
+            sqlalchemy.exc.SQLAlchemyError: If input reads or forecast storage fail.
+        """
         prepared = self.inputs.prepare(reference_time, overrides)
-        return self.runtime.predict(prepared)
+        # Any nonempty override request is a scenario, even if values equal observations.
+        if overrides:
+            return self.runtime.predict(prepared)
+        input_hash = build_input_hash(prepared, self.runtime.config)
+        with self.engine.connect() as connection:
+            stored = load_forecast(
+                connection, self.runtime.config, prepared, self.runtime.pipeline_version, input_hash
+            )
+        if stored is not None:
+            return stored
+        forecast = self.runtime.predict(prepared)
+        return save_forecast(
+            self.engine,
+            self.runtime.config,
+            prepared,
+            self.runtime.pipeline_version,
+            input_hash,
+            forecast,
+        )

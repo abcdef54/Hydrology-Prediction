@@ -142,3 +142,25 @@ Script local `scripts/local/verify_prediction_inference.py` đối chiếu toàn
 Test với artifact mô hình đã lưu, kiểm tra RMSE với MLflow đã ghi nhận và chạy
 latest/historical/override trên PostgreSQL ở chế độ chỉ đọc. Kết quả lưu tại
 `scripts/local/prediction_inference_verification.json`. Không train hoặc ghi MLflow.
+
+## Lưu và dùng lại dự báo
+
+`PredictionService.predict()` chuẩn bị chuỗi trước, rồi tìm dự báo khớp trong
+PostgreSQL nếu request không có overrides. Nếu đã lưu thì không gọi runtime.predict;
+nếu chưa có thì inference và lưu tất cả horizon trong cùng transaction.
+
+- `results.py`: các dataclass kết quả, được inference và persistence dùng chung.
+  Import `ForecastPoint`/`ForecastResult` từ `inference.py` vẫn hoạt động.
+- `persistence.py`: tạo SHA-256 cho pipeline và toàn bộ input, đọc/ghi bảng dự báo.
+- Runtime tải và hash cùng một snapshot bytes của model/scaler để nhận diện đúng
+  artifact đã dùng. API phát hiện file bị thay thế trước khi dùng lại runtime.
+- Tất cả timestep, feature gốc, mask thiếu, tensor chuẩn hóa và timestamp tham gia
+  hash. Cấu hình nguồn/cửa sổ/mùa/horizon, mã nguồn pipeline, scaler, checkpoint và
+  device tham gia pipeline version. Thay code phải restart worker.
+- Bản lưu thiếu horizon hoặc sai thời điểm bị từ chối. Trạng thái freshness và
+  request time không được lưu cứng vào kết quả dùng lại. Overrides luôn bỏ qua DB.
+
+Test trong `prediction/tests/test_persistence.py` không cần DB.
+`db/tests/test_forecast_persistence.py` dùng PostgreSQL và rollback dữ liệu thử.
+Script `scripts/local/verify_persisted_predictions_api.py` chạy model thật, lưu
+dự báo gốc và kiểm tra request lặp không gọi model; không sửa quan trắc.

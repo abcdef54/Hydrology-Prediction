@@ -205,9 +205,9 @@ PostgreSQL local nằm trong `scripts/local/verify_prediction_inputs_api.py` và
 
 ## API chạy dự báo
 
-Database đã có hai bảng lưu dự báo (`forecasts`, `forecast_points`, migration
-`0003`). API hiện chưa sử dụng hai bảng này; phần lưu và dùng lại dự báo sẽ được
-nối vào service trong task riêng. Chi tiết ràng buộc nằm trong `db/README.md`.
+API dùng `forecasts` và `forecast_points` trong PostgreSQL (migration `0003`)
+để lưu và dùng lại dự báo từ quan trắc gốc. Cần migrate trước khi chạy API.
+Chi tiết ràng buộc nằm trong `db/README.md`.
 
 ```text
 POST /api/v1/predictions
@@ -230,8 +230,9 @@ curl 'http://127.0.0.1:8000/api/v1/predictions' \
   float32 hoặc trường request ngoài schema. Override không hợp lệ trả 422
   `INVALID_OVERRIDE`; lỗi kiểu dữ liệu trả `INVALID_REQUEST`.
 - Mỗi worker tải model/scaler một lần cho từng trạm khi có yêu cầu dự báo đầu tiên.
-  Mô hình khác trạm không dùng chung trọng số. Khi thay artifact/config, khởi động
-  lại backend và cập nhật model version. Không cache kết quả hay override ở bước này.
+  Mô hình khác trạm không dùng chung trọng số. Request tiếp theo kiểm tra SHA-256
+  checkpoint/scaler; nếu file bị thay thế thì tải lại runtime. Khi đổi code/config,
+  khởi động lại backend và cập nhật model version. Redis chưa được triển khai.
 - `PREDICTION_DEVICE` mặc định `cpu`; có thể đặt `cuda` nếu máy hỗ trợ. Hiện đã
   kiểm chứng trên CPU. Model chạy eval/inference mode, dropout tắt và không có
   correction penalty, optimizer hoặc training.
@@ -243,10 +244,30 @@ Dã Viên hiện là 60/180/360/720/1440 phút. Thời điểm dự báo tính t
 không từ mốc 14:30 người dùng nhập. Các trường `is_stale`, `input_age_minutes`,
 `stale_after_minutes` theo cùng quy tắc 2 giờ của API đầu vào.
 
-Không ghi override hoặc dự báo vào PostgreSQL. `MODEL_UNAVAILABLE` (503) báo lỗi
+### Lưu và dùng lại dự báo
+
+- Request không có overrides: chuẩn bị đầy đủ đầu vào, tính hash, tìm bản khớp
+  trong PostgreSQL. Nếu có thì dùng lại; nếu chưa có thì chạy model và lưu cha
+  cùng tất cả horizon trong một transaction.
+- Hash gồm toàn bộ giá trị gốc, mask thiếu, tensor đã chuẩn hóa, mọi timestamp,
+  feature order, anchor và horizon. Không chỉ dùng thời điểm hoặc timestep cuối.
+  Pipeline identity gồm checkpoint/scaler, cấu hình model, mã nguồn pipeline và
+  device. Khi đổi đầu vào hoặc pipeline, bản cũ không được dùng thay cho bản mới.
+- Bất kỳ overrides không rỗng nào cũng là kịch bản riêng: không đọc hoặc ghi bảng
+  dự báo, kể cả khi người dùng nhập lại đúng giá trị quan trắc. Không sửa quan trắc.
+- Response thêm `forecast_id`, `generated_at`, `pipeline_version`, `reused`.
+  `reused = true` nghĩa là đọc lại dự báo đã lưu; `generated_at` giữ thời điểm lưu
+  kết quả đầu tiên. Kịch bản overrides có ba trường metadata trên là null.
+- Mốc yêu cầu, tuổi dữ liệu và `is_stale` luôn theo request hiện tại; không lấy
+  trạng thái cũ từ bản đã lưu. Khác mốc yêu cầu nhưng chọn cùng chuỗi vẫn dùng lại được.
+- Nếu hai request cùng lưu, unique constraint giữ một bản và request còn lại đọc
+  bản thắng. Có thể cả hai vẫn chạy inference khi cùng miss; chưa có cơ chế gộp
+  các inference đang chạy hoặc Redis. Lỗi ghi DB trả 503, không trả thành công giả.
+
+`MODEL_UNAVAILABLE` (503) báo lỗi
 load model/scaler; `PREDICTION_UNAVAILABLE` (503) báo không tạo được dự báo cho
 đầu vào. Các lỗi trạm, database và thiếu lịch sử giữ cùng định dạng ở trên.
 
-Script kiểm chứng local: `scripts/local/verify_predictions_api.py`. Script đối
-chiếu latest, historical và override với artifact mô hình đã lưu, kiểm tra form
-không bị thay đổi sau override; không train hoặc ghi database.
+Script local `scripts/local/verify_persisted_predictions_api.py` kiểm tra dùng lại
+historical/latest, không chạy inference khi đã lưu và không lưu overrides.
+Script lưu dự báo gốc thật vào PostgreSQL, không thay đổi dữ liệu quan trắc.
