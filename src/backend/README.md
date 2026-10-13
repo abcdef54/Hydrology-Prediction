@@ -56,6 +56,28 @@ Endpoint cho phép xem cả trạm đã tắt, nhưng `prediction_enabled` luôn
 đối với trạm đó. Mã trạm không tồn tại trả 404 `STATION_NOT_FOUND`;
 lỗi database trả 503. Endpoint không tải mô hình hay chạy dự báo.
 
+## API quan trắc mới nhất
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/stations/0074647403/latest'
+```
+
+`GET /api/v1/stations/{station_id}/latest` trả `station_id`, `station_type`,
+`value`, `unit`, `observed_at`, `received_at`, `quality_status`, `is_stale`,
+`data_age_minutes` và `stale_after_minutes`.
+
+- Lấy lần đo hợp lệ mới nhất không nằm trong tương lai. Bỏ qua bản ghi thiếu;
+  giá trị 0 hoặc mực nước âm vẫn hợp lệ.
+- `value` là giá trị quan trắc gốc, chưa tổng hợp theo giờ hoặc chuẩn hóa.
+  Đầu vào mô hình theo giờ vẫn lấy qua `prediction-inputs`.
+- Thời gian trả về UTC; mực nước có đơn vị mm, đơn vị mưa chưa xác nhận trả null.
+- Tuổi dữ liệu tính từ `observed_at` đến lúc xử lý request. Dữ liệu trễ hơn
+  120 phút được trả kèm `is_stale = true`; đúng 120 phút vẫn chưa cũ.
+  Ngưỡng dùng chung cấu hình `INPUT_STALE_AFTER_MINUTES` với API đầu vào.
+- Trạm đã tắt vẫn đọc được quan trắc. Trạm không tồn tại trả 404
+  `STATION_NOT_FOUND`; không có lần đo hợp lệ trả 404 `OBSERVATION_NOT_FOUND`.
+  Lỗi database trả 503 theo định dạng lỗi chung.
+
 ## API đầu vào dự báo
 
 ```text

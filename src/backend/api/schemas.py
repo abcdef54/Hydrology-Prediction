@@ -43,6 +43,21 @@ class StationDetail(StationSummary):
     alarm_levels_m: AlarmLevels
 
 
+class LatestObservationResponse(BaseModel):
+    """Latest valid raw measurement; no hourly aggregation or model scaling."""
+
+    station_id: str
+    station_type: Literal["water_level", "rainfall"]
+    value: float = Field(allow_inf_nan=False)
+    unit: str | None = Field(description="null means the source unit is not confirmed.")
+    observed_at: AwareDatetime
+    received_at: AwareDatetime
+    quality_status: Literal["observed"]
+    is_stale: bool
+    data_age_minutes: float = Field(ge=0)
+    stale_after_minutes: float
+
+
 class PredictionInputsQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reference_time: AwareDatetime | None = Field(
