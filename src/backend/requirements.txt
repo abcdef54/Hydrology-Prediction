@@ -6,3 +6,7 @@ pandas>=2.2
 scikit-learn>=1.7
 joblib>=1.4
 torch
+fastapi>=0.142,<1
+pydantic>=2.13,<3
+uvicorn>=0.54,<1
+python-dotenv>=1,<2
