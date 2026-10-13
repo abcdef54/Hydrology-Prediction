@@ -13,3 +13,6 @@ archive/
 
 # Local data import utilities and reports are not published.
 scripts/local/
+
+
+reports/
