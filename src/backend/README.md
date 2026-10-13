@@ -78,6 +78,31 @@ curl 'http://127.0.0.1:8000/api/v1/stations/0074647403/latest'
   `STATION_NOT_FOUND`; không có lần đo hợp lệ trả 404 `OBSERVATION_NOT_FOUND`.
   Lỗi database trả 503 theo định dạng lỗi chung.
 
+## API lịch sử quan trắc
+
+```bash
+curl --get 'http://127.0.0.1:8000/api/v1/stations/0074647403/observations' \
+  --data-urlencode 'start=2026-09-13T00:00:00+07:00' \
+  --data-urlencode 'end=2026-09-14T00:00:00+07:00' \
+  --data-urlencode 'limit=100'
+```
+
+- `start`, `end` bắt buộc có múi giờ; lấy khoảng `[start, end)` (có start,
+  không có end). `start` phải trước `end`; `end` không được trong tương lai.
+- Trả quan trắc **gốc từ mới đến cũ**, không tổng hợp theo giờ hoặc nội suy.
+  Bản ghi thiếu giữ `value = null`, `quality_status = missing`; giờ không có
+  bản ghi không được tự thêm vào. Giá trị 0 và mực nước âm được giữ nguyên.
+- `limit` mặc định 100, tối đa 1000. Response có `observations`, `has_more`,
+  `next_before`. Nếu còn dữ liệu, gửi `before=next_before` cùng khoảng start/end
+  để đọc trang kế tiếp. Cursor loại trừ dòng cuối trang trước, tránh lặp dòng.
+- Mỗi dòng có `observed_at`, `received_at`, `value`, `quality_status`.
+  Thời gian trả UTC; đơn vị và loại trạm nằm ở cấp response (`unit`, `station_type`).
+- Trạm tồn tại nhưng khoảng chọn không có dữ liệu trả 200 với danh sách rỗng.
+  Trạm không tồn tại trả 404; tham số sai trả 422; lỗi database trả 503.
+- Khi người dùng chọn dòng lịch sử, gọi `prediction-inputs` bằng timestamp đó
+  để lấy đủ feature theo giờ. Giá trị gốc trên bảng có thể khác giá trị theo giờ
+  trong form. API lịch sử không xác nhận thời điểm có đủ dữ liệu để dự báo.
+
 ## API đầu vào dự báo
 
 ```text

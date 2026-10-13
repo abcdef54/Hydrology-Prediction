@@ -1,11 +1,18 @@
 """Read station observations for display, independently of prediction inputs."""
 
 from datetime import datetime, timezone
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 import sqlalchemy as sa
 
-from src.backend.api.schemas import ErrorResponse, LatestObservationResponse
+from src.backend.api.schemas import (
+    ErrorResponse,
+    HistoricalObservation,
+    LatestObservationResponse,
+    ObservationHistoryQuery,
+    ObservationHistoryResponse,
+)
 from src.backend.db.models import Observation, Station
 
 router = APIRouter(prefix="/api/v1", tags=["Observations"])
@@ -74,4 +81,83 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
         is_stale=data_age_minutes > stale_after_minutes,
         data_age_minutes=data_age_minutes,
         stale_after_minutes=stale_after_minutes,
+    )
+
+
+@router.get(
+    "/stations/{station_id}/observations",
+    response_model=ObservationHistoryResponse,
+    responses={
+        404: {"model": ErrorResponse},
+        422: {"model": ErrorResponse},
+        503: {"model": ErrorResponse},
+    },
+)
+def get_observation_history(
+    request: Request,
+    station_id: str,
+    query: Annotated[ObservationHistoryQuery, Query()],
+) -> ObservationHistoryResponse:
+    """Page raw observations newest first within [start, end), including missing rows.
+
+    All input timestamps require a timezone; response timestamps are UTC. The
+    exclusive before cursor prevents repeating a page's last observation.
+    An existing station with no rows in the range returns an empty list. This
+    endpoint does not aggregate, fill gaps, or check prediction availability.
+    """
+    start = query.start.astimezone(timezone.utc)
+    end = query.end.astimezone(timezone.utc)
+    now = datetime.now(timezone.utc)
+    if end > now:
+        raise HTTPException(
+            status_code=422,
+            detail={"code": "INVALID_REQUEST", "message": "end must not be in the future."},
+        )
+
+    station_query = sa.select(Station.station_type, Station.measurement_unit).where(
+        Station.id == station_id
+    )
+    history_query = sa.select(
+        Observation.depth,
+        Observation.observed_at,
+        Observation.received_at,
+        Observation.quality_status,
+    ).where(
+        Observation.station_id == station_id,
+        Observation.observed_at >= start,
+        Observation.observed_at < end,
+    )
+    if query.before is not None:
+        history_query = history_query.where(Observation.observed_at < query.before)
+    # One extra row tells the client whether another page exists, without COUNT(*).
+    history_query = history_query.order_by(Observation.observed_at.desc()).limit(query.limit + 1)
+    with request.app.state.database_engine.connect() as connection:
+        station = connection.execute(station_query).mappings().first()
+        if station is None:
+            raise HTTPException(
+                status_code=404,
+                detail={"code": "STATION_NOT_FOUND", "message": "Station does not exist."},
+            )
+        history_rows = connection.execute(history_query).mappings().all()
+
+    has_more = len(history_rows) > query.limit
+    page_rows = history_rows[: query.limit]
+    observations = [
+        HistoricalObservation(
+            observed_at=row["observed_at"].astimezone(timezone.utc),
+            received_at=row["received_at"].astimezone(timezone.utc),
+            value=row["depth"],
+            quality_status=row["quality_status"],
+        )
+        for row in page_rows
+    ]
+    return ObservationHistoryResponse(
+        station_id=station_id,
+        station_type=station["station_type"],
+        unit=station["measurement_unit"],
+        start=start,
+        end=end,
+        observations=observations,
+        has_more=has_more,
+        next_before=observations[-1].observed_at if has_more else None,
     )

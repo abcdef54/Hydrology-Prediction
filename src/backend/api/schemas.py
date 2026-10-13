@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
 
 class StationLocation(BaseModel):
@@ -56,6 +56,42 @@ class LatestObservationResponse(BaseModel):
     is_stale: bool
     data_age_minutes: float = Field(ge=0)
     stale_after_minutes: float
+
+
+class ObservationHistoryQuery(BaseModel):
+    """Read raw history in [start, end); before is an exclusive paging cursor."""
+
+    model_config = ConfigDict(extra="forbid")
+    start: AwareDatetime
+    end: AwareDatetime
+    limit: int = Field(default=100, ge=1, le=1000)
+    before: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def validate_time_range(self):
+        if self.start >= self.end:
+            raise ValueError("start must be earlier than end.")
+        return self
+
+
+class HistoricalObservation(BaseModel):
+    observed_at: AwareDatetime
+    received_at: AwareDatetime
+    value: float | None = Field(allow_inf_nan=False)
+    quality_status: Literal["observed", "missing"]
+
+
+class ObservationHistoryResponse(BaseModel):
+    station_id: str
+    station_type: Literal["water_level", "rainfall"]
+    unit: str | None
+    start: AwareDatetime
+    end: AwareDatetime
+    observations: list[HistoricalObservation]
+    has_more: bool
+    next_before: AwareDatetime | None = Field(
+        description="Pass as before with the same start/end for the next page."
+    )
 
 
 class PredictionInputsQuery(BaseModel):
