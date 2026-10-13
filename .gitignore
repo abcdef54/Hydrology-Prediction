@@ -11,7 +11,5 @@ mlartifacts/
 # Archived GIS data is retained locally, outside version control.
 archive/
 
-ARCHITECTURE.md
-
 # Local data import utilities and reports are not published.
 scripts/local/
