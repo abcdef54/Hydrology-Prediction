@@ -19,6 +19,7 @@ from src.backend.api.prediction_inputs import router as prediction_inputs_router
 from src.backend.api.observations import router as observations_router
 from src.backend.api.prediction_availability import router as prediction_availability_router
 from src.backend.api.predictions import router as predictions_router
+from src.backend.api.forecast_history import router as forecast_history_router
 from src.backend.api.schemas import ErrorDetail, ErrorResponse
 from src.backend.api.stations import router as stations_router
 from src.backend.db.session import build_engine
@@ -158,6 +159,7 @@ def create_app(
     application.include_router(prediction_availability_router)
     application.include_router(prediction_inputs_router)
     application.include_router(predictions_router)
+    application.include_router(forecast_history_router)
     return application
 
 

@@ -203,6 +203,58 @@ PostgreSQL local nằm trong `scripts/local/verify_prediction_inputs_api.py` và
 đọc dữ liệu. Xem thêm `db/README.md` và `prediction/README.md` cho các phần bên dưới.
 
 
+## API đọc dự báo đã lưu và thực tế
+
+```bash
+curl --get 'http://127.0.0.1:8000/api/v1/stations/0074647403/forecasts' \
+  --data-urlencode 'start=2026-09-13T00:00:00+07:00' \
+  --data-urlencode 'end=2026-09-15T00:00:00+07:00' \
+  --data-urlencode 'horizon_minutes=60' \
+  --data-urlencode 'limit=100'
+```
+
+`GET /api/v1/stations/{station_id}/forecasts` phục vụ một đường biểu đồ so sánh:
+
+- `start`, `end` có múi giờ, lọc theo **forecast_at** trong `[start, end)`,
+  không theo anchor hoặc ngày chạy replay. `horizon_minutes` là bắt buộc và dương.
+  Frontend gọi riêng từng horizon, không nối các horizon thành cùng một đường.
+- Mặc định chọn model trong registry và pipeline tính từ code/config/artifact/
+  `PREDICTION_DEVICE` hiện tại. Frontend không truyền hoặc cho người dùng chọn
+  device. Để đọc lượt backfill GPU, backend dùng `PREDICTION_DEVICE=cuda`.
+- Có thể truyền `model_version` và `pipeline_version` để đọc một series đã lưu
+  thuộc phiên bản cũ. Nếu model khác model hiện tại thì phải chỉ rõ pipeline.
+  Cặp phiên bản tường minh không yêu cầu file model/scaler cũ còn tồn tại.
+- Một response chỉ chứa một model, pipeline và horizon. Nếu cùng thời điểm có
+  nhiều lần replay do input được sửa, lấy bản có `generated_at` mới nhất;
+  bản cũ vẫn giữ trong DB. Nếu thời điểm tạo trùng nhau, ID dùng để chọn ổn định.
+- `points` gồm `forecast_id`, `feature_schema_version`, `anchor_observed_at`,
+  `forecast_at`, `generated_at`, `predicted_water_level_mm`,
+  `actual_water_level_mm`, `actual_sample_count`.
+- Thực tế là trung bình các lần đo hợp lệ tại **chính trạm nước đó** trong
+  `(forecast_at - 1 giờ, forecast_at]`, cùng cách tổng hợp nước khi training.
+  Không dùng dữ liệu sau forecast_at, không nội suy hoặc thay thiếu bằng 0.
+  Có thể chỉ có một phần số lần đo trong giờ; `actual_sample_count` cho biết số
+  giá trị thực sự tham gia trung bình. Đây không phải cờ xác nhận giờ đầy đủ.
+- Giờ không có lần đo hợp lệ hoặc forecast_at còn trong tương lai trả
+  `actual_water_level_mm = null`, `actual_sample_count = 0`. Cho phép end ở tương
+  lai để hiển thị các điểm dự báo đã lưu nhưng chưa đến thời điểm quan trắc.
+- Thời gian trả UTC, đơn vị mm. Điểm được sắp từ mới đến cũ; frontend có thể đảo
+  thứ tự khi vẽ. `limit` mặc định 100, tối đa 1000. Khi `has_more = true`, truyền
+  `before=next_before` cùng khoảng thời gian và cặp phiên bản trả về để đọc trang
+  tiếp theo mà không đổi series giữa các request.
+- Trạm/series tồn tại nhưng không có điểm khớp trả danh sách rỗng. Mã trạm không
+  tồn tại trả 404; trạm mưa/params không hợp lệ trả 422; lỗi database, đơn vị chưa
+  xác nhận mm hoặc không xác định được pipeline mặc định trả 503.
+
+Endpoint chỉ đọc DB và đọc bytes artifact khi cần xác định pipeline mặc định;
+không deserialize model/scaler, không chạy inference hoặc ghi thêm dự báo.
+Quan trắc dùng để đối chiếu là dữ liệu hiện tại trong DB, có thể đã được nguồn
+chỉnh sửa sau lúc tạo dự báo. `generated_at` giúp phân biệt replay hiện tại với
+một dự báo thực sự đã phát trong quá khứ.
+
+Kiểm chứng local: `scripts/local/verify_forecast_history_api.py` đọc 240 điểm tại
+5 horizon, kiểm tra phân trang và đối chiếu với các trung bình giờ tính riêng.
+
 ## API chạy dự báo
 
 API dùng `forecasts` và `forecast_points` trong PostgreSQL (migration `0003`)
