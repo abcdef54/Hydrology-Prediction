@@ -12,6 +12,13 @@
     "rain_windows_hours": [3, 6, 12, 24],
     "water_lags_hours": [1, 3],
     "flood_season_months": [9, 10, 11, 12],
-    "calendar_timezone": "Asia/Ho_Chi_Minh"
+    "calendar_timezone": "Asia/Ho_Chi_Minh",
+    "model_parameters": {
+      "hidden_size": 32,
+      "num_layers": 3,
+      "dropout": 0.5,
+      "input_dropout": 0.2,
+      "head_dropout": 0.2
+    }
   }
 ]

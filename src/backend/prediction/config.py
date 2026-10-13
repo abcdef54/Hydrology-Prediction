@@ -1,6 +1,6 @@
 """Each water station owns a separately trained model and preprocessing contract."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -21,6 +21,7 @@ class StationModelConfig:
     water_lags_hours: tuple[int, ...] = (1, 3)
     flood_season_months: tuple[int, ...] = (9, 10, 11, 12)
     calendar_timezone: str = "Asia/Ho_Chi_Minh"
+    model_parameters: dict[str, int | float] = field(default_factory=dict)
 
     def __post_init__(self):
         if (

@@ -10,6 +10,7 @@ cấu hình riêng. Thêm trạm không có nghĩa là đưa nhiều trạm nư�
 - `features.py`: tạo feature theo cấu hình được chọn.
 - `preprocessing.py`: kiểm tra artifact đúng schema/sequence length, áp scaler riêng.
 - `inputs.py`: query PostgreSQL theo nguồn của cấu hình; trả tensor và định danh model.
+- `inference.py`: load checkpoint, chạy Residual LSTM ở chế độ eval và trả dự báo bằng mm.
 
 Hiện registry chỉ cấu hình Dã Viên: Residual LSTM, 96 timestep, 29 feature và 4 trạm
 mưa đã chọn. Logic dùng chung không cố định mã Dã Viên hoặc kích thước 96 × 29.
@@ -48,8 +49,8 @@ finally:
 
 Service được gắn với đúng cấu hình của preprocessor, không truyền một mã trạm
 khác vào service đã khởi tạo. API sau này sẽ lấy `station_id` người dùng chọn,
-tra registry và lấy service/model tương ứng. `model_path` mới là metadata;
-task hiện tại chưa load trọng số hoặc chạy inference.
+tra registry và lấy service/model tương ứng. `PredictionInputService` chỉ chuẩn bị
+đầu vào; `ResidualLSTMRuntime` sử dụng `model_path` để load trọng số và chạy dự báo.
 
 Các đường dẫn artifact được resolve tương đối với `artifact_root`. Preprocessing
 phải là artifact tin cậy đi cùng checkpoint của trạm. Chưa đóng gói artifact cho Docker.
@@ -99,3 +100,45 @@ riêng và kích thước 96 × 29 / 48 × 17; chưa có model thật cho trạm
 Đối chiếu Dã Viên với Train/Val/Test bằng script local
 `scripts/local/verify_prediction_inputs.py`; kết quả ở
 `scripts/local/prediction_inputs_verification.json`. Không ghi DB hoặc chạy model.
+
+
+## Chạy dự báo
+
+Backend dùng lại hai lớp `LSTM`/`ResidualLSTM` trong `src/ai/lstm.py`. Module này
+chỉ cần PyTorch; `src.ai.models` vẫn export các lớp đó để giữ tương thích training
+và các model đã lưu. Không thay đổi công thức forward hoặc tên trọng số.
+
+Sau khi đã lấy `config` và `engine` như ví dụ trên:
+
+```python
+from dataclasses import asdict
+from src.backend.prediction.inference import PredictionService, ResidualLSTMRuntime
+
+runtime = ResidualLSTMRuntime(config, device="cpu")
+service = PredictionService(engine, runtime)
+forecast = service.predict(
+    reference_time=datetime.fromisoformat("2026-09-20T14:30:00+07:00"),
+    overrides={"water_level_depth": 700.0},
+)
+print(asdict(forecast))
+```
+
+Khởi tạo runtime một lần cho mỗi mô hình rồi dùng lại. CPU là mặc định; có thể
+truyền `device="cuda"` nếu máy có CUDA. Việc kiểm chứng hiện tại thực hiện trên CPU.
+
+- `model_parameters` trong JSON lưu hidden size, số lớp và các dropout đúng cấu hình
+  training. `eval()` vô hiệu hóa dropout; `torch.inference_mode()` tắt tính gradient.
+- Không có optimizer, training loss hay correction penalty trong luồng dự báo.
+- Kiểm tra thứ tự target, kích thước trọng số và hệ số persistence với scaler trước
+  khi dùng. Chỉ load artifact tin cậy; scaler joblib thuộc cùng model đã xác minh.
+- Input của trạm/model/schema khác bị từ chối. Model type chưa hỗ trợ cũng bị từ chối.
+- Inverse transform bằng target scaler; không nhân/chia thêm đơn vị. Kết quả là mm,
+  không làm tròn hoặc ép mực nước âm về 0.
+- Mốc dự báo bằng `anchor_observed_at + horizon`, không dùng mốc người dùng yêu cầu
+  nếu chuỗi thực tế kết thúc sớm hơn. Kết quả giữ station, model/schema version và
+  cả mốc yêu cầu, mốc giờ, anchor để API có thể biểu diễn rõ.
+
+Script local `scripts/local/verify_prediction_inference.py` đối chiếu toàn bộ chuỗi
+Test với artifact mô hình đã lưu, kiểm tra RMSE với MLflow đã ghi nhận và chạy
+latest/historical/override trên PostgreSQL ở chế độ chỉ đọc. Kết quả lưu tại
+`scripts/local/prediction_inference_verification.json`. Không train hoặc ghi MLflow.
