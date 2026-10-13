@@ -12,7 +12,7 @@ Các mô hình đã thử nghiệm gồm XGBoost, LightGBM và các biến thể
 | `src/ai/` | Huấn luyện và đánh giá mô hình |
 | `research/` | Tạo dataset và các notebook phân tích |
 | `train_data/` | Dữ liệu Train/Val/Test |
-| `model/` | Trọng số mô hình |
+| [model/](model/README.md) | Trọng số và scaler riêng cho từng trạm |
 
 ## Chạy backend
 

@@ -17,7 +17,7 @@ Mô hình tốt nhất hiện tại là **Residual LSTM**, được sử dụng 
 **Model checkpoint:**
 
 ```text
-models/1h_top4/1h/ResidualLSTM_water_level+rain+flood_season_best.pt
+model/da_vien_0074647403_residual_lstm.pt
 ```
 
 **Training Configuration:**

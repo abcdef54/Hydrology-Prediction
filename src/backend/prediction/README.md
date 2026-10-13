@@ -55,6 +55,11 @@ tra registry và lấy service/model tương ứng. `PredictionInputService` ch�
 Các đường dẫn artifact được resolve tương đối với `artifact_root`. Preprocessing
 phải là artifact tin cậy đi cùng checkpoint của trạm. Chưa đóng gói artifact cho Docker.
 
+Cặp model/scaler Dã Viên phục vụ ứng dụng nằm ngay trong `model/`, theo quy ước
+[đặt tên theo trạm và loại model](../../../model/README.md). Registry trỏ trực
+tiếp vào cặp file này, không phụ thuộc thư mục MLflow. Khi thêm trạm hoặc đổi
+phiên bản, đặt cặp file riêng rồi cập nhật registry và khởi động lại API.
+
 ## Quy tắc chuẩn bị dữ liệu
 
 1. Latest dùng giờ hoàn tất của quan trắc nước mới nhất không nằm trong tương lai:
