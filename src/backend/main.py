@@ -5,8 +5,7 @@ import logging
 import math
 import os
 from pathlib import Path
-from uuid import uuid4
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,6 +13,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException
+from starlette.middleware.cors import CORSMiddleware
 
 from src.backend.api.prediction_inputs import router as prediction_inputs_router
 from src.backend.api.observations import router as observations_router
@@ -26,6 +26,9 @@ from src.backend.api.stations import router as stations_router
 from src.backend.cache.latest import LatestObservationCache
 from src.backend.db.session import build_engine
 from src.backend.prediction.config import StationModelRegistry
+from src.backend.security.config import SecuritySettings
+from src.backend.security.middleware import PublicApiMiddleware
+from src.backend.security.rate_limit import RequestRateLimiter
 
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -59,6 +62,8 @@ def create_app(
     registry: StationModelRegistry | None = None,
     stale_after_minutes: float | None = None,
     latest_cache: LatestObservationCache | None = None,
+    security_settings: SecuritySettings | None = None,
+    rate_limiter: RequestRateLimiter | None = None,
 ) -> FastAPI:
     """Create the API with optional existing resources for tests or embedding.
 
@@ -77,6 +82,9 @@ def create_app(
         latest_cache: Existing cache owned by the caller; None configures an
             application-owned Redis cache from REDIS_URL during startup. Without
             REDIS_URL caching is disabled. No Redis connection is required to start.
+        security_settings: Explicit origins/admission limits; None reads environment.
+        rate_limiter: Caller-owned limiter for tests/embedding; None configures an
+            app-owned limiter using Redis when configured, with local fallback.
 
     Returns:
         FastAPI application with routes, request IDs, error handlers and resource
@@ -87,6 +95,10 @@ def create_app(
         RuntimeError: During startup if a required DATABASE_URL is absent.
         OSError: During startup if the model configuration file cannot be read.
     """
+
+    configured_security = (
+        security_settings if security_settings is not None else SecuritySettings.from_env()
+    )
 
     @asynccontextmanager
     async def lifespan(application: FastAPI):
@@ -114,32 +126,44 @@ def create_app(
         application.state.prediction_device = os.environ.get("PREDICTION_DEVICE", "cpu")
         application.state.prediction_services = {}
         application.state.prediction_service_lock = Lock()
+        application.state.security_settings = configured_security
+        application.state.prediction_slots = BoundedSemaphore(
+            configured_security.max_concurrent_predictions
+        )
+        application.state.request_rate_limiter = (
+            rate_limiter
+            if rate_limiter is not None
+            else RequestRateLimiter.from_env(configured_security)
+        )
         try:
             yield
         finally:
             application.state.prediction_services.clear()
+            if rate_limiter is None:
+                application.state.request_rate_limiter.close()
             if latest_cache is None:
                 application.state.latest_observation_cache.close()
             if engine is None:
                 application.state.database_engine.dispose()
 
-    application = FastAPI(title="Hydrology Prediction API", version="0.1.0", lifespan=lifespan)
-
-    @application.middleware("http")
-    async def assign_request_id(request: Request, call_next):
-        request.state.request_id = str(uuid4())
-        response = await call_next(request)
-        response.headers["X-Request-ID"] = request.state.request_id
-        return response
+    application = FastAPI(
+        title="Hydrology Prediction API",
+        version="0.1.0",
+        lifespan=lifespan,
+        responses={status: {"model": ErrorResponse} for status in (403, 408, 413, 415, 429)},
+    )
 
     @application.exception_handler(HTTPException)
     async def handle_http_error(request: Request, error: HTTPException):
         detail = error.detail
         if isinstance(detail, dict) and "code" in detail:
-            return error_response(
+            response = error_response(
                 request, error.status_code, detail["code"], detail["message"], detail.get("details")
             )
-        return error_response(request, error.status_code, "HTTP_ERROR", str(detail))
+        else:
+            response = error_response(request, error.status_code, "HTTP_ERROR", str(detail))
+        response.headers.update(error.headers or {})
+        return response
 
     @application.exception_handler(RequestValidationError)
     async def handle_validation_error(request: Request, error: RequestValidationError):
@@ -172,6 +196,17 @@ def create_app(
     application.include_router(predictions_router)
     application.include_router(forecast_history_router)
     application.include_router(forecast_detail_router)
+    application.add_middleware(PublicApiMiddleware)
+    # Last added is outermost: CORS also wraps admission errors and safe route 500s.
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=list(configured_security.cors_origins),
+        allow_methods=["GET", "POST"],
+        allow_headers=["Accept", "Content-Type"],
+        allow_credentials=False,
+        expose_headers=["X-Request-ID", "Retry-After"],
+        max_age=600,
+    )
     return application
 
 

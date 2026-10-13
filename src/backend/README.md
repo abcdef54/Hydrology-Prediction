@@ -10,7 +10,7 @@ Chạy từ thư mục gốc dự án:
 
 ```bash
 .venv/bin/python -m pip install -r src/backend/requirements.txt
-.venv/bin/python -m uvicorn src.backend.main:app --env-file .env --host 127.0.0.1 --port 8000
+.venv/bin/python -m uvicorn src.backend.main:app --env-file .env --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers
 ```
 
 `.env` chứa `DATABASE_URL` của PostgreSQL đã migrate và có dữ liệu. Không đưa mật
@@ -22,6 +22,18 @@ Các file artifact phải là file tin cậy của mô hình tương ứng.
 
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - OpenAPI: `http://127.0.0.1:8000/openapi.json`
+
+## Bảo vệ API
+
+Đã có [CORS và giới hạn request/body/inference](security/README.md). Mặc định
+120 request/phút/IP, riêng Predict 20/phút/IP; body tối đa 16 KiB, thời gian nhận
+body 10 giây, và một request dự báo đồng thời trong mỗi process. Request bị chặn
+nhận 403/408/413/415/429 hoặc 503 với mã lỗi rõ ràng; 429 và inference bận có
+`Retry-After`. Redis lỗi vẫn giữ giới hạn local. Cấu hình chỉnh bằng environment.
+
+Frontend local được phép ở localhost/127.0.0.1:5173; Swagger local ở port 8000.
+Khi triển khai cần đặt `CORS_ORIGINS` đúng domain và cấu hình trusted proxy đúng.
+Chạy một API process cho GPU hiện tại; không tự tăng số workers để tăng throughput.
 
 ## Worker cập nhật dữ liệu tự động
 

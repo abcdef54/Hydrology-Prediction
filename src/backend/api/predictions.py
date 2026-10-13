@@ -12,6 +12,7 @@ from src.backend.prediction.config import StationModelConfig
 from src.backend.prediction.inference import PredictionService, ResidualLSTMRuntime
 from src.backend.prediction.inputs import InsufficientHistoryError
 from src.backend.prediction.preprocessing import InvalidOverrideError
+from src.backend.security.inference import prediction_slot
 
 router = APIRouter(prefix="/api/v1", tags=["Predictions"])
 
@@ -55,7 +56,7 @@ def get_prediction_service(request: Request, config: StationModelConfig) -> Pred
 @router.post(
     "/predictions",
     response_model=PredictionResponse,
-    responses={status: {"model": ErrorResponse} for status in (400, 404, 422, 503)},
+    responses={status: {"model": ErrorResponse} for status in (400, 404, 413, 422, 429, 503)},
 )
 def predict_water_level(
     request: Request, prediction_request: PredictionRequest
@@ -78,7 +79,8 @@ def predict_water_level(
 
     Raises:
         HTTPException: For invalid requests/edits (422), unknown stations (404),
-            insufficient history (400) or unavailable model/input execution (503).
+            insufficient history (400), occupied prediction slots (503 INFERENCE_BUSY),
+            or unavailable model/input execution (503).
         sqlalchemy.exc.SQLAlchemyError: Database failures handled as 503 by the app.
     """
     current_time = datetime.now(timezone.utc)
@@ -91,35 +93,36 @@ def predict_water_level(
                 "message": "Reference time cannot be in the future.",
             },
         )
-    config = get_station_model_config(request, prediction_request.station_id)
-    service = get_prediction_service(request, config)
-    try:
-        # Reject bad edits before fetching the potentially large historical window.
-        service.runtime.preprocessor.validate_overrides(prediction_request.overrides)
-        forecast = service.predict(reference_time, prediction_request.overrides)
-    except InvalidOverrideError as error:
-        raise HTTPException(422, {"code": "INVALID_OVERRIDE", "message": str(error)}) from None
-    except InsufficientHistoryError as error:
-        raise HTTPException(
-            400,
-            {
-                "code": "INSUFFICIENT_HISTORY",
-                "message": "Not enough valid historical observations to form model input.",
-                "details": {
-                    "required": error.required,
-                    "available": error.available,
-                    "input_ready": False,
+    with prediction_slot(request):
+        config = get_station_model_config(request, prediction_request.station_id)
+        service = get_prediction_service(request, config)
+        try:
+            # Reject bad edits before fetching the potentially large historical window.
+            service.runtime.preprocessor.validate_overrides(prediction_request.overrides)
+            forecast = service.predict(reference_time, prediction_request.overrides)
+        except InvalidOverrideError as error:
+            raise HTTPException(422, {"code": "INVALID_OVERRIDE", "message": str(error)}) from None
+        except InsufficientHistoryError as error:
+            raise HTTPException(
+                400,
+                {
+                    "code": "INSUFFICIENT_HISTORY",
+                    "message": "Not enough valid historical observations to form model input.",
+                    "details": {
+                        "required": error.required,
+                        "available": error.available,
+                        "input_ready": False,
+                    },
                 },
-            },
-        ) from None
-    except (ValueError, RuntimeError):
-        raise HTTPException(
-            503,
-            {
-                "code": "PREDICTION_UNAVAILABLE",
-                "message": "Prediction could not be produced for this input.",
-            },
-        ) from None
+            ) from None
+        except (ValueError, RuntimeError):
+            raise HTTPException(
+                503,
+                {
+                    "code": "PREDICTION_UNAVAILABLE",
+                    "message": "Prediction could not be produced for this input.",
+                },
+            ) from None
     age_reference = current_time if reference_time is None else forecast.hourly_reference_time
     input_age_minutes = max(0.0, (age_reference - forecast.anchor_observed_at).total_seconds() / 60)
     stale_after_minutes = request.app.state.stale_after_minutes

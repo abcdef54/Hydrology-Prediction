@@ -4,8 +4,6 @@
 
 **Trạng thái:** Final architecture baseline — các phần phụ thuộc dữ liệu thực sẽ được xác minh trong Phase 1  
 
-**Mục tiêu:** Tài liệu độc lập và là nguồn yêu cầu chính để AI Coding Agent lập kế hoạch và triển khai; không phụ thuộc các bản kiến trúc trước. Agent phải đọc repository/Postman/model artifacts để xác minh giả định còn mở.
-
 > **Phân biệt:** **[ĐÃ DUYỆT]** là quyết định đã được chủ dự án chấp thuận; **[ĐỀ XUẤT]** là hướng triển khai có thể điều chỉnh nếu nêu rõ lý do; **[CẦN KIỂM CHỨNG]** là nội dung Agent phải khảo sát từ repository, Postman collection, dataset hoặc model artifact. Không được biến giả định thành sự thật trong code.
 
 ---
@@ -14,7 +12,7 @@
 
 ### 1. Best Trained Model
 
-Mô hình tốt nhất hiện tại là **Residual LSTM**, được sử dụng làm mô hình mặc định cho hệ thống dự báo mực nước.
+Mô hình tốt nhất hiện tại là **Residual LSTM**, được sử dụng làm mô hình mặc định cho hệ thống dự báo mực nước tại trạm Dã Viên.
 
 **Model checkpoint:**
 
@@ -309,6 +307,16 @@ Luồng xử lý:
 **Bảo vệ ứng dụng công khai không có login:** Rate limiting theo IP hoặc một chiến lược phù hợp, request body size limit, timeout, CORS, kiểm soát tài nguyên inference; không phụ thuộc authentication để chặn lạm dụng.
 
 ---
+
+### 3.1. Bảo vệ API công khai — đã triển khai
+
+- CORS allowlist cấu hình bằng `CORS_ORIGINS`, không wildcard/credentials. Mặc định cho frontend local port 5173 và Swagger local port 8000. Origin không hợp lệ bị từ chối trước endpoint; preflight do CORSMiddleware xử lý riêng.
+- Quota mặc định **120 request/60 giây/IP**, trong đó POST Predict tối đa **20/60 giây/IP**. Redis chia sẻ bộ đếm qua Lua/TTL; bộ đếm local luôn hoạt động và tiếp tục bảo vệ khi Redis lỗi. Bảng local tối đa 10.000 IP, không evict IP còn hạn để tránh vượt quota. Vượt quota trả 429 và Retry-After.
+- Body tối đa **16 KiB**, đếm byte thực tế kể cả chunked/Content-Length khai nhỏ; deadline nhận body **10 giây**. Lỗi trả 413/408, body nén bị từ chối bằng 415. Các giới hạn có environment riêng và không thay đổi preprocessing/model.
+- Semaphore bao quanh model loading, chuẩn bị input, inference và persistence. Mặc định **1 prediction request đồng thời trong mỗi process**; hết chỗ trả ngay 503 `INFERENCE_BUSY` và Retry-After, không xếp hàng GPU. Luôn trả chỗ khi synchronous work kết thúc, kể cả lỗi; không giải phóng sớm vì timeout client.
+- Triển khai GPU hiện tại cần **một API process/replica**. Redis quota chia sẻ được, nhưng model/semaphore thuộc từng process. Chưa triển khai giới hạn GPU chung nhiều process hoặc hard timeout cho model. HTTPS và giới hạn kết nối/timeout proxy thuộc bước Deploy.
+- IP lấy từ ASGI scope, không tự tin X-Forwarded-For. Local chạy `--no-proxy-headers`; production chỉ tin đúng proxy đã cấu hình và proxy phải thay header IP do client gửi. Chi tiết cấu hình/kiểm tra: `src/backend/security/README.md`.
+
 
 ## 4. High-Level Architecture
 ### 4.1. Architectural Style
@@ -666,7 +674,7 @@ Một số API endpoints gợi ý, nếu trong quá trình implement cần phả
 }
 ```
 
-HTTP status: `400` yêu cầu nghiệp vụ không phù hợp, `404` station không tồn tại, `422` validation errors, `429` rate limit, `502` upstream lỗi, `503` model/data service không khả dụng, `500` lỗi nội bộ. Phân biệt rõ `INSUFFICIENT_HISTORY`, `MODEL_UNAVAILABLE`, `MISSING_REQUIRED_FEATURES`, `STALE_SOURCE_DATA`, `UPSTREAM_UNAVAILABLE`.
+HTTP status: `400` yêu cầu nghiệp vụ không phù hợp, `403` origin không được phép, `404` station không tồn tại, `408` body timeout, `413` body quá lớn, `415` body encoding không hỗ trợ, `422` validation errors, `429` rate limit, `502` upstream lỗi, `503` model/data service không khả dụng, `500` lỗi nội bộ. Phân biệt rõ `INSUFFICIENT_HISTORY`, `MODEL_UNAVAILABLE`, `MISSING_REQUIRED_FEATURES`, `STALE_SOURCE_DATA`, `UPSTREAM_UNAVAILABLE`.
 
 ---
 

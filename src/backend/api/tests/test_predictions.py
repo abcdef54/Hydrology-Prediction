@@ -1,7 +1,9 @@
 """Prediction HTTP contract, override validation and per-station runtime reuse."""
 
 from dataclasses import replace
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
+from threading import Event
 from unittest import TestCase, main
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -233,6 +235,47 @@ class PredictionsApiTests(TestCase):
         operation = self.client.get("/openapi.json").json()["paths"][self.url]["post"]
         self.assertIn("requestBody", operation)
         self.assertIn("503", operation["responses"])
+
+    def test_busy_prediction_is_rejected_before_loading_model_and_can_retry(self):
+        slots = self.application.state.prediction_slots
+        self.assertTrue(slots.acquire(blocking=False))
+        try:
+            response = self.client.post(self.url, json=self.body)
+            self.assert_error(response, 503, "INFERENCE_BUSY")
+            self.assertEqual(response.headers["Retry-After"], "1")
+            self.service_lookup.assert_not_called()
+        finally:
+            slots.release()
+        self.assertEqual(self.client.post(self.url, json=self.body).status_code, 200)
+
+    def test_overlapping_predictions_hold_slot_until_work_finishes(self):
+        started = Event()
+        finish = Event()
+
+        def predict(*args):
+            started.set()
+            if not finish.wait(3):
+                raise RuntimeError("Test did not release prediction work.")
+            return self.forecast
+
+        self.service.predict.side_effect = predict
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            first = executor.submit(self.client.post, self.url, json=self.body)
+            try:
+                self.assertTrue(started.wait(2))
+                rejected = self.client.post(self.url, json=self.body)
+                self.assert_error(rejected, 503, "INFERENCE_BUSY")
+                self.assertEqual(self.service.predict.call_count, 1)
+            finally:
+                finish.set()
+            self.assertEqual(first.result(timeout=3).status_code, 200)
+
+    def test_prediction_failure_releases_slot(self):
+        self.service.predict.side_effect = RuntimeError("private details")
+        self.assert_error(self.client.post(self.url, json=self.body), 503, "PREDICTION_UNAVAILABLE")
+        slots = self.application.state.prediction_slots
+        self.assertTrue(slots.acquire(blocking=False))
+        slots.release()
 
 
 if __name__ == "__main__":
