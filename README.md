@@ -1,7 +1,8 @@
 # Hydrology workspace
 
 - `src/ai/`: model training and evaluation code.
-- `scripts/`: hourly top-four-rain dataset builder, MLflow metrics notebook, and seasonal analysis notebook.
+- `src/backend/`: application API, prediction serving, PostgreSQL integration and ingestion worker.
+- `research/`: dataset preparation and analysis notebooks used during model development.
 - `data/`: original observations, metadata, SQLite master, and provenance/checksums.
 - `train_data/1h/` and `train_data/1h_top4/`: train/validation/test splits.
 - `reports/`: current hourly datasets and their audit/missingness metadata.
@@ -19,8 +20,8 @@ Open http://localhost:5000. Training uses this local tracking server.
 For the current dataset, pass `--horizon 1h --dataset-dir train_data/1h_top4`
 to `.venv/bin/python src/ai/train.py`; use `--help` for the other required options.
 
-Open `scripts/mlflow_metrics.ipynb` to evaluate saved runs. New exports go to
-`reports/mlflow_metrics/`. Open `scripts/seasonal_analysis.ipynb` for rainfall
+Open `research/mlflow_metrics.ipynb` to evaluate saved runs. New exports go to
+`reports/mlflow_metrics/`. Open `research/seasonal_analysis.ipynb` for rainfall
 and water-level analysis.
 
 The archive preserves original relative paths. Restore the required files to
