@@ -1,6 +1,6 @@
 # Water Level Forecasting System
 **Software Architecture & System Design Plan — FINAL v1.0**
-**Ngày cập nhật:** 12/10/2026  
+**Ngày cập nhật:** 13/10/2026  
 
 **Trạng thái:** Final architecture baseline — các phần phụ thuộc dữ liệu thực sẽ được xác minh trong Phase 1  
 
@@ -701,6 +701,17 @@ Select station / open page
 
   -> React displays popup/detail and prefills form
 ```
+
+### 7.2.1. Pipeline đồng bộ quan trắc tự động — đã triển khai
+
+- Worker nằm trong code chính `src/backend/ingestion/`, chạy bằng `python -m src.backend.ingestion` qua systemd user service `hydrology-sync.service`, không chạy trong từng process FastAPI. Mã nguồn, tests và unit triển khai được quản lý cùng backend; các công cụ nhập lịch sử/kiểm tra thủ công vẫn ở `scripts/local/`.
+- JSON trạng thái mặc định ở `reports/hydrology_sync_status.json`, có thể đổi bằng `HYDROLOGY_SYNC_REPORT_PATH` hoặc `--report`; không ghi runtime output vào package nguồn.
+- **Polling mỗi 11 phút** theo quyết định chủ dự án; không coi đây là cam kết API nguồn phát dữ liệu mới mỗi 11 phút. Nhịp đo 10 phút đã thấy trong mẫu vẫn khác nhịp công bố dữ liệu.
+- Mỗi trạm dùng watermark riêng, đọc chồng **24 giờ có thể cấu hình**, rồi lấy đến mốc bắt đầu lượt. Phân trang ID tăng dần đã kiểm tra live với nguồn nước và mưa, không chỉ lấy bản ghi mới nhất.
+- Validate toàn bộ nhóm trước khi UPSERT PostgreSQL trong một transaction. Không ghi lại hàng không đổi, giữ thời điểm received_at đầu tiên; lỗi một trạm rollback nhóm. Khóa advisory dùng chung importer để tránh ghi chồng.
+- Có timeout, retry giới hạn, token renewal qua login khi cần, report/log không chứa credentials, và signal shutdown. Lượt lỗi giữ quan trắc cũ và thử lại chu kỳ kế tiếp.
+- Credentials và chu kỳ nằm trong `.env` private. Đã bật enable và linger cho user service; cần môi trường máy/WSL hoạt động để chạy. Docker sau này dùng một worker container riêng, không nhân bản job theo số API workers.
+- Chỉ đồng bộ quan trắc; không tự train, backfill forecast, sửa dataset hoặc xóa bản ghi nguồn biến mất. Sửa đổi cũ ngoài cửa sổ overlap cần đối soát/backfill riêng. Cache invalidation sẽ được nối khi triển khai Redis.
 
 ### 7.3. Historical Replay / Last-N Selection
 **Quy tắc đã thống nhất:** Lấy N bản ghi quá khứ hợp lệ gần nhất, **không bắt buộc các quan trắc phải cách nhau chính xác 1 giờ**.

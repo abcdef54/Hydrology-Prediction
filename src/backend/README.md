@@ -23,6 +23,25 @@ Các file artifact phải là file tin cậy của mô hình tương ứng.
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - OpenAPI: `http://127.0.0.1:8000/openapi.json`
 
+## Worker cập nhật dữ liệu tự động
+
+Pipeline nằm trong [`ingestion/`](ingestion/README.md), chạy như process riêng
+với API để tránh nhân bản lịch đồng bộ theo số Uvicorn workers. Mặc định mỗi
+**11 phút** worker lấy dữ liệu mới của các trạm nguồn được bật và UPSERT vào
+PostgreSQL. API đọc dữ liệu đã lưu từ database.
+
+```bash
+# Kiểm tra nguồn, không ghi quan trắc
+.venv/bin/python -m src.backend.ingestion --once --dry-run
+# Chạy worker liên tục
+.venv/bin/python -m src.backend.ingestion
+```
+
+Worker dùng `DATABASE_URL`, `HYDROLOGY_API_BASE_URL`, `HYDROLOGY_API_EMAIL` và
+`HYDROLOGY_API_PASSWORD` từ environment hoặc `.env` private. Xem hướng dẫn trong
+`ingestion/README.md` để cấu hình chu kỳ, report và systemd service. Mật khẩu,
+báo cáo runtime và các công cụ nhập lịch sử local không đưa vào code chính.
+
 ## API danh sách trạm
 
 ```bash

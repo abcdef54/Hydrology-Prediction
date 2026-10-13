@@ -1,0 +1,17 @@
+[Unit]
+Description=Sync Hue hydrology observations every 11 minutes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/my_ubuntu/projects/hydrology
+ExecStart=/home/my_ubuntu/projects/hydrology/.venv/bin/python -u -m src.backend.ingestion
+Restart=on-failure
+RestartSec=60
+TimeoutStopSec=90
+KillSignal=SIGTERM
+UMask=0077
+
+[Install]
+WantedBy=default.target
