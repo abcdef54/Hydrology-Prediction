@@ -43,7 +43,7 @@ npm run dev
 ```
 
 Mở http://localhost:5173 để xem bản đồ Huế, kéo và phóng to/thu nhỏ.
-Bản đồ nền cần Internet; trang hiện tại chưa gọi API backend.
+Bản đồ nền cần Internet; marker trạm lấy từ backend đang chạy ở cổng 8000.
 Xem [hướng dẫn frontend](src/frontend/README.md) cho yêu cầu Node.js và cách build.
 
 ## Huấn luyện và phân tích

@@ -1,18 +1,23 @@
 /**
- * Đọc danh sách trạm để kiểm tra kết nối frontend → backend → PostgreSQL.
+ * Đọc danh sách trạm được bật và metadata vị trí từ backend.
  *
+ * @param {AbortSignal} [signal] Hủy request khi component gọi API unmount.
  * @returns {Promise<Array<object>>} Các trạm đang được bật trong backend.
  * @throws {Error} Khi hết thời gian chờ, mất kết nối, HTTP lỗi hoặc sai cấu trúc JSON.
+ * @throws {DOMException} Khi caller hủy request bằng signal.
  */
-export async function fetchStations() {
+export async function fetchStations(signal) {
   let response;
 
   try {
     response = await fetch('/api/v1/stations', {
       headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(10_000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
+        : AbortSignal.timeout(10_000),
     });
   } catch (error) {
+    if (signal?.aborted) throw error;
     if (error.name === 'TimeoutError') {
       throw new Error('Backend phản hồi quá chậm. Vui lòng thử lại.');
     }

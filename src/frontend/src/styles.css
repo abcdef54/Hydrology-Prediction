@@ -9,3 +9,45 @@
     font-family: Arial, Helvetica, sans-serif;
   }
 }
+
+@layer components {
+  .station-marker {
+    display: grid;
+    place-items: center;
+    border: 2px solid white;
+    border-radius: 50%;
+    pointer-events: none;
+    box-shadow: 0 2px 5px rgb(15 23 42 / 20%);
+  }
+
+  .station-marker svg {
+    width: 65%;
+    height: 65%;
+  }
+
+  .station-marker--water {
+    z-index: 2;
+    width: 40px;
+    height: 40px;
+    border-width: 3px;
+    color: white;
+    background: #075985;
+    box-shadow: 0 0 0 3px rgb(7 89 133 / 18%), 0 3px 8px rgb(15 23 42 / 25%);
+  }
+
+  .station-marker--rain {
+    z-index: 1;
+    width: 28px;
+    height: 28px;
+    color: #334155;
+    background: #cbdce8;
+  }
+
+  .station-marker--other {
+    z-index: 1;
+    width: 24px;
+    height: 24px;
+    color: #475569;
+    background: #e2e8f0;
+  }
+}

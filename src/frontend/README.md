@@ -2,7 +2,8 @@
 
 React + Vite + Tailwind CSS. Bản đồ dùng MapLibre GL JS và vector tiles theo schema
 OpenMapTiles, dữ liệu OpenStreetMap do OpenFreeMap cung cấp. Không cần API key.
-Trang hiện chỉ có bản đồ toàn màn hình, mở sẵn tại Huế, zoom 12; có thể kéo và zoom.
+Trang có bản đồ toàn màn hình, mở sẵn tại Huế, zoom 12; có thể kéo và zoom.
+Marker trạm được lấy động từ backend, hiện gồm Dã Viên và 4 trạm mưa A Lưới.
 
 ## Chạy local
 
@@ -15,8 +16,24 @@ npm run dev
 ```
 
 Mở <http://localhost:5173>. Bản đồ cần Internet và trình duyệt hỗ trợ WebGL.
-Trang hiện không gọi API backend; backend có thể tiếp tục chạy ở terminal riêng.
-Có trạng thái tải và thông báo khi không truy cập được nguồn bản đồ.
+Backend cần chạy tại cổng 8000, kết nối PostgreSQL đã có dữ liệu trạm.
+Có trạng thái tải và thông báo khi không truy cập được bản đồ hoặc danh sách trạm;
+lỗi API trạm không làm mất bản đồ nền.
+
+## Marker trạm
+
+Trang gọi `GET /api/v1/stations` qua proxy Vite, sử dụng `station_type` và
+`location.longitude/latitude` từ API; không hardcode tọa độ hoặc danh sách trạm.
+
+- Trạm nước: marker 40 px, xanh đậm, icon sóng nước; nổi bật và nằm trên marker phụ.
+- Trạm mưa: marker 28 px, màu nhẹ hơn, icon mây/mưa.
+- Loại khác: marker 24 px, màu trung tính; trạm gió dùng icon gió nếu API hỗ trợ.
+- API hiện chỉ hỗ trợ `water_level` và `rainfall`; không tự tạo trạm gió.
+- Thiếu/sai tọa độ: bỏ qua trạm đó và hiển thị thông báo, không dùng vị trí giả.
+- Marker chỉ để xem: không popup, không chọn trạm, không kéo marker hoặc hành động click.
+- Trạm mưa A Lưới nằm về phía tây Huế; có thể cần kéo/thu nhỏ để xem tùy màn hình.
+
+Request trạm được hủy và marker được gỡ khi component unmount, tránh marker lặp.
 
 ## Nguồn bản đồ và giới hạn hiển thị
 
@@ -60,7 +77,7 @@ lọc giữ nguyên. Bổ sung kiểm tra các nhãn địa hình dưới biển
 cả khi nằm ngoài vùng đảo; nhãn biển Việt, hồ/sông và địa danh đất liền Trung Quốc
 được giữ đúng phạm vi. Các mẫu kiểm tra nằm trong `/tmp`, không đưa dữ liệu bản đồ vào Git.
 
-## Kết nối backend cho task sau
+## Kết nối backend
 
 Vite giữ cố định cổng 5173, báo lỗi nếu cổng đã được dùng. Đường dẫn `/api`
 được proxy nguyên dạng tới `http://127.0.0.1:8000`, cấu hình trong `vite.config.js`.
@@ -83,7 +100,8 @@ proxy local. Khi deploy static build cần reverse proxy `/api` riêng.
 - `src/components/MapView.jsx`: vòng đời MapLibre, trạng thái tải/lỗi và WebGL worker.
 - `src/mapConfig.js`: tâm nhìn, zoom, vùng điều hướng và các vùng ẩn nhãn ngoài khơi.
 - `src/maps/mapStyle.js`: biên giới đất liền, tên biển tiếng Việt và lọc nhãn ngoài khơi.
-- `src/api/stations.js`: hàm gọi API đã có, hiện chưa dùng trên trang bản đồ.
+- `src/maps/stationMarkers.js`: tạo marker theo loại trạm và kiểm tra tọa độ.
+- `src/api/stations.js`: đọc danh sách trạm, hỗ trợ timeout và hủy request.
 - `src/main.jsx`, `src/styles.css`: khởi tạo React, CSS MapLibre và Tailwind.
 
 Tham khảo: [OpenFreeMap](https://openfreemap.org/quick_start/),
