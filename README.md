@@ -1,30 +1,52 @@
-# Hydrology workspace
+# Dự báo mực nước
 
-- `src/ai/`: model training and evaluation code.
-- `src/backend/`: application API, prediction serving, PostgreSQL integration and ingestion worker.
-- `research/`: dataset preparation and analysis notebooks used during model development.
-- `data/`: original observations, metadata, SQLite master, and provenance/checksums.
-- `train_data/1h/` and `train_data/1h_top4/`: train/validation/test splits.
-- `reports/`: current hourly datasets and their audit/missingness metadata.
-- `mlflow.db`, `mlartifacts/`, `model/`, `pretrained/`: experiment history and model weights.
-- `archive/2026-10-07/`: earlier utilities, GIS inputs, documents, and analysis exports.
+Dự án phân tích dữ liệu thủy văn, huấn luyện mô hình và cung cấp API dự báo mực
+nước tại trạm Dã Viên, Huế, cho các mốc 1, 3, 6, 12 và 24 giờ.
+Các mô hình đã thử nghiệm gồm XGBoost, LightGBM và các biến thể LSTM.
 
-Run MLflow from this directory:
+## Cấu trúc dự án
+
+| Thư mục | Nội dung |
+|---|---|
+| `src/backend/` | API, chạy dự báo, lưu dữ liệu và tự động cập nhật quan trắc |
+| `src/ai/` | Huấn luyện và đánh giá mô hình |
+| `research/` | Tạo dataset và các notebook phân tích |
+| `train_data/` | Dữ liệu Train/Val/Test |
+| `model/` | Trọng số mô hình |
+
+## Chạy backend
+
+Backend cần PostgreSQL đã có schema và dữ liệu, cùng model và scaler tương ứng.
+Đặt cấu hình kết nối trong `.env`; Redis được dùng cho cache và giới hạn request.
+
+Chạy từ thư mục gốc dự án:
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r src/backend/requirements.txt
+.venv/bin/python -m uvicorn src.backend.main:app --env-file .env \
+  --host 127.0.0.1 --port 8000 --workers 1 --no-proxy-headers
+```
+
+Mở Swagger tại http://127.0.0.1:8000/docs để thử API.
+Xem [hướng dẫn backend](src/backend/README.md) để cấu hình và chạy worker cập nhật dữ liệu.
+
+## Huấn luyện và phân tích
+
+Xem các tùy chọn huấn luyện:
+
+```bash
+.venv/bin/python src/ai/train.py --help
+```
+
+Khởi động MLflow sau khi đã cài các dependencies phục vụ huấn luyện:
 
 ```bash
 .venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
 ```
 
-Open http://localhost:5000. Training uses this local tracking server.
+Mở http://localhost:5000 để xem kết quả. Các notebook tổng hợp metric và phân
+tích mưa–mực nước nằm trong [research/](research/README.md).
 
-For the current dataset, pass `--horizon 1h --dataset-dir train_data/1h_top4`
-to `.venv/bin/python src/ai/train.py`; use `--help` for the other required options.
-
-Open `research/mlflow_metrics.ipynb` to evaluate saved runs. New exports go to
-`reports/mlflow_metrics/`. Open `research/seasonal_analysis.ipynb` for rainfall
-and water-level analysis.
-
-The archive preserves original relative paths. Restore the required files to
-those paths before running archived utilities; include their report/data
-inputs and sibling imports. `archive/2026-10-07/cleanup_manifest.json` lists
-every moved/deleted file, its reason, and its original SHA-256 checksum.
+Dữ liệu gốc, thông tin đăng nhập và một số artifacts chỉ được lưu local, nên
+cần chuẩn bị chúng để chạy đầy đủ dự án. Các báo cáo xuất ra nằm trong `reports/`.
