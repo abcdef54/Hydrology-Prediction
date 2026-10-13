@@ -711,7 +711,7 @@ Select station / open page
 - Validate toàn bộ nhóm trước khi UPSERT PostgreSQL trong một transaction. Không ghi lại hàng không đổi, giữ thời điểm received_at đầu tiên; lỗi một trạm rollback nhóm. Khóa advisory dùng chung importer để tránh ghi chồng.
 - Có timeout, retry giới hạn, token renewal qua login khi cần, report/log không chứa credentials, và signal shutdown. Lượt lỗi giữ quan trắc cũ và thử lại chu kỳ kế tiếp.
 - Credentials và chu kỳ nằm trong `.env` private. Đã bật enable và linger cho user service; cần môi trường máy/WSL hoạt động để chạy. Docker sau này dùng một worker container riêng, không nhân bản job theo số API workers.
-- Chỉ đồng bộ quan trắc; không tự train, backfill forecast, sửa dataset hoặc xóa bản ghi nguồn biến mất. Sửa đổi cũ ngoài cửa sổ overlap cần đối soát/backfill riêng. Cache invalidation sẽ được nối khi triển khai Redis.
+- Chỉ đồng bộ quan trắc; không tự train, backfill forecast, sửa dataset hoặc xóa bản ghi nguồn biến mất. Sửa đổi cũ ngoài cửa sổ overlap cần đối soát/backfill riêng. Đã nối Redis cache `/latest`: xóa cache trạm có dữ liệu thay đổi sau commit; Redis lỗi không làm mất kết quả đồng bộ, cache cũ hết hạn theo TTL.
 
 ### 7.3. Historical Replay / Last-N Selection
 **Quy tắc đã thống nhất:** Lấy N bản ghi quá khứ hợp lệ gần nhất, **không bắt buộc các quan trắc phải cách nhau chính xác 1 giờ**.
@@ -782,7 +782,7 @@ Trong thời gian chờ phân tích, giữ quy tắc hiện tại: dữ liệu t
 
 - Optional window cache (khi đo thấy cần): `hydrology:v1:window:{station_id}:{query_hash}`.
 
-- Value: dữ liệu đã chuẩn hóa + timestamps + freshness metadata.
+- Value: quan trắc gốc và timestamps; tuổi dữ liệu và trạng thái cũ/mới được tính lại theo từng request.
 
 - **TTL ban đầu: 600 giây** (theo chỉnh sửa trong bản review), phải điều chỉnh sau khi Agent kiểm tra chu kỳ API.
 
@@ -790,13 +790,21 @@ Trong thời gian chờ phân tích, giữ quy tắc hiện tại: dữ liệu t
 
 - `TTL=600` không chứng minh upstream cập nhật 10 phút/lần. Độ mới nguồn vẫn phải tính theo timestamp thật.
 
+#### 8.1.1. Đã triển khai cache latest
+
+- Mã cache nằm ở `src/backend/cache/`, cấu hình bằng `REDIS_URL` và `CACHE_TTL_HYDROLOGY_SECONDS` (mặc định 600 giây). Không có URL thì tắt cache. Redis timeout kết nối/command 0.5 giây, không tự retry; Redis lỗi thì đọc PostgreSQL.
+- API `/latest` luôn đọc thông tin trạm và đơn vị từ PostgreSQL, nhưng cache hit bỏ qua truy vấn quan trắc. Cache chỉ lưu giá trị đo gốc, station ID và timestamps; `data_age_minutes`/`is_stale` được tính lại ở mỗi request. PostgreSQL lỗi vẫn trả 503.
+- Worker invalidation sau khi toàn bộ transaction commit, chỉ với trạm đã thêm/sửa dữ liệu. Dry-run, rollback và hàng không đổi không xóa cache. Mã phiên bản cache (`cache_version`) phụ và Lua nguyên tử ngăn request đọc dữ liệu cũ ghi lại cache sau invalidation.
+- Invalidation Redis thất bại hoặc process dừng giữa commit/invalidation có thể giữ cache cũ đến TTL; báo cáo worker có trạng thái invalidation. Các công cụ sửa DB khác chưa tự invalidation, cần xóa key hoặc chờ TTL. Mỗi trạm có tối đa một key mã phiên bản cache không TTL; chưa cần Redis Cluster hoặc khóa chống request trùng.
+- Task này chỉ cache `/latest`; cache form, kết quả dự báo và Visualize vẫn làm sau. Chi tiết vận hành/kiểm tra: `src/backend/cache/README.md`.
+
 ### 8.2. Prediction Input Cache
 
 - Pattern: Cache-Aside; cache dữ liệu gốc đã chuẩn bị cho biểu mẫu, **không phải** toàn bộ kết quả dự báo hay giá trị user overrides.
 - Key gợi ý: `prediction-inputs:v1:{station_id}:{reference_time_or_latest}:{model_version}:{feature_schema_version}:{data_revision}`. Với Latest cần phân biệt thời điểm/cửa sổ dữ liệu hiện hành để tránh dùng nhầm cache cũ. Nếu chưa có `data_revision`, dùng TTL kiểm soát và xóa các key bị ảnh hưởng khi ingestion cập nhật bản ghi.
 - Value: 29 giá trị đầu vào (hoặc `feature_count` thực tế) của timestep cuối, `anchor_observed_at`, `requested_reference_time`, danh sách `editable_features`, `input_ready` và metadata liên quan.
 - TTL: dữ liệu Latest bắt đầu thử nghiệm 600 giây hoặc theo lịch cập nhật upstream; dữ liệu Historical có thể dài hơn, **ví dụ 24 giờ**, nếu có cơ chế invalidation phù hợp. Chốt sau Discovery.
-- Invalidation: khi ingestion làm thay đổi bất cứ bản ghi nào thuộc cửa sổ Last-N hoặc khi đổi model, mapping feature hay preprocessing. Nếu không thể xác định chính xác key bị ảnh hưởng, dùng revision/generation theo station để vô hiệu hóa một cách an toàn.
+- Invalidation: khi ingestion làm thay đổi bất cứ bản ghi nào thuộc cửa sổ Last-N hoặc khi đổi model, mapping feature hay preprocessing. Nếu không thể xác định chính xác key bị ảnh hưởng, dùng `cache_version` theo station để vô hiệu hóa một cách an toàn.
 - Dữ liệu người dùng đang sửa nằm ở Frontend State và POST Prediction; tuyệt đối không ghi vào Input Cache.
 - Cần đo hit ratio và độ trễ chuẩn bị input, tránh tạo thêm cache phức tạp nếu lợi ích không đáng kể.
 

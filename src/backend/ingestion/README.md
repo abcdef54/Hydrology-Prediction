@@ -45,6 +45,8 @@ Trong Docker sau này, chạy worker như container riêng bằng cùng lệnh m
 - `HYDROLOGY_SYNC_REPORT_PATH`: đường dẫn JSON trạng thái có quyền ghi; mặc định
   `reports/hydrology_sync_status.json` tại thư mục gốc dự án. Có thể ghi đè bằng `--report`.
 - `DATABASE_URL` dùng PostgreSQL của backend.
+- `REDIS_URL` và `CACHE_TTL_HYDROLOGY_SECONDS=600`: dùng cùng cấu hình với API để
+  [làm mới cache `/latest`](../cache/README.md). Không có URL thì tắt cache.
 
 Đổi `.env` thì restart service. Credentials chỉ dùng trong bộ nhớ để xác thực,
 không ghi vào code, unit, log hoặc báo cáo và không gửi xuống frontend. Token được
@@ -75,7 +77,11 @@ lấy lại mỗi lượt; nếu GET gặp 401 thì đăng nhập lại một l�
   soát sửa đổi cũ hơn, tăng overlap cho một lượt thủ công/backfill. Không tự xóa
   quan trắc nếu nguồn không còn trả về một hàng.
 - Pipeline chỉ cập nhật quan trắc. Nó không train model, tạo dự báo mới hoặc sửa
-  SQLite/Train/Val/Test/checkpoint/scaler/MLflow. Redis chưa được triển khai.
+  SQLite/Train/Val/Test/checkpoint/scaler/MLflow.
+- Sau khi transaction commit, xóa cache `/latest` của các trạm đã thêm/sửa dữ
+  liệu. Hàng không thay đổi, dry-run và rollback không xóa cache. Redis lỗi không
+  làm thất bại việc lưu quan trắc; báo cáo ghi `latest_cache_invalidation=failed`
+  và cache cũ hết hạn theo TTL. Cache form/dự báo chưa nằm trong task này.
 
 ### Báo cáo và kiểm tra
 
@@ -88,6 +94,6 @@ thái không nằm trong package và không đưa lên Git. Khi triển khai, c�
 .venv/bin/python -m unittest discover -s src/backend/ingestion/tests -p test_worker.py -v
 ```
 
-12 test kiểm tra schema, phân trang, 401/retry, hủy, UPSERT, rollback nhóm và khóa
-chống chồng. Test database rollback dữ liệu thử. Lượt đầu thật thêm 9460 quan trắc,
+14 test kiểm tra schema, phân trang, 401/retry, hủy, UPSERT, rollback nhóm, khóa
+chống chồng và invalidation sau commit. Test database rollback dữ liệu thử. Lượt đầu thật thêm 9460 quan trắc,
 không cập nhật 725 hàng đọc chồng; lượt tự động sau đó xác nhận không tạo trùng.

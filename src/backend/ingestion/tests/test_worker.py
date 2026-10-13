@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta, timezone
 from threading import Event
 from unittest import TestCase, main
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -224,8 +224,10 @@ class SyncDatabaseTests(TestCase):
         return client
 
     def test_group_rolls_back_when_one_station_write_fails(self):
+        cache = MagicMock()
         with self.assertRaises(sa.exc.IntegrityError):
-            sync_once(self.engine, self.fake_client(invalid_second=True))
+            sync_once(self.engine, self.fake_client(invalid_second=True), latest_cache=cache)
+        cache.invalidate.assert_not_called()
         with self.engine.connect() as connection:
             count = connection.scalar(
                 sa.select(sa.func.count())
@@ -235,7 +237,9 @@ class SyncDatabaseTests(TestCase):
         self.assertEqual(count, 0)
 
     def test_dry_run_writes_no_observations(self):
-        result = sync_once(self.engine, self.fake_client(), dry_run=True)
+        cache = MagicMock()
+        result = sync_once(self.engine, self.fake_client(), dry_run=True, latest_cache=cache)
+        cache.invalidate.assert_not_called()
         self.assertEqual(result["status"], "validated")
         self.assertEqual(len(result["stations"]), 5)
         with self.engine.connect() as connection:
@@ -266,6 +270,58 @@ class SyncDatabaseTests(TestCase):
                     {"first": LOCK_KEYS[0], "second": LOCK_KEYS[1]},
                 )
                 connection.commit()
+
+
+class SyncCacheTests(TestCase):
+    def setUp(self):
+        self.engine = MagicMock()
+        self.connection = self.engine.connect.return_value.__enter__.return_value
+        self.connection.scalar.return_value = True
+        self.connection.in_transaction.return_value = False
+        self.connection.invalidated = False
+        stations = [STATION, {**STATION, "id": "750003"}]
+        station_result = MagicMock()
+        station_result.mappings.return_value.all.return_value = stations
+        watermark_result = MagicMock()
+        watermark_result.all.return_value = []
+        self.connection.execute.side_effect = [station_result, watermark_result, MagicMock()]
+        self.client = MagicMock()
+        self.client.settings.overlap_hours = 24
+        self.client.stop.is_set.return_value = False
+        self.client.observations.return_value = [{"observed_at": START, "depth": 1}]
+        self.cache = MagicMock()
+        self.cache.enabled = True
+        self.cache.invalidate.return_value = True
+
+    def test_only_changed_station_is_invalidated_after_transaction_commit(self):
+        transaction = self.connection.begin.return_value
+
+        def invalidate(station_id):
+            self.assertEqual(transaction.__exit__.call_count, 2)
+            self.assertEqual(station_id, STATION["id"])
+            return True
+
+        self.cache.invalidate.side_effect = invalidate
+        with patch("src.backend.ingestion.worker.upsert_observations") as upsert:
+            upsert.side_effect = [
+                {"inserted": 1, "updated": 0, "unchanged": 0},
+                {"inserted": 0, "updated": 0, "unchanged": 1},
+            ]
+            result = sync_once(self.engine, self.client, latest_cache=self.cache)
+        self.assertEqual(result["status"], "committed")
+        self.cache.invalidate.assert_called_once_with(STATION["id"])
+        self.assertEqual(result["stations"][0]["latest_cache_invalidation"], "ok")
+        self.assertNotIn("latest_cache_invalidation", result["stations"][1])
+
+    def test_failed_invalidation_keeps_successful_sync_and_reports_failure(self):
+        self.cache.invalidate.return_value = False
+        with patch("src.backend.ingestion.worker.upsert_observations") as upsert:
+            upsert.return_value = {"inserted": 0, "updated": 1, "unchanged": 0}
+            result = sync_once(self.engine, self.client, latest_cache=self.cache)
+        self.assertEqual(result["status"], "committed")
+        self.assertTrue(
+            all(summary["latest_cache_invalidation"] == "failed" for summary in result["stations"])
+        )
 
 
 if __name__ == "__main__":

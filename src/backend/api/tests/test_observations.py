@@ -6,8 +6,10 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError
+from redis.exceptions import ConnectionError
 
 from src.backend.main import create_app
+from src.backend.cache.latest import CachedObservation, LatestObservationCache
 from src.backend.prediction.config import StationModelRegistry
 
 
@@ -23,7 +25,10 @@ class LatestObservationTests(TestCase):
             "received_at": self.now - timedelta(minutes=25),
             "quality_status": "observed",
         }
-        self.application = create_app(engine=self.engine, registry=StationModelRegistry([]))
+        self.cache = LatestObservationCache()
+        self.application = create_app(
+            engine=self.engine, registry=StationModelRegistry([]), latest_cache=self.cache
+        )
         self.client = self.enterContext(TestClient(self.application, raise_server_exceptions=False))
         self.clock = self.enterContext(patch("src.backend.api.observations.datetime"))
         self.clock.now.return_value = self.now
@@ -102,6 +107,70 @@ class LatestObservationTests(TestCase):
         ]["get"]
         self.assertIn("404", operation["responses"])
         self.assertIn("503", operation["responses"])
+
+    def test_cache_hit_skips_observation_query_but_refreshes_age_and_stale(self):
+        self.observation["observed_at"] = self.now - timedelta(hours=2)
+        redis_client = MagicMock()
+        redis_client.mget.return_value = [
+            CachedObservation(station_id="0074647403", **self.observation).model_dump_json(),
+            "g",
+        ]
+        self.cache.client = redis_client
+        station_result = MagicMock()
+        station_result.mappings.return_value.first.return_value = self.station
+        self.connection.execute.return_value = station_result
+        first = self.client.get(self.url)
+        self.assertEqual(first.status_code, 200, first.text)
+        self.assertFalse(first.json()["is_stale"])
+        self.clock.now.return_value = self.now + timedelta(seconds=1)
+        second = self.client.get(self.url)
+        self.assertTrue(second.json()["is_stale"])
+        self.assertGreater(second.json()["data_age_minutes"], first.json()["data_age_minutes"])
+        self.assertEqual(self.connection.execute.call_count, 2)  # Station metadata only.
+        redis_client.eval.assert_not_called()
+
+    def test_cache_miss_publishes_database_value(self):
+        redis_client = MagicMock()
+        redis_client.mget.return_value = [None, "cache_version"]
+        self.cache.client = redis_client
+        response = self.request_latest()
+        self.assertEqual(response.status_code, 200, response.text)
+        redis_client.eval.assert_called_once()
+        self.assertEqual(self.connection.execute.call_count, 2)
+
+    def test_redis_outage_falls_back_to_database(self):
+        redis_client = MagicMock()
+        redis_client.mget.side_effect = ConnectionError("private-password")
+        self.cache.client = redis_client
+        with self.assertLogs("src.backend.cache.latest", "WARNING"):
+            response = self.request_latest()
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["value"], self.observation["depth"])
+        redis_client.eval.assert_not_called()
+
+    def test_cache_write_outage_does_not_fail_database_response(self):
+        redis_client = MagicMock()
+        redis_client.mget.return_value = [None, ""]
+        redis_client.eval.side_effect = ConnectionError("private-password")
+        self.cache.client = redis_client
+        with self.assertLogs("src.backend.cache.latest", "WARNING"):
+            response = self.request_latest()
+        self.assertEqual(response.status_code, 200, response.text)
+
+    def test_cached_measurement_does_not_hide_database_failure(self):
+        redis_client = MagicMock()
+        self.cache.client = redis_client
+        self.connection.execute.side_effect = OperationalError("SELECT", {}, Exception("secret"))
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 503)
+        redis_client.mget.assert_not_called()
+
+    def test_injected_cache_is_not_closed_by_application(self):
+        cache = MagicMock(spec=LatestObservationCache)
+        app = create_app(engine=self.engine, registry=StationModelRegistry([]), latest_cache=cache)
+        with TestClient(app):
+            pass
+        cache.close.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -23,6 +23,7 @@ from src.backend.api.forecast_history import router as forecast_history_router
 from src.backend.api.forecast_detail import router as forecast_detail_router
 from src.backend.api.schemas import ErrorDetail, ErrorResponse
 from src.backend.api.stations import router as stations_router
+from src.backend.cache.latest import LatestObservationCache
 from src.backend.db.session import build_engine
 from src.backend.prediction.config import StationModelRegistry
 
@@ -57,6 +58,7 @@ def create_app(
     engine: Engine | None = None,
     registry: StationModelRegistry | None = None,
     stale_after_minutes: float | None = None,
+    latest_cache: LatestObservationCache | None = None,
 ) -> FastAPI:
     """Create the API with optional existing resources for tests or embedding.
 
@@ -72,6 +74,9 @@ def create_app(
             during startup. No model checkpoint is loaded by this factory.
         stale_after_minutes: Positive finite freshness threshold; None reads
             INPUT_STALE_AFTER_MINUTES during startup, defaulting to 120.
+        latest_cache: Existing cache owned by the caller; None configures an
+            application-owned Redis cache from REDIS_URL during startup. Without
+            REDIS_URL caching is disabled. No Redis connection is required to start.
 
     Returns:
         FastAPI application with routes, request IDs, error handlers and resource
@@ -102,6 +107,9 @@ def create_app(
             else StationModelRegistry.from_json(config_path, artifact_root)
         )
         application.state.database_engine = engine if engine is not None else build_engine()
+        application.state.latest_observation_cache = (
+            latest_cache if latest_cache is not None else LatestObservationCache.from_env()
+        )
         application.state.stale_after_minutes = configured_threshold
         application.state.prediction_device = os.environ.get("PREDICTION_DEVICE", "cpu")
         application.state.prediction_services = {}
@@ -110,6 +118,8 @@ def create_app(
             yield
         finally:
             application.state.prediction_services.clear()
+            if latest_cache is None:
+                application.state.latest_observation_cache.close()
             if engine is None:
                 application.state.database_engine.dispose()
 

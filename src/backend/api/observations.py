@@ -32,7 +32,8 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
     stations and stations without valid measurements have distinct 404 codes.
 
     Args:
-        request: HTTP request providing the database engine and freshness threshold.
+        request: HTTP request providing the database engine, optional latest cache
+            and freshness threshold. Station metadata is always read from PostgreSQL.
         station_id: Exact ID of the water or rain station to inspect.
 
     Returns:
@@ -72,7 +73,14 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
                 status_code=404,
                 detail={"code": "STATION_NOT_FOUND", "message": "Station does not exist."},
             )
-        observation = connection.execute(observation_query).mappings().first()
+        cache = request.app.state.latest_observation_cache
+        cache_version, cached = cache.read(station_id, now)
+        if cached is not None:
+            observation = cached.model_dump(exclude={"station_id"})
+        else:
+            observation = connection.execute(observation_query).mappings().first()
+            if observation is not None:
+                cache.store(station_id, cache_version, observation)
     if observation is None:
         raise HTTPException(
             status_code=404,

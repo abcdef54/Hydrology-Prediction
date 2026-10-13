@@ -77,6 +77,10 @@ lỗi database trả 503. Endpoint không tải mô hình hay chạy dự báo.
 
 ## API quan trắc mới nhất
 
+Endpoint này đã có [Redis cache](cache/README.md) cho giá trị quan trắc, TTL mặc
+định 600 giây. Tuổi dữ liệu được tính lại mỗi request; thông tin trạm vẫn đọc từ
+PostgreSQL. Worker xóa cache sau khi thêm/sửa quan trắc. Redis lỗi thì đọc database.
+
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/stations/0074647403/latest'
 ```

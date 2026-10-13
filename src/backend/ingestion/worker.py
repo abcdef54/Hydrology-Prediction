@@ -24,6 +24,7 @@ from sqlalchemy.dialects.postgresql import insert
 
 from src.backend.db.models import Observation, Station
 from src.backend.db.session import build_engine
+from src.backend.cache.latest import LatestObservationCache
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -369,13 +370,20 @@ def write_report(path: Path, report: dict) -> None:
     temporary.replace(path)
 
 
-def sync_once(engine, client: HueSourceClient, dry_run: bool = False) -> dict:
+def sync_once(
+    engine,
+    client: HueSourceClient,
+    dry_run: bool = False,
+    latest_cache: LatestObservationCache | None = None,
+) -> dict:
     """Download all enabled mapped sources, then commit all station changes together.
 
     Args:
         engine: PostgreSQL engine; the same session holds the shared importer lock.
         client: Source client with credentials, cancellation event and overlap policy.
         dry_run: If True, validate/download only without writing observations.
+        latest_cache: Optional Redis cache to invalidate for changed stations after
+            the whole transaction commits. Cache failure never rolls back observations.
 
     Returns:
         Public per-station counts and watermarks. A locked writer returns skipped.
@@ -452,6 +460,18 @@ def sync_once(engine, client: HueSourceClient, dry_run: bool = False) -> dict:
                 with connection.begin():
                     for rows, summary in zip(downloaded, report["stations"], strict=True):
                         summary.update(upsert_observations(connection, rows))
+                # Invalidate only after commit; older readers cannot publish across
+                # this cache version change. Redis remains optional for successful sync.
+                if latest_cache is not None:
+                    for summary in report["stations"]:
+                        if summary["inserted"] + summary["updated"] == 0:
+                            continue
+                        invalidated = latest_cache.invalidate(summary["station_id"])
+                        summary["latest_cache_invalidation"] = (
+                            "disabled"
+                            if not latest_cache.enabled
+                            else "ok" if invalidated else "failed"
+                        )
             report["status"] = "validated" if dry_run else "committed"
             report["finished_at_utc"] = datetime.now(timezone.utc).isoformat()
             return report
@@ -487,6 +507,7 @@ def main() -> int:
         )
     )
     settings = SyncSettings.from_env()
+    latest_cache = LatestObservationCache.from_env()
     stop = Event()
     for signum in (signal.SIGINT, signal.SIGTERM):
         signal.signal(signum, lambda *_: stop.set())
@@ -498,7 +519,7 @@ def main() -> int:
             began = time.monotonic()
             started_at = datetime.now(timezone.utc)
             try:
-                report = sync_once(engine, client, arguments.dry_run)
+                report = sync_once(engine, client, arguments.dry_run, latest_cache)
                 last_failed = False
             except SyncCancelled:
                 break
@@ -530,6 +551,7 @@ def main() -> int:
     finally:
         client.session.close()
         engine.dispose()
+        latest_cache.close()
     return 1 if last_failed else 0
 
 
