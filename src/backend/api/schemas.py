@@ -103,6 +103,51 @@ class PredictionInputsQuery(BaseModel):
     )
 
 
+class ForecastHistoryQuery(BaseModel):
+    """Select one forecast series by target time; before pages toward older points."""
+
+    model_config = ConfigDict(extra="forbid")
+    start: AwareDatetime
+    end: AwareDatetime
+    horizon_minutes: int = Field(gt=0)
+    model_version: str | None = Field(default=None, min_length=1)
+    pipeline_version: str | None = Field(default=None, min_length=1)
+    limit: int = Field(default=100, ge=1, le=1000)
+    before: AwareDatetime | None = None
+
+    @model_validator(mode="after")
+    def validate_time_range(self):
+        if self.start >= self.end:
+            raise ValueError("start must be earlier than end.")
+        return self
+
+
+class ForecastComparisonPoint(BaseModel):
+    """A saved prediction and its current hourly observed truth, both in mm."""
+
+    forecast_id: UUID
+    feature_schema_version: str
+    anchor_observed_at: AwareDatetime
+    forecast_at: AwareDatetime
+    generated_at: AwareDatetime
+    predicted_water_level_mm: float = Field(allow_inf_nan=False)
+    actual_water_level_mm: float | None = Field(allow_inf_nan=False)
+    actual_sample_count: int = Field(ge=0)
+
+
+class ForecastHistoryResponse(BaseModel):
+    station_id: str
+    model_version: str
+    pipeline_version: str
+    horizon_minutes: int
+    unit: Literal["mm"] = "mm"
+    start: AwareDatetime
+    end: AwareDatetime
+    points: list[ForecastComparisonPoint]
+    has_more: bool
+    next_before: AwareDatetime | None
+
+
 class PredictionAvailabilityQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     start: AwareDatetime
