@@ -20,6 +20,39 @@ from src.backend.prediction.persistence import build_pipeline_version
 router = APIRouter(prefix="/api/v1", tags=["Saved forecasts"])
 
 
+def hourly_truth_subquery(
+    station_id: str, target_time: sa.ColumnElement, now: datetime
+) -> sa.Lateral:
+    """Aggregate water readings separately for each target row in an outer query.
+
+    Args:
+        station_id: Water station whose original-unit readings are averaged.
+        target_time: Timestamp column from the outer page/hour-grid query.
+        now: Current aware UTC instant; future target hours have no truth yet.
+
+    Returns:
+        Correlated lateral subquery yielding actual_water_level_mm and
+        actual_sample_count for (target_time - 1h, target_time]. Missing readings
+        are excluded; an empty/future hour yields None and zero without filling.
+        Callers join this to the query that owns target_time.
+    """
+    return (
+        sa.select(
+            sa.func.avg(Observation.depth).label("actual_water_level_mm"),
+            sa.func.count(Observation.depth).label("actual_sample_count"),
+        )
+        .where(
+            Observation.station_id == station_id,
+            Observation.quality_status == "observed",
+            Observation.depth.is_not(None),
+            Observation.observed_at > target_time - timedelta(hours=1),
+            Observation.observed_at <= target_time,
+            target_time <= now,
+        )
+        .lateral("truth")
+    )
+
+
 def resolve_forecast_identity(
     request: Request, station_id: str, query: ForecastHistoryQuery
 ) -> tuple[str, str]:
@@ -140,21 +173,7 @@ def forecast_comparison_query(
         .limit(query.limit + 1)
         .subquery("page")
     )
-    truth = (
-        sa.select(
-            sa.func.avg(Observation.depth).label("actual_water_level_mm"),
-            sa.func.count(Observation.depth).label("actual_sample_count"),
-        )
-        .where(
-            Observation.station_id == station_id,
-            Observation.quality_status == "observed",
-            Observation.depth.is_not(None),
-            Observation.observed_at > page.c.forecast_at - timedelta(hours=1),
-            Observation.observed_at <= page.c.forecast_at,
-            page.c.forecast_at <= now,
-        )
-        .lateral("truth")
-    )
+    truth = hourly_truth_subquery(station_id, page.c.forecast_at, now)
     return (
         sa.select(page, truth.c.actual_water_level_mm, truth.c.actual_sample_count)
         .select_from(page.outerjoin(truth, sa.true()))

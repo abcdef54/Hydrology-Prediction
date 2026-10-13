@@ -255,3 +255,27 @@ class PredictionResponse(BaseModel):
     generated_at: AwareDatetime | None = None
     pipeline_version: str | None = None
     reused: bool = False
+
+
+class ActualWaterLevelPoint(BaseModel):
+    """Observed mean for the hour (timestamp - 1h, timestamp], not a raw reading."""
+
+    timestamp: AwareDatetime
+    actual_water_level_mm: float | None = Field(allow_inf_nan=False)
+    actual_sample_count: int = Field(ge=0)
+
+
+class ForecastDetailResponse(BaseModel):
+    """One immutable saved prediction and its current hourly observed comparison."""
+
+    forecast_id: UUID
+    station_id: str
+    model_version: str
+    feature_schema_version: str
+    pipeline_version: str
+    anchor_observed_at: AwareDatetime
+    generated_at: AwareDatetime
+    unit: Literal["mm"] = "mm"
+    window_end: AwareDatetime
+    predictions: list[PredictedWaterLevel]
+    actuals: list[ActualWaterLevelPoint]

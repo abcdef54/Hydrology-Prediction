@@ -255,6 +255,44 @@ một dự báo thực sự đã phát trong quá khứ.
 Kiểm chứng local: `scripts/local/verify_forecast_history_api.py` đọc 240 điểm tại
 5 horizon, kiểm tra phân trang và đối chiếu với các trung bình giờ tính riêng.
 
+## API Visualize một mốc
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/forecasts/3923638a-f637-41ad-afdd-2443b9ec726e'
+```
+
+`GET /api/v1/forecasts/{forecast_id}` đọc đúng bản dự báo được chọn. Lấy ID từ
+response `POST /predictions` hoặc mỗi điểm trong API lịch sử `/forecasts`.
+ID trong ví dụ thuộc lượt backfill local; hệ thống khác dùng ID của database đó.
+
+- Response có `forecast_id`, trạm, model/schema/pipeline, `anchor_observed_at`,
+  `generated_at`, `window_end`, `unit = mm`, `predictions` và `actuals`.
+- `predictions` giữ nguyên các horizon của bản lưu, sắp tăng dần. Mỗi điểm có
+  `horizon_minutes`, `forecast_at`, `water_level_mm`. Model Dã Viên hiện có 5 điểm
+  +1/+3/+6/+12/+24 giờ; không tạo thêm dự báo cho các giờ ở giữa.
+- `actuals` có `timestamp`, `actual_water_level_mm`, `actual_sample_count`.
+  Tạo một mốc mỗi giờ từ anchor + 1 giờ đến horizon lớn nhất, tính trung bình trong
+  `(timestamp - 1 giờ, timestamp]`. Dã Viên có đúng 24 mốc; không cố định con số này
+  cho model khác. Nếu horizon cuối không tròn giờ, chỉ tạo các mốc giờ nằm trong cửa sổ.
+- Giờ thiếu hoặc chưa tới thời điểm đo vẫn có trong danh sách, với giá trị null và
+  count 0. Không thay thiếu bằng 0, không nội suy. Frontend không nối đường qua
+  null như thể đã có quan trắc. Giá trị 0 hoặc mực nước âm thật được giữ nguyên.
+- Đọc theo ID không tự chọn lại model/device hoặc bản replay mới hơn. Bản cũ vẫn
+  đọc được nếu không còn trong registry hoặc artifact đã chuyển chỗ. Quan trắc
+  thực tế dùng dữ liệu hiện tại trong DB, có thể đã được nguồn sửa sau lúc dự báo.
+- Không chạy inference, không tải model/scaler và không ghi database. ID không có
+  trả 404 `FORECAST_NOT_FOUND`; UUID sai trả 422. Bản lưu không có horizon hoặc
+  có thời điểm horizon sai trả 503 `STORED_FORECAST_INVALID`; đơn vị chưa xác nhận
+  mm trả 503 `UNIT_UNAVAILABLE`; lỗi database trả 503 theo định dạng lỗi chung.
+
+Luồng frontend: chọn mốc và tự điền input → Visualize đọc ID đã có. Nếu chưa có
+dự báo gốc phù hợp, gọi POST dự báo để tạo/lấy ID rồi gọi endpoint này. Kịch bản
+overrides không có forecast_id; nếu vẽ thì dùng response Predict và gắn nhãn
+kịch bản, không coi là bản dự báo gốc đã lưu.
+
+Kiểm chứng local: `scripts/local/verify_forecast_detail_api.py` đối chiếu ba mốc
+GPU với các điểm đã lưu và từng trung bình giờ từ quan trắc gốc, ở chế độ chỉ đọc.
+
 ## API chạy dự báo
 
 API dùng `forecasts` và `forecast_points` trong PostgreSQL (migration `0003`)

@@ -7,6 +7,7 @@ from uuid import uuid4
 import sqlalchemy as sa
 
 from src.backend.api.forecast_history import forecast_comparison_query
+from src.backend.api.forecast_detail import hourly_actuals_query
 from src.backend.api.schemas import ForecastHistoryQuery
 from src.backend.db.models import Forecast, ForecastPoint, Observation
 from src.backend.db.session import build_engine
@@ -127,6 +128,60 @@ class ForecastComparisonTests(TestCase):
         row = self.read(start=future, end=future + timedelta(hours=1))[0]
         self.assertIsNone(row["actual_water_level_mm"])
         self.assertEqual(row["actual_sample_count"], 0)
+
+    def test_hour_grid_preserves_24_slots_and_right_closed_means(self):
+        anchor = self.target - timedelta(hours=1)
+        self.insert_observation(anchor, 999)  # Left edge is excluded.
+        self.insert_observation(anchor + timedelta(minutes=30), 0)
+        self.insert_observation(self.target, 20)
+        self.insert_observation(anchor + timedelta(hours=24), -5)
+        rows = (
+            self.connection.execute(
+                hourly_actuals_query(self.station, anchor, anchor + timedelta(hours=24), self.now)
+            )
+            .mappings()
+            .all()
+        )
+        self.assertEqual(len(rows), 24)
+        self.assertEqual(rows[0]["timestamp"], self.target)
+        self.assertEqual(rows[0]["actual_water_level_mm"], 10)
+        self.assertEqual(rows[0]["actual_sample_count"], 2)
+        self.assertIsNone(rows[1]["actual_water_level_mm"])
+        self.assertEqual(rows[1]["actual_sample_count"], 0)
+        self.assertEqual(rows[-1]["actual_water_level_mm"], -5)
+
+    def test_hour_grid_window_is_not_fixed_to_24h(self):
+        for minutes, expected_slots in ((30, 0), (90, 1), (360, 6)):
+            with self.subTest(minutes=minutes):
+                rows = self.connection.execute(
+                    hourly_actuals_query(
+                        self.station,
+                        self.target,
+                        self.target + timedelta(minutes=minutes),
+                        self.now,
+                    )
+                ).all()
+                self.assertEqual(len(rows), expected_slots)
+
+    def test_hour_grid_hides_future_truth_without_removing_slots(self):
+        self.insert_observation(self.target + timedelta(hours=1), 0)
+        self.insert_observation(self.target + timedelta(hours=2), 700)
+        rows = (
+            self.connection.execute(
+                hourly_actuals_query(
+                    self.station,
+                    self.target,
+                    self.target + timedelta(hours=3),
+                    self.target + timedelta(minutes=90),
+                )
+            )
+            .mappings()
+            .all()
+        )
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(rows[0]["actual_water_level_mm"], 0)
+        self.assertIsNone(rows[1]["actual_water_level_mm"])
+        self.assertEqual(rows[1]["actual_sample_count"], 0)
 
 
 if __name__ == "__main__":
