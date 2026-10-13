@@ -20,6 +20,24 @@ class Base(DeclarativeBase):
 
 
 class Station(Base):
+    """Store one station's metadata and source identity, not model weights.
+
+    Attributes:
+        id: Stable string ID preserving leading zeros.
+        station_type: water_level or rainfall, determining the source collection.
+        measurement_unit: Unit of raw depth; water is mm and unconfirmed rain units
+            remain None. Alarm thresholds are stored separately in metres.
+        latitude/longitude: Nullable coordinates in decimal degrees.
+        alarm_level_1_m/alarm_level_2_m/alarm_level_3_m: Nullable stored thresholds.
+        enabled: Whether the station appears in the public enabled-station list.
+        prediction_enabled: Database permission to predict; a separate model registry
+            entry and valid history are also needed at serving time.
+        source_name/source_station_id/observation_collection: Upstream identity used
+            to map observations to the correct source station and collection.
+
+    The schema enforces source mapping and valid metadata; SQLAlchemy sessions
+    and migrations manage persistence rather than the class constructor.
+    """
     __tablename__ = "stations"
     __table_args__ = (
         sa.CheckConstraint("btrim(id) <> ''", name="id_not_blank"),
@@ -89,6 +107,22 @@ class Station(Base):
 
 
 class Observation(Base):
+    """Store a raw reading at an absolute instant before model preprocessing.
+
+    Attributes:
+        station_id/observed_at: Composite key identifying a station's reading.
+            observed_at is timezone-aware; connections use UTC.
+        depth: Original source value, in Station.measurement_unit; None means
+            missing, while zero and negative water levels can be actual readings.
+        quality_status: observed for finite readings or missing when depth is None.
+        source_name/source_collection/source_record_id: Provenance and source
+            uniqueness fields used when importing or updating upstream records.
+        received_at: First database insertion time, preserved across source corrections.
+        updated_at: Database-maintained time of the latest row update.
+
+    Hourly averaging, rain accumulation, scaling and user overrides belong to
+    the prediction pipeline; they must not overwrite these raw readings.
+    """
     __tablename__ = "observations"
     __table_args__ = (
         sa.ForeignKeyConstraint(

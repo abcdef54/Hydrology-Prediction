@@ -16,6 +16,18 @@ class InvalidOverrideError(ValueError):
 
 
 class InputPreprocessor:
+    """Apply one model's saved feature scaler without fitting it again.
+
+    Args:
+        feature_scaler: Trusted fitted StandardScaler for this model's feature order.
+        config: Station/model contract defining feature order and sequence length.
+
+    Raises:
+        ValueError: If scaler dimensions or statistics are invalid for this schema.
+
+    Original feature units are retained in the returned table; only the tensor is
+    standardized. Missing scaled values become zero as in training.
+    """
     def __init__(self, feature_scaler: StandardScaler, config: StationModelConfig):
         self.config = config
         if getattr(feature_scaler, "n_features_in_", None) != len(config.feature_columns):
@@ -78,11 +90,19 @@ class InputPreprocessor:
         return cls(saved["feature_scaler"], config)
 
     def validate_overrides(self, overrides: Mapping[str, float | None] | None) -> None:
-        """Validate original-unit edits without changing observations or scaler state.
+        """Check original-unit edits without changing features or scaler state.
 
-        Flags require numeric 0/1; missing rain/lag values may be None, but the
-        current water level is required by the persistence branch. Raises
-        InvalidOverrideError for invalid names, types or unrepresentable values.
+        Args:
+            overrides: Optional feature-name/value mapping. Values must be finite
+                numbers representable as float32; None is allowed for rain/lags.
+                Missing/season flags require 0 or 1, and current water cannot be None.
+
+        Returns:
+            None when all edits are valid; no feature values are changed.
+
+        Raises:
+            InvalidOverrideError: If a name is unknown, a flag/current-water value
+                is invalid, or a number is nonfinite, boolean or out of range.
         """
         for name, value in (overrides or {}).items():
             if name not in self.feature_columns:
@@ -103,6 +123,25 @@ class InputPreprocessor:
     def prepare_features(
         self, features: pd.DataFrame, overrides: Mapping[str, float | None] | None = None
     ) -> tuple[pd.DataFrame, torch.Tensor]:
+        """Apply last-step edits and saved scaling to an already selected feature chain.
+
+        Args:
+            features: Original-unit table with exactly sequence_length rows and
+                columns in saved model order. Rain/lag features may contain NaN.
+            overrides: Optional original-unit edits for the final row only. Related
+                sums/lags/flags are not recomputed when one feature is overridden.
+
+        Returns:
+            Tuple of an edited table copy in original units and a finite float32
+            CPU tensor shaped (1, sequence_length, feature_count). Features are
+            cast to float32 before scaling; scaled NaN becomes zero as in training.
+            The input table and fitted scaler statistics are not modified.
+
+        Raises:
+            InvalidOverrideError: If any edit violates the feature contract.
+            ValueError: If feature order/length is wrong, current water is missing,
+                or numeric values overflow before or after scaling.
+        """
         if tuple(features.columns) != self.feature_columns:
             raise ValueError("Feature names or order do not match the saved scaler.")
         if len(features) != self.sequence_length:

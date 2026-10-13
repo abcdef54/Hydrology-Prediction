@@ -9,6 +9,17 @@ from src.backend.prediction.config import StationModelConfig
 
 
 def utc_timestamp(value: datetime) -> pd.Timestamp:
+    """Convert an aware timestamp to UTC without rounding it.
+
+    Args:
+        value: Datetime-like value representing an absolute instant with a timezone.
+
+    Returns:
+        Pandas Timestamp for the same instant in UTC.
+
+    Raises:
+        ValueError: If the value is missing, invalid or has no timezone.
+    """
     timestamp = pd.Timestamp(value)
     if pd.isna(timestamp) or timestamp.tzinfo is None:
         raise ValueError("A valid timestamp with a timezone is required.")
@@ -18,10 +29,27 @@ def utc_timestamp(value: datetime) -> pd.Timestamp:
 def build_hourly_features(
     observations: pd.DataFrame, reference_time: datetime, config: StationModelConfig
 ) -> pd.DataFrame:
-    """Compute on an hourly grid, then allow the caller to select rows with gaps.
+    """Build original-unit hourly features using only observations up to the cutoff.
 
-    Each label t represents (t-1h, t]. Rolling sums require all hours in the
-    window. No interpolation, raw zero filling or future observations are used.
+    Args:
+        observations: Raw table with station_id, observed_at and depth. Each
+            station/timestamp pair must be unique; missing depth may be NaN.
+        reference_time: Timezone-aware cutoff, rounded down to the hour.
+        config: Water/rain sources, feature order, windows, lags and season calendar
+            belonging to the model that will consume these features.
+
+    Returns:
+        DataFrame indexed by UTC hour in model feature order. Label t represents
+        (t-1h, t]: water is averaged and rain summed per station. Rain windows need
+        every hour in the window; water lags are shifted on the hourly grid.
+        Missing values stay missing, flags are 0/1, and no scaling/interpolation
+        is performed. Water-missing hours remain for the caller to filter.
+
+    Raises:
+        ValueError: If required columns are absent, station/timestamps repeat,
+            numeric depths are invalid/infinite, or the cutoff is invalid.
+
+    The input table is copied, not modified; future observations are excluded.
     """
     reference = utc_timestamp(reference_time).floor("h")
     required_columns = {"station_id", "observed_at", "depth"}

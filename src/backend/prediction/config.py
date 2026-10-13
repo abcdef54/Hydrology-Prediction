@@ -8,6 +8,33 @@ from zoneinfo import ZoneInfo
 
 @dataclass(frozen=True)
 class StationModelConfig:
+    """Describe one water station's trained model and preprocessing contract.
+
+    Args:
+        station_id: Exact water-station ID; keep leading zeros.
+        model_type: Runtime architecture identifier, currently "residual_lstm".
+        model_version: Identifier of the trained checkpoint/run.
+        model_path: Resolved path to this model's trusted checkpoint.
+        preprocessing_path: Resolved path to its fitted scalers and metadata.
+        sequence_length: Required number of valid hourly timesteps, not raw rows;
+            gaps between selected timesteps are allowed.
+        rain_station_ids: Rain sources in the order expected by the saved model.
+        forecast_horizons_minutes: Output horizons, in saved target-column order.
+        feature_schema_version: Identifier for the input feature contract.
+        rain_windows_hours: Backward rainfall accumulation windows in hours.
+        water_lags_hours: Water-level lags in physical hours, not retained-row offsets.
+        flood_season_months: Calendar months whose season flag is 1.
+        calendar_timezone: IANA timezone for assigning calendar-based season flags.
+        model_parameters: Architecture parameters needed to rebuild the checkpoint.
+
+    Raises:
+        ValueError: If identifiers, sequence length, sources, windows or months
+            fail the configuration checks.
+        zoneinfo.ZoneInfoNotFoundError: If calendar_timezone cannot be resolved.
+
+    Artifact compatibility is checked when loading preprocessing/runtime, not
+    by constructing this configuration. Each station needs its own model entry.
+    """
     station_id: str
     model_type: str
     model_version: str
@@ -50,6 +77,13 @@ class StationModelConfig:
 
     @property
     def feature_columns(self) -> tuple[str, ...]:
+        """Build the ordered input schema required by this model.
+
+        Returns:
+            Feature names ordered as water depth, water lags, water missing flag,
+            each configured rain source's depth/windows/missing flag, then season.
+            This order must match the saved scaler; it is not a sorted column list.
+        """
         columns = ["water_level_depth"]
         for hours in self.water_lags_hours:
             columns.append(f"water_level_lag_{hours * 60}m")
@@ -72,6 +106,17 @@ class ModelNotConfiguredError(KeyError):
 
 
 class StationModelRegistry:
+    """Map each water station to its own trained model configuration.
+
+    Args:
+        configurations: Station configurations to register; station IDs must be unique.
+
+    Raises:
+        ValueError: If two configurations use the same station ID.
+
+    Unknown stations never fall back to another station's model. Constructing
+    this registry does not connect to PostgreSQL or load weights/scalers.
+    """
     def __init__(self, configurations: list[StationModelConfig]):
         self._configurations = {}
         for configuration in configurations:
@@ -80,6 +125,17 @@ class StationModelRegistry:
             self._configurations[configuration.station_id] = configuration
 
     def get(self, station_id: str) -> StationModelConfig:
+        """Find the model assigned to an exact station ID.
+
+        Args:
+            station_id: Water-station ID, including any leading zeros.
+
+        Returns:
+            The registered configuration for that station, without loading artifacts.
+
+        Raises:
+            ModelNotConfiguredError: If no model is registered for the requested ID.
+        """
         try:
             return self._configurations[station_id]
         except KeyError:
@@ -89,7 +145,23 @@ class StationModelRegistry:
 
     @classmethod
     def from_json(cls, path: Path, artifact_root: Path) -> "StationModelRegistry":
-        """Resolve artifact paths relative to an explicitly supplied deployment root."""
+        """Load a station registry from a JSON configuration list.
+
+        Args:
+            path: JSON file containing one configuration object per station.
+            artifact_root: Deployment root used to resolve relative checkpoint and
+                preprocessing paths. Absolute artifact paths remain absolute.
+
+        Returns:
+            Registry of validated station configurations; artifacts are not loaded.
+
+        Raises:
+            OSError: If the configuration file cannot be read.
+            json.JSONDecodeError: If the file is not valid JSON.
+            KeyError: If required artifact path fields are absent.
+            TypeError: If entries contain missing or unexpected constructor fields.
+            ValueError: If a station configuration is invalid or station IDs repeat.
+        """
         entries = json.loads(path.read_text())
         configurations = []
         tuple_fields = (

@@ -30,6 +30,20 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
     value prepared for a model. Disabled stations remain readable. Data older
     than the configured threshold is returned with is_stale=true. Unknown
     stations and stations without valid measurements have distinct 404 codes.
+
+    Args:
+        request: HTTP request providing the database engine and freshness threshold.
+        station_id: Exact ID of the water or rain station to inspect.
+
+    Returns:
+        Latest valid raw value, source unit, observation/receipt times and data age.
+        Water uses mm; an unconfirmed rain unit is None. Freshness is based on
+        observed_at, not the time the record was imported into PostgreSQL.
+
+    Raises:
+        HTTPException: 404 with STATION_NOT_FOUND for an unknown station, or
+            OBSERVATION_NOT_FOUND if no valid observation exists at or before now.
+        sqlalchemy.exc.SQLAlchemyError: Database failures handled as 503 by the app.
     """
     now = datetime.now(timezone.utc)
     station_query = sa.select(Station.station_type, Station.measurement_unit).where(
@@ -104,6 +118,23 @@ def get_observation_history(
     exclusive before cursor prevents repeating a page's last observation.
     An existing station with no rows in the range returns an empty list. This
     endpoint does not aggregate, fill gaps, or check prediction availability.
+
+    Args:
+        request: HTTP request providing the database engine.
+        station_id: Exact water/rain station ID; disabled stations remain readable.
+        query: Timezone-aware start/end bounds, page limit (1-1000), and optional
+            exclusive before cursor. Bounds are [start, end); end cannot be future.
+
+    Returns:
+        Page of original-unit readings ordered newest first, including null/missing
+        rows, with source unit and next_before when another page exists. Reuse that
+        cursor with the same bounds to load older readings without repeating a row.
+
+    Raises:
+        HTTPException: 404 for an unknown station or 422 for a future end time.
+        sqlalchemy.exc.SQLAlchemyError: Database failures handled as 503 by the app.
+
+    Invalid query formats/ranges are rejected by FastAPI/Pydantic before this handler.
     """
     start = query.start.astimezone(timezone.utc)
     end = query.end.astimezone(timezone.utc)

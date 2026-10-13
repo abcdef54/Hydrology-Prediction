@@ -31,7 +31,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 def error_response(
     request: Request, status: int, code: str, message: str, details: dict | None = None
 ) -> JSONResponse:
-    """Return consistent errors without database credentials or artifact paths."""
+    """Return consistent errors without database credentials or artifact paths.
+
+    Args:
+        request: Request whose middleware has assigned state.request_id.
+        status: HTTP response status, such as 400, 404, 422 or 503.
+        code: Stable application error code for frontend handling.
+        message: Public error explanation; callers must exclude secrets/internal paths.
+        details: Optional structured public context, such as required/available counts.
+
+    Returns:
+        JSONResponse with the standard error envelope and the current request ID.
+    """
     payload = ErrorResponse(
         error=ErrorDetail(code=code, message=message, details=details or {}),
         request_id=request.state.request_id,
@@ -51,6 +62,23 @@ def create_app(
     and INPUT_STALE_AFTER_MINUTES (default 120). Only an engine owned by this app
     is disposed at shutdown. Prediction runtimes load lazily per station; form
     requests never load weights. PREDICTION_DEVICE defaults to cpu.
+
+    Args:
+        engine: Existing SQLAlchemy engine for tests/embedding; None creates an
+            application-owned engine from DATABASE_URL during startup.
+        registry: Existing station model registry; None loads the configured JSON
+            during startup. No model checkpoint is loaded by this factory.
+        stale_after_minutes: Positive finite freshness threshold; None reads
+            INPUT_STALE_AFTER_MINUTES during startup, defaulting to 120.
+
+    Returns:
+        FastAPI application with routes, request IDs, error handlers and resource
+        lifecycle. Creating the app alone does not open a database connection.
+
+    Raises:
+        ValueError: During startup if freshness/configuration settings are invalid.
+        RuntimeError: During startup if a required DATABASE_URL is absent.
+        OSError: During startup if the model configuration file cannot be read.
     """
 
     @asynccontextmanager

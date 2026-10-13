@@ -28,6 +28,15 @@ def build_station_summary(
     Prediction requires an enabled water station's database flag and its own
     registry entry. History sufficiency and runtime availability are checked
     separately by the prediction endpoints.
+
+    Args:
+        station: Database row containing public station metadata and enabled flags.
+        registry: Mapping from station IDs to their own model configurations.
+
+    Returns:
+        Public metadata with nullable location/unit and model_configured status.
+        prediction_enabled requires an enabled water station, database permission
+        and its own registry entry; it does not promise a loadable model or input history.
     """
     try:
         registry.get(station["id"])
@@ -63,7 +72,18 @@ def build_station_summary(
     responses={503: {"model": ErrorResponse}},
 )
 def list_stations(request: Request) -> StationsResponse:
-    """List enabled stations ordered by ID; unknown metadata remains null."""
+    """List enabled stations ordered by ID; unknown metadata remains null.
+
+    Args:
+        request: HTTP request providing the database engine and model registry.
+
+    Returns:
+        Enabled station summaries sorted by ID. An empty registry does not hide
+        stations; it makes their model_configured/prediction_enabled flags false.
+
+    Raises:
+        sqlalchemy.exc.SQLAlchemyError: Database failures handled as 503 by the app.
+    """
     statement = sa.select(Station.__table__).where(Station.enabled.is_(True)).order_by(Station.id)
     with request.app.state.database_engine.connect() as connection:
         station_rows = connection.execute(statement).mappings().all()
@@ -86,6 +106,18 @@ def get_station(request: Request, station_id: str) -> StationDetail:
     Coordinates are decimal degrees and alarm levels are metres as stored in
     PostgreSQL. Unknown thresholds remain null, never inferred from the model.
     Disabled stations remain inspectable but cannot permit predictions.
+
+    Args:
+        request: HTTP request providing the database engine and model registry.
+        station_id: Exact ID of the station to read, including leading zeros.
+
+    Returns:
+        Station metadata, enabled status and stored alarm thresholds in metres.
+        Unconfigured thresholds are None; no default thresholds are invented.
+
+    Raises:
+        HTTPException: 404 when the station does not exist.
+        sqlalchemy.exc.SQLAlchemyError: Database failures handled as 503 by the app.
     """
     statement = sa.select(Station.__table__).where(Station.id == station_id)
     with request.app.state.database_engine.connect() as connection:

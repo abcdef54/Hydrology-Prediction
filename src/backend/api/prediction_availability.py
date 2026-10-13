@@ -37,6 +37,24 @@ def get_prediction_availability(
     including allowed missing rain and gaps. No weights or inference are used.
     A ready hour may use an older anchor; readiness does not imply freshness.
     This is advisory: prediction must revalidate if observations change later.
+
+    Args:
+        station_id: Station being checked; resolved by the input-service dependency.
+        query: Timezone-aware [start, end) range, at most 7 days. Only exact hourly
+            boundaries inside the range are checked; end cannot be in the future.
+        resources: Dependency providing the configured station's input service and
+            source units; units are not needed for the availability response.
+
+    Returns:
+        Model/schema identity, required sequence length and hourly readiness points.
+        Each point includes a capped available-step count, actual anchor when ready,
+        and INSUFFICIENT_HISTORY when the input chain cannot yet be formed.
+
+    Raises:
+        HTTPException: 422 for future end time; 503 if input preparation fails for
+            a reason other than insufficient history. Dependency errors include
+            404 for unknown stations and 503 for unavailable station preprocessing.
+        sqlalchemy.exc.SQLAlchemyError: Database failures handled as 503 by the app.
     """
     start = query.start.astimezone(timezone.utc)
     end = query.end.astimezone(timezone.utc)
