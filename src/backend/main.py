@@ -18,6 +18,7 @@ from starlette.exceptions import HTTPException
 from src.backend.api.prediction_inputs import router as prediction_inputs_router
 from src.backend.api.predictions import router as predictions_router
 from src.backend.api.schemas import ErrorDetail, ErrorResponse
+from src.backend.api.stations import router as stations_router
 from src.backend.db.session import build_engine
 from src.backend.prediction.config import StationModelRegistry
 
@@ -122,6 +123,7 @@ def create_app(
         response.headers["X-Request-ID"] = request.state.request_id
         return response
 
+    application.include_router(stations_router)
     application.include_router(prediction_inputs_router)
     application.include_router(predictions_router)
     return application

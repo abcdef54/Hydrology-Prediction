@@ -6,6 +6,43 @@ from typing import Annotated, Any, Literal
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
 
+class StationLocation(BaseModel):
+    latitude: float | None
+    longitude: float | None
+    address: str | None
+
+
+class StationSummary(BaseModel):
+    station_id: str
+    name: str
+    station_type: Literal["water_level", "rainfall"]
+    river_name: str | None
+    location: StationLocation
+    measurement_unit: str | None
+    model_configured: bool = Field(description="A model configuration exists for this station.")
+    prediction_enabled: bool = Field(
+        description="Station permits prediction and has its own model configuration; "
+        "does not guarantee artifact availability or sufficient observations."
+    )
+
+
+class StationsResponse(BaseModel):
+    stations: list[StationSummary]
+
+
+class AlarmLevels(BaseModel):
+    """Stored alarm thresholds in metres; null means not configured."""
+
+    level_1: float | None
+    level_2: float | None
+    level_3: float | None
+
+
+class StationDetail(StationSummary):
+    enabled: bool
+    alarm_levels_m: AlarmLevels
+
+
 class PredictionInputsQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     reference_time: AwareDatetime | None = Field(

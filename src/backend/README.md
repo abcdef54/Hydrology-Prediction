@@ -23,6 +23,39 @@ Các file artifact phải là file tin cậy của mô hình tương ứng.
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - OpenAPI: `http://127.0.0.1:8000/openapi.json`
 
+## API danh sách trạm
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/stations'
+```
+
+Response có dạng `{"stations": [...]}`. API đọc các trạm có `enabled = true`
+trong PostgreSQL và sắp xếp theo mã trạm. Mỗi trạm có `station_id`, `name`,
+`station_type`, `river_name`, `location` (tọa độ và địa chỉ), `measurement_unit`,
+`model_configured` và `prediction_enabled`. Thông tin chưa có được trả về null.
+
+- `model_configured`: trạm có cấu hình mô hình riêng trong registry.
+- `prediction_enabled`: trạm nước được bật quyền dự báo trong database và có
+  cấu hình mô hình riêng. Cờ này không xác nhận đủ lịch sử tại một thời điểm cụ thể
+  hoặc xác nhận file mô hình có thể tải được; API dự báo kiểm tra các điều kiện đó.
+- Hiện tại Dã Viên được phép dự báo; 4 trạm mưa cung cấp dữ liệu đầu vào.
+
+Endpoint không tải trọng số mô hình. Khi PostgreSQL không khả dụng, API trả 503
+theo định dạng lỗi chung.
+
+## API thông tin một trạm
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/stations/0074647403'
+```
+
+`GET /api/v1/stations/{station_id}` trả các trường thông tin như trong danh sách,
+thêm `enabled` và `alarm_levels_m` (`level_1`, `level_2`, `level_3`, đơn vị mét).
+Ngưỡng báo động được đọc đúng từ database; nếu chưa cấu hình thì trả null.
+Endpoint cho phép xem cả trạm đã tắt, nhưng `prediction_enabled` luôn là false
+đối với trạm đó. Mã trạm không tồn tại trả 404 `STATION_NOT_FOUND`;
+lỗi database trả 503. Endpoint không tải mô hình hay chạy dự báo.
+
 ## API đầu vào dự báo
 
 ```text
