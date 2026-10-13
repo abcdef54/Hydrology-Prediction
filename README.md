@@ -9,6 +9,7 @@ Các mô hình đã thử nghiệm gồm XGBoost, LightGBM và các biến thể
 | Thư mục | Nội dung |
 |---|---|
 | `src/backend/` | API, chạy dự báo, lưu dữ liệu và tự động cập nhật quan trắc |
+| [src/frontend/](src/frontend/README.md) | React + Vite, bản đồ tương tác khu vực Huế |
 | `src/ai/` | Huấn luyện và đánh giá mô hình |
 | `research/` | Tạo dataset và các notebook phân tích |
 | `train_data/` | Dữ liệu Train/Val/Test |
@@ -30,6 +31,20 @@ python3 -m venv .venv
 
 Mở Swagger tại http://127.0.0.1:8000/docs để thử API.
 Xem [hướng dẫn backend](src/backend/README.md) để cấu hình và chạy worker cập nhật dữ liệu.
+
+## Chạy frontend
+
+Mở terminal riêng:
+
+```bash
+cd src/frontend
+npm ci
+npm run dev
+```
+
+Mở http://localhost:5173 để xem bản đồ Huế, kéo và phóng to/thu nhỏ.
+Bản đồ nền cần Internet; trang hiện tại chưa gọi API backend.
+Xem [hướng dẫn frontend](src/frontend/README.md) cho yêu cầu Node.js và cách build.
 
 ## Huấn luyện và phân tích
 

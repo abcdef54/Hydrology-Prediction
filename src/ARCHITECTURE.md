@@ -114,7 +114,7 @@ Không triển khai đăng nhập, đăng ký, tài khoản, lịch sử riêng 
 |---|---|---|
 | Frontend | React + Vite | SPA và công cụ build |
 | Styling | Tailwind CSS | Giao diện responsive |
-| Interactive Map | Leaflet + React Leaflet | Map, station marker, zoom, fly-to |
+| Interactive Map | MapLibre GL JS + OpenMapTiles qua OpenFreeMap | Vector map, marker, zoom, fly-to và lọc nhãn/biên giới |
 | Charts | Recharts | Mực nước, dự báo, mưa |
 | Backend | FastAPI + Pydantic | HTTP API, validation |
 | ML | PyTorch | Inference theo model artifact đã train |
@@ -363,7 +363,7 @@ Scheduled Ingestion Process (same backend codebase)
 
                         └─> Invalidate/refresh latest Redis cache
 
-Leaflet map tiles: browser -> configured tile provider (separate from hydrology API)
+OpenMapTiles vector tiles: browser -> OpenFreeMap (separate from hydrology API)
 ```
 
 Phân tách **Source of Truth**:
@@ -377,13 +377,19 @@ Phân tách **Source of Truth**:
 - Model artifacts và metadata là nguồn xác định cách preprocess/inference; không dựa vào tham số frontend.
 
 ### 4.2. Những quyết định về frontend map
-- Dùng React Leaflet + Leaflet cho pan/zoom/marker/popup và `flyTo` khi đổi trạm.
+- Theo yêu cầu chủ dự án, dùng MapLibre GL JS với dữ liệu OSM theo schema OpenMapTiles từ OpenFreeMap, thay cho Leaflet/raster HOT. Nguồn hiện không cần API key. Lọc style trước khi tạo map: mọi lớp `boundary` chỉ hiển thị `maritime = 0`; biên giới biển hoặc thiếu thuộc tính này bị loại.
 
-- `MapContainer` tạo một instance map; thay `center` prop sau mount không đủ để điều khiển map. Dùng `MapController` + map instance để focus trạm.
+- React quản lý map instance qua ref/effect; gọi `flyTo` trên instance khi cần focus trạm. Khi unmount phải hủy request style và gọi `map.remove()` để giải phóng WebGL/worker.
 
 - `selectedStationId` là state chung cho Sidebar, Map Marker và Station Detail Panel.
 
-- Mặc định focus **Dã Viên/Huế** theo tọa độ do chủ dự án cung cấp; không cố tình giới hạn khả năng kéo map ra khỏi vùng Huế.
+- Mặc định focus **Dã Viên/Huế** theo tọa độ do chủ dự án cung cấp, zoom 12. Theo quyết định chủ dự án, giới hạn điều hướng trong khung bao quanh Việt Nam và vùng biển lân cận; không khóa riêng khu vực Huế. Đây là khung chữ nhật phục vụ UI, không phải đường biên hành chính.
+
+- Zoom tối thiểu cấu hình 6, tối đa 19; MapLibre ràng buộc khung nhìn theo `maxBounds` và kích thước màn hình. Chỉ yêu cầu vector tiles giao với vùng này, không lặp bản đồ thế giới, không prefetch toàn vùng hoặc tạo cache offline.
+
+- Chỉ đổi hai nhãn biển sang tiếng Việt: `South China Sea` → `Biển Đông`, `Gulf of Tonkin` → `Vịnh Bắc Bộ`, không ghép chữ Trung Quốc. Ẩn text địa danh trong các vùng UI bao quanh cụm đảo nhỏ ngoài khơi; giữ hình dạng đảo và bờ biển. Vùng lọc không phải đường biên/chủ quyền chính thức. Nhãn đất liền Trung Quốc, Hải Nam và đảo ven bờ ngoài vùng lọc giữ nguyên. Cấu hình vùng nằm trong `src/frontend/src/mapConfig.js`.
+
+- Trong lớp `water_name`, ẩn thêm tên địa hình dưới biển (núi ngầm/sống núi/rãnh biển) thuộc loại ocean/sea/bay/strait được nhận diện bằng thuật ngữ trong tên, kể cả ngoài vùng đảo. Không áp quy tắc này lên tên địa danh đất liền, hồ hoặc sông; hai tên biển tiếng Việt được ưu tiên giữ.
 
 - Tile Provider phải là cấu hình thay được; giữ attribution và tuân thủ chính sách của nhà cung cấp. OpenStreetMap public tiles không có SLA, không bulk-prefetch tiles.
 
@@ -1040,7 +1046,9 @@ Không commit credentials. API keys đưa vào biến build client (`VITE_*`) **
 ---
 
 ## Appendix — References (implementation guidance)
-- React Leaflet Map API: \<https\://react-leaflet.js.org/docs/api-map/>
+- MapLibre GL JS: \<https\://maplibre.org/maplibre-gl-js/docs/>
+- OpenMapTiles schema: \<https\://openmaptiles.org/docs/schema/>
+- OpenFreeMap: \<https\://openfreemap.org/quick_start/>
 
 - OpenStreetMap Tile Usage Policy: \<https\://operations.osmfoundation.org/policies/tiles/>
 
