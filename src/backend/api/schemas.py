@@ -1,7 +1,7 @@
 """Public input-form values use original units, never standardized tensor values."""
 
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 
@@ -52,3 +52,36 @@ class ErrorDetail(BaseModel):
 class ErrorResponse(BaseModel):
     error: ErrorDetail
     request_id: str
+
+
+class PredictionRequest(BaseModel):
+    """Edits use original feature names and units, and apply to the last timestep."""
+
+    model_config = ConfigDict(extra="forbid")
+    station_id: str = Field(strict=True, min_length=1)
+    reference_time: AwareDatetime | None = None
+    overrides: dict[str, Annotated[float, Field(strict=True, allow_inf_nan=False)] | None] = Field(
+        default_factory=dict,
+        description="Partial edits in original units; null is allowed only for missing rain/lag values.",
+    )
+
+
+class PredictedWaterLevel(BaseModel):
+    horizon_minutes: int
+    forecast_at: datetime
+    water_level_mm: float = Field(allow_inf_nan=False)
+
+
+class PredictionResponse(BaseModel):
+    station_id: str
+    model_version: str
+    feature_schema_version: str
+    requested_reference_time: datetime | None
+    hourly_reference_time: datetime
+    anchor_observed_at: datetime
+    unit: Literal["mm"]
+    predictions: list[PredictedWaterLevel]
+    overrides_applied: dict[str, float | None]
+    is_stale: bool
+    input_age_minutes: float
+    stale_after_minutes: float

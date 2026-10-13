@@ -21,13 +21,8 @@ from src.backend.prediction.preprocessing import InputPreprocessor
 router = APIRouter(prefix="/api/v1", tags=["Prediction inputs"])
 
 
-def get_input_service(request: Request, station_id: str) -> tuple[PredictionInputService, dict]:
-    """Check station availability and resolve its own scaler and source units.
-
-    Reads station metadata only. Unknown stations return 404; disabled stations
-    or stations without a configured/usable model return 503. No model weights
-    are loaded. The caller receives a service plus units keyed by source station.
-    """
+def get_station_model_config(request: Request, station_id: str) -> StationModelConfig:
+    """Resolve a supported water station; unknown IDs return 404, unavailable models 503."""
     engine = request.app.state.database_engine
     with engine.connect() as connection:
         station = (
@@ -59,6 +54,19 @@ def get_input_service(request: Request, station_id: str) -> tuple[PredictionInpu
                     "message": "No model is configured for this station.",
                 },
             ) from None
+    return config
+
+
+def get_input_service(request: Request, station_id: str) -> tuple[PredictionInputService, dict]:
+    """Check station availability and resolve its own scaler and source units.
+
+    Reads station metadata only. Unknown stations return 404; disabled stations
+    or stations without a configured/usable model return 503. No model weights
+    are loaded. The caller receives a service plus units keyed by source station.
+    """
+    config = get_station_model_config(request, station_id)
+    engine = request.app.state.database_engine
+    with engine.connect() as connection:
         source_ids = (config.station_id, *config.rain_station_ids)
         units = dict(
             connection.execute(

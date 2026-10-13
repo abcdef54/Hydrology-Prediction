@@ -6,6 +6,7 @@ import math
 import os
 from pathlib import Path
 from uuid import uuid4
+from threading import Lock
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -14,7 +15,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException
 
-from src.backend.api.prediction_inputs import router
+from src.backend.api.prediction_inputs import router as prediction_inputs_router
+from src.backend.api.predictions import router as predictions_router
 from src.backend.api.schemas import ErrorDetail, ErrorResponse
 from src.backend.db.session import build_engine
 from src.backend.prediction.config import StationModelRegistry
@@ -44,7 +46,8 @@ def create_app(
 
     Production reads DATABASE_URL, optional MODEL_ARTIFACT_ROOT/MODEL_CONFIG_PATH,
     and INPUT_STALE_AFTER_MINUTES (default 120). Only an engine owned by this app
-    is disposed at shutdown. This endpoint never loads model weights.
+    is disposed at shutdown. Prediction runtimes load lazily per station; form
+    requests never load weights. PREDICTION_DEVICE defaults to cpu.
     """
 
     @asynccontextmanager
@@ -67,9 +70,13 @@ def create_app(
         )
         application.state.database_engine = engine if engine is not None else build_engine()
         application.state.stale_after_minutes = configured_threshold
+        application.state.prediction_device = os.environ.get("PREDICTION_DEVICE", "cpu")
+        application.state.prediction_services = {}
+        application.state.prediction_service_lock = Lock()
         try:
             yield
         finally:
+            application.state.prediction_services.clear()
             if engine is None:
                 application.state.database_engine.dispose()
 
@@ -115,7 +122,8 @@ def create_app(
         response.headers["X-Request-ID"] = request.state.request_id
         return response
 
-    application.include_router(router)
+    application.include_router(prediction_inputs_router)
+    application.include_router(predictions_router)
     return application
 
 

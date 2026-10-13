@@ -1,7 +1,7 @@
 # Backend thủy văn
 
 Backend hiện có database PostgreSQL, chuẩn bị đầu vào, runtime Residual LSTM và
-API lấy dữ liệu để tự điền form. API hiện tại chưa cung cấp endpoint chạy dự báo.
+API lấy dữ liệu để tự điền form và API chạy dự báo.
 Mỗi trạm nước có model/scaler riêng, được chọn bằng `station_id`.
 
 ## Chạy tại máy local
@@ -57,7 +57,7 @@ Response gồm:
 - `model_version` và `feature_schema_version` xác định cấu hình đang dùng.
 
 Endpoint chỉ đọc dữ liệu và tải scaler để chuẩn bị input; không tải checkpoint,
-chạy inference hoặc nhận override. Override sẽ được gửi qua endpoint dự báo sau này.
+chạy inference hoặc nhận override. Override được gửi qua endpoint `POST /api/v1/predictions`.
 
 ### Dữ liệu cũ
 
@@ -96,3 +96,48 @@ Chưa có Redis cache ở giai đoạn này. Khi thêm cache, dữ liệu gốc 
 Các test API dùng dữ liệu giả và không cần PostgreSQL. Kiểm tra trực tiếp trên
 PostgreSQL local nằm trong `scripts/local/verify_prediction_inputs_api.py` và chỉ
 đọc dữ liệu. Xem thêm `db/README.md` và `prediction/README.md` cho các phần bên dưới.
+
+
+## API chạy dự báo
+
+```text
+POST /api/v1/predictions
+```
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/predictions' \
+  -H 'Content-Type: application/json' \
+  -d '{"station_id":"0074647403","reference_time":"2026-09-20T14:30:00+07:00","overrides":{"water_level_depth":700.0}}'
+```
+
+- Chỉ `station_id` là bắt buộc. Bỏ `reference_time` hoặc gửi null để dự báo từ
+  đầu vào mới nhất. Bỏ `overrides` để giữ nguyên các feature quan trắc.
+- Override dùng đúng tên feature và đơn vị gốc của form, ví dụ `water_level_depth`
+  tính bằng mm. Chỉ sửa timestep cuối, qua đúng preprocessing đã lưu.
+- Feature không được sửa giữ nguyên; không tự tính lại các feature liên quan khi
+  người dùng sửa một feature. Mưa/lag có thể nhận null, cờ chỉ nhận số 0/1 và
+  mực nước hiện tại không được thiếu. Cho phép mực nước âm như pipeline training.
+- Không nhận tên feature lạ, chuỗi thay cho số, boolean, NaN/Infinity, số vượt
+  float32 hoặc trường request ngoài schema. Override không hợp lệ trả 422
+  `INVALID_OVERRIDE`; lỗi kiểu dữ liệu trả `INVALID_REQUEST`.
+- Mỗi worker tải model/scaler một lần cho từng trạm khi có yêu cầu dự báo đầu tiên.
+  Mô hình khác trạm không dùng chung trọng số. Khi thay artifact/config, khởi động
+  lại backend và cập nhật model version. Không cache kết quả hay override ở bước này.
+- `PREDICTION_DEVICE` mặc định `cpu`; có thể đặt `cuda` nếu máy hỗ trợ. Hiện đã
+  kiểm chứng trên CPU. Model chạy eval/inference mode, dropout tắt và không có
+  correction penalty, optimizer hoặc training.
+
+Response giữ các mốc thời gian và model/schema version, có `unit="mm"`,
+`overrides_applied` và danh sách `predictions`. Mỗi phần tử gồm
+`horizon_minutes`, `forecast_at`, `water_level_mm`. Các horizon lấy từ cấu hình;
+Dã Viên hiện là 60/180/360/720/1440 phút. Thời điểm dự báo tính từ anchor thực tế,
+không từ mốc 14:30 người dùng nhập. Các trường `is_stale`, `input_age_minutes`,
+`stale_after_minutes` theo cùng quy tắc 2 giờ của API đầu vào.
+
+Không ghi override hoặc dự báo vào PostgreSQL. `MODEL_UNAVAILABLE` (503) báo lỗi
+load model/scaler; `PREDICTION_UNAVAILABLE` (503) báo không tạo được dự báo cho
+đầu vào. Các lỗi trạm, database và thiếu lịch sử giữ cùng định dạng ở trên.
+
+Script kiểm chứng local: `scripts/local/verify_predictions_api.py`. Script đối
+chiếu latest, historical và override với artifact mô hình đã lưu, kiểm tra form
+không bị thay đổi sau override; không train hoặc ghi database.

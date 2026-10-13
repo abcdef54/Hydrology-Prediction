@@ -11,6 +11,10 @@ from sklearn.preprocessing import StandardScaler
 from src.backend.prediction.config import StationModelConfig
 
 
+class InvalidOverrideError(ValueError):
+    """User-supplied feature cannot be represented by this model's input contract."""
+
+
 class InputPreprocessor:
     def __init__(self, feature_scaler: StandardScaler, config: StationModelConfig):
         self.config = config
@@ -43,6 +47,29 @@ class InputPreprocessor:
             )
         return cls(saved["feature_scaler"], config)
 
+    def validate_overrides(self, overrides: Mapping[str, float | None] | None) -> None:
+        """Validate original-unit edits without changing observations or scaler state.
+
+        Flags require numeric 0/1; missing rain/lag values may be None, but the
+        current water level is required by the persistence branch. Raises
+        InvalidOverrideError for invalid names, types or unrepresentable values.
+        """
+        for name, value in (overrides or {}).items():
+            if name not in self.feature_columns:
+                raise InvalidOverrideError(f"Unknown feature override: {name}")
+            if value is not None and (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not np.isfinite(value)
+            ):
+                raise InvalidOverrideError(f"Override must be a finite number or None: {name}")
+            if (name.endswith("_missing") or name == "flood_season") and value not in (0, 1):
+                raise InvalidOverrideError(f"Flag override must be 0 or 1: {name}")
+            if name == "water_level_depth" and value is None:
+                raise InvalidOverrideError("Current water level cannot be missing.")
+            if value is not None and abs(value) > float(np.finfo(np.float32).max):
+                raise InvalidOverrideError(f"Override exceeds float32 range: {name}")
+
     def prepare_features(
         self, features: pd.DataFrame, overrides: Mapping[str, float | None] | None = None
     ) -> tuple[pd.DataFrame, torch.Tensor]:
@@ -50,18 +77,9 @@ class InputPreprocessor:
             raise ValueError("Feature names or order do not match the saved scaler.")
         if len(features) != self.sequence_length:
             raise ValueError(f"Expected {self.sequence_length} input timesteps.")
+        self.validate_overrides(overrides)
         prepared = features.copy()
         for name, value in (overrides or {}).items():
-            if name not in self.feature_columns:
-                raise ValueError(f"Unknown feature override: {name}")
-            if value is not None and (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not np.isfinite(value)
-            ):
-                raise ValueError(f"Override must be a finite number or None: {name}")
-            if (name.endswith("_missing") or name == "flood_season") and value not in (0, 1):
-                raise ValueError(f"Flag override must be 0 or 1: {name}")
             # Integer flag columns stay integer; other columns already use float.
             prepared.loc[prepared.index[-1], name] = np.nan if value is None else value
         raw = prepared.to_numpy(dtype=np.float32)
