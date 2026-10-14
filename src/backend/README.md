@@ -363,7 +363,7 @@ một dự báo thực sự đã phát trong quá khứ.
 Kiểm chứng local: `scripts/local/verify_forecast_history_api.py` đọc 240 điểm tại
 5 horizon, kiểm tra phân trang và đối chiếu với các trung bình giờ tính riêng.
 
-## API Visualize một mốc
+## API biểu đồ dự báo một mốc
 
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/forecasts/3923638a-f637-41ad-afdd-2443b9ec726e'
@@ -393,8 +393,9 @@ ID trong ví dụ thuộc lượt backfill local; hệ thống khác dùng ID c�
   có thời điểm horizon sai trả 503 `STORED_FORECAST_INVALID`; đơn vị chưa xác nhận
   mm trả 503 `UNIT_UNAVAILABLE`; lỗi database trả 503 theo định dạng lỗi chung.
 
-Luồng frontend: chọn mốc và tự điền input → Visualize đọc ID đã có. Nếu chưa có
-dự báo gốc phù hợp, gọi POST dự báo để tạo/lấy ID rồi gọi endpoint này. Kịch bản
+Luồng frontend: chọn mốc và tự điền input → bấm Dự báo gọi POST để tạo/lấy ID →
+đọc endpoint này để vẽ kết quả và thực tế. Predict và biểu đồ đã gộp trong một
+luồng, không có nút Visualize riêng. Lỗi GET chỉ cần tải lại thực tế. Kịch bản
 overrides không có forecast_id; nếu vẽ thì dùng response Predict và gắn nhãn
 kịch bản, không coi là bản dự báo gốc đã lưu.
 

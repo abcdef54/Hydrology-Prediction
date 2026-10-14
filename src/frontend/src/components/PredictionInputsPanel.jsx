@@ -1,16 +1,17 @@
 import { useState } from 'react';
-import { usePredictionInputs } from '../hooks/usePredictionInputs.js';
 import { formatObservationTime } from '../stations.js';
 import { describePredictionFeature } from '../predictionInputs.js';
 
 /**
  * @param {object} props stations dùng tra tên nguồn; eligibleStations là trạm nước được backend cho phép dự báo;
  * selection chứa trạm/mốc đang chọn; onSelect chọn mốc hoặc latest, onClear hủy lựa chọn.
- * @returns {import('react').ReactElement} Vùng auto-fill chỉ đọc, chưa chạy dự báo hoặc sửa input.
+ * inputState là kết quả auto-fill; onPredict chạy dự báo từ dữ liệu gốc đang xem.
+ * @returns {import('react').ReactElement} Vùng auto-fill chỉ đọc và nút dự báo khi đủ dữ liệu.
  */
-export default function PredictionInputsPanel({ stations, eligibleStations, selection, onSelect, onClear, defaultStationId }) {
+export default function PredictionInputsPanel({ stations, eligibleStations, selection, onSelect, onClear, defaultStationId,
+  inputState, onPredict, predictButtonRef }) {
   const [latestStationId, setLatestStationId] = useState(defaultStationId ?? '');
-  const { status, data, error } = usePredictionInputs(selection);
+  const { status, data, error } = inputState;
   const stationId = selection?.station.station_id ?? latestStationId;
   const latestStation = eligibleStations.find((station) => station.station_id === stationId)
     ?? (eligibleStations.length === 1 ? eligibleStations[0] : null);
@@ -28,6 +29,9 @@ export default function PredictionInputsPanel({ stations, eligibleStations, sele
           </select>
           <button type="button" disabled={!latestStation} onClick={() => onSelect(latestStation, null)}>Đầu vào mới nhất</button>
           {selection && <button type="button" onClick={onClear}>Bỏ chọn</button>}
+          <button type="button" className="prediction-run-button" ref={predictButtonRef}
+            disabled={status !== 'ready' || !data?.input_ready || !selection}
+            onClick={onPredict}>Dự báo</button>
         </div>
       </div>
       {!eligibleStations.length && <p>Chưa có trạm nước được bật dự báo và cấu hình mô hình.</p>}

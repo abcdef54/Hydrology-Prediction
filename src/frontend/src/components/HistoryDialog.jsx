@@ -7,6 +7,9 @@ import {
 } from '../history.js';
 import HourlyHistoryTable from './HourlyHistoryTable.jsx';
 import PredictionInputsPanel from './PredictionInputsPanel.jsx';
+import PredictionResult from './PredictionResult.jsx';
+import { usePredictionInputs } from '../hooks/usePredictionInputs.js';
+import { usePrediction } from '../hooks/usePrediction.js';
 
 /**
  * Bảng lịch sử độc lập với bộ lọc bản đồ; chỉ tải khi mở/áp dụng lọc/đổi trang.
@@ -24,6 +27,10 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
   const [retryCount, setRetryCount] = useState(0);
   const [formError, setFormError] = useState('');
   const [inputSelection, setInputSelection] = useState(null);
+  const inputState = usePredictionInputs(inputSelection);
+  const predictionFlow = usePrediction();
+  const [showResult, setShowResult] = useState(false);
+  const predictButtonRef = useRef(null);
   const eligibleStations = stations.filter((item) => item.station_type === 'water_level'
     && item.prediction_enabled && item.model_configured);
   const request = useMemo(() => ({
@@ -67,21 +74,34 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
     setInputSelection({ station: selectedStation, referenceTime });
   }
 
+  function predict() {
+    if (inputState.status !== 'ready' || !inputState.data?.input_ready || !inputSelection) return;
+    predictionFlow.run(inputSelection, inputState.data);
+    setShowResult(true);
+  }
+
+  function returnToHistory() {
+    predictionFlow.cancel();
+    setShowResult(false);
+    requestAnimationFrame(() => predictButtonRef.current?.focus({ preventScroll: true }));
+  }
+
   return (
     <dialog ref={dialogRef} className="history-dialog" aria-labelledby="history-title"
       onCancel={(event) => { event.preventDefault(); onClose(); }}>
       <header className="history-header">
         <div>
           <p className="station-sidebar-eyebrow">DỮ LIỆU QUAN TRẮC</p>
-          <h2 id="history-title">Lịch sử quan trắc</h2>
-          <p className="history-description">Số đo đúng mốc giờ · Giờ Việt Nam · “—”: thiếu · Ô nhạt: chưa tới giờ</p>
+          <h2 id="history-title">{showResult ? 'Dự báo mực nước' : 'Lịch sử quan trắc'}</h2>
+          <p className="history-description">{showResult ? 'Dự báo và thực tế · Giờ Việt Nam · Đơn vị mm'
+            : 'Số đo đúng mốc giờ · Giờ Việt Nam · “—”: thiếu · Ô nhạt: chưa tới giờ'}</p>
         </div>
         <button type="button" className="station-detail-close" onClick={onClose} aria-label="Đóng bảng lịch sử" autoFocus>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
       </header>
 
-      <div className="history-content">
+      <div className="history-content" hidden={showResult}>
       <form className="history-filters" onSubmit={applyFilters} noValidate>
         <div className="history-filter-field"><label htmlFor="history-station-type">Loại trạm</label>
           <select id="history-station-type" value={draft.stationType} onChange={(event) => updateDraft({ stationType: event.target.value, stationId: '' })}>
@@ -113,7 +133,8 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
       </form>
 
       <PredictionInputsPanel stations={stations} eligibleStations={eligibleStations} selection={inputSelection}
-        defaultStationId={station?.station_id} onSelect={selectInputs} onClear={() => setInputSelection(null)} />
+        defaultStationId={station?.station_id} onSelect={selectInputs} onClear={() => setInputSelection(null)}
+        inputState={inputState} onPredict={predict} predictButtonRef={predictButtonRef} />
 
       <div className="history-summary" aria-live="polite">
         <span>Đang xem: {formatHistoryDate(appliedFilters.startDate)}
@@ -131,7 +152,7 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
         selection={inputSelection} onSelectInputs={selectInputs} />}
       </div>
 
-      <footer className="history-footer">
+      <footer className="history-footer" hidden={showResult}>
         <div><strong>Trang {cursors.length}</strong>{data && ` · ${data.rows.length} dòng trạm/ngày`}</div>
         <p>Số đo mưa tại mốc giờ, không phải tổng mưa trong giờ.</p>
         <nav aria-label="Phân trang lịch sử">
@@ -141,6 +162,10 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
             onClick={() => setCursors((previous) => [...previous, data.next_cursor])}>Trang tiếp</button>
         </nav>
       </footer>
+      {showResult && predictionFlow.state && <PredictionResult state={predictionFlow.state}
+        onBack={returnToHistory}
+        onRetry={() => predictionFlow.run(predictionFlow.state.selection, predictionFlow.state.inputs)}
+        onRetryActuals={predictionFlow.retryActuals} />}
     </dialog>
   );
 }

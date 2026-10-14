@@ -3,18 +3,21 @@
  *
  * @param {string} path Đường dẫn cùng origin, bắt đầu bằng /api/.
  * @param {AbortSignal} [signal] Signal của component gọi API.
+ * @param {object} [options] method/json cho POST; timeoutMs mặc định 10 giây.
  * @returns {Promise<object>} Response JSON đã đọc.
  * @throws {Error} Lỗi mạng/timeout/HTTP/JSON; lỗi HTTP kèm status và code nếu có.
  * @throws {DOMException} Khi caller hủy request.
  */
-export async function fetchApiJson(path, signal) {
+export async function fetchApiJson(path, signal, { method = 'GET', json, timeoutMs = 10_000 } = {}) {
   let response;
   try {
     response = await fetch(path, {
-      headers: { Accept: 'application/json' },
+      method,
+      headers: { Accept: 'application/json', ...(json === undefined ? {} : { 'Content-Type': 'application/json' }) },
+      ...(json === undefined ? {} : { body: JSON.stringify(json) }),
       signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
-        : AbortSignal.timeout(10_000),
+        ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+        : AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     if (signal?.aborted) throw error;

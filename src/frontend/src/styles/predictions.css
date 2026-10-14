@@ -1,0 +1,45 @@
+@layer components {
+  .history-content[hidden], .history-footer[hidden] { display: none; }
+  .prediction-inputs-panel .prediction-run-button { background: #075985; border-color: #075985; color: white; font-weight: 700; }
+  .prediction-result { flex: 1; min-height: 0; overflow: auto; padding: 24px; font-size: 13px; }
+  .prediction-result-heading { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .prediction-result h3 { margin: 0; font-size: 20px; font-weight: 700; }
+  .prediction-result h4 { margin: 24px 0 8px; font-size: 15px; font-weight: 700; }
+  .prediction-result p { margin: 8px 0; line-height: 1.6; }
+  .prediction-result button { padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 8px; background: #f8fafc; color: #075985; cursor: pointer; }
+  .prediction-result-state { padding: 40px 0; text-align: center; }
+  .prediction-result [role="alert"] { color: #b91c1c; }
+  .prediction-result-meta { padding: 12px; border-radius: 8px; background: #f0f9ff; }
+  .prediction-actual-error, .prediction-no-actuals { padding: 10px 12px; border: 1px solid #e2e8f0; border-radius: 8px; }
+  .forecast-chart { margin: 20px 0 0; padding: 16px; border: 1px solid #e2e8f0; border-radius: 12px; background: white; }
+  .forecast-chart-legend { display: flex; flex-wrap: wrap; gap: 16px; font-weight: 600; }
+  .forecast-legend-predicted { color: #0369a1; }
+  .forecast-legend-actual { color: #c2410c; }
+  .forecast-chart-scroll, .prediction-comparison-scroll { overflow-x: auto; scrollbar-width: thin; }
+  .forecast-chart-scroll:focus-visible, .prediction-comparison-scroll:focus-visible { outline: 2px solid #0284c7; }
+  .forecast-chart svg { display: block; width: 100%; min-width: 640px; max-height: 430px; }
+  .forecast-chart text { fill: #64748b; font-size: 12px; }
+  .forecast-chart .forecast-axis-label { fill: #334155; font-size: 13px; }
+  .forecast-grid-line { stroke: #e2e8f0; stroke-width: 1; }
+  .forecast-anchor-line { stroke: #94a3b8; stroke-dasharray: 4 4; }
+  .forecast-line { fill: none; stroke-width: 2.5; stroke-linejoin: round; }
+  .forecast-line--predicted { stroke: #0369a1; }
+  .forecast-line--actual { stroke: #c2410c; }
+  .forecast-dot { stroke: #fff; stroke-width: 1.5; }
+  .forecast-dot--predicted { fill: #0369a1; }
+  .forecast-dot--actual { fill: #c2410c; }
+  .forecast-dot:focus { outline: 2px solid #0f172a; }
+  .forecast-chart figcaption { margin-top: 10px; color: #64748b; font-size: 12px; line-height: 1.6; }
+  .forecast-mobile-hint { display: none; }
+  .prediction-comparison { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  .prediction-comparison th, .prediction-comparison td { padding: 12px; border: 1px solid #e2e8f0; text-align: right; white-space: nowrap; }
+  .prediction-comparison thead th { background: #f1f5f9; font-weight: 600; }
+  .prediction-comparison th:first-child { text-align: left; }
+  .prediction-error-summary { padding: 12px; border-radius: 8px; background: #f0fdf4; color: #166534; }
+  @media (width < 640px) {
+    .prediction-result { padding: 16px; }
+    .prediction-result h3 { font-size: 17px; }
+    .forecast-chart { padding: 10px; }
+    .forecast-mobile-hint { display: inline; }
+  }
+}

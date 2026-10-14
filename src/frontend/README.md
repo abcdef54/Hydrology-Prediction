@@ -111,8 +111,34 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
 - Chuỗi đầy đủ được backend chuẩn bị, không ghép từ các ô bảng trên frontend.
   Đổi mốc, bỏ chọn hoặc đóng bảng hủy request; áp dụng bộ lọc xóa lựa chọn,
   đổi trang giữ lựa chọn với trạm/mốc hiển thị rõ. Không tự polling hoặc inference.
-- Bước này chưa sửa input/chạy Predict/vẽ kết quả; Predict và biểu đồ sẽ được
-  nối trong bước tiếp theo. Không chọn cả khoảng thời gian bằng click dòng.
+- Input hiện chỉ đọc, chưa chỉnh sửa/overrides. Không chọn cả khoảng thời gian
+  bằng click dòng.
+
+## Dự báo và biểu đồ kết quả
+
+- Nút “Dự báo” bật khi auto-fill thành công và `input_ready=true`. Gửi một POST
+  `/api/v1/predictions` từ input gốc, không overrides. Với “Mới nhất”, cố định
+  `reference_time` bằng `hourly_reference_time` của input đang xem để tránh tự
+  chuyển sang mốc mới trong lúc chờ. Backend vẫn kiểm tra lại dữ liệu khi dự báo.
+- Kết quả thay vùng lịch sử trong cùng modal; “Quay lại lịch sử” giữ bộ lọc,
+  trang, ô giờ và input, trả focus về nút Dự báo. ×/Escape đóng toàn bộ modal.
+- Đường dự báo lấy horizon từ API (Dã Viên hiện 5 điểm +1/+3/+6/+12/+24 giờ),
+  tính từ `anchor_observed_at` thực tế. Không tạo điểm dự báo ở các giờ còn lại.
+  Biểu đồ SVG có điểm/tooltip, hỗ trợ focus và cuộn ngang trên màn hình nhỏ.
+- Đọc `/api/v1/forecasts/{forecast_id}` để lấy thực tế của đúng bản dự báo,
+  xác thực trạm/model/pipeline/anchor/horizon. Thực tế là trung bình từng giờ
+  sau anchor, tối đa 24 mốc với model hiện tại, khác số đo đúng giờ của bảng lịch sử.
+  Null không nối đường hoặc thay bằng 0; chưa có thực tế chỉ vẽ dự báo.
+- Bảng so sánh ghép theo timestamp chính xác tại các horizon, hiển thị dự báo,
+  thực tế, sai lệch (dự báo − thực tế), sai số tuyệt đối và trung bình sai số tuyệt
+  đối trên các mốc có thực tế. Tất cả bằng mm; hiển thị tối đa 2 chữ số thập phân.
+- Khóa click liên tiếp, không tự retry POST. Timeout dự báo 60 giây, API đọc vẫn
+  10 giây. Có trạng thái tải/lỗi/thử lại; lỗi tải thực tế vẫn giữ dự báo và chỉ
+  retry GET thực tế. Quay lại/đóng hủy chờ, ngăn kết quả cũ thay thế lượt mới;
+  không đảm bảo dừng inference hoặc lưu kết quả đã bắt đầu trên server.
+- Đã kiểm chứng luồng quá khứ/hôm nay/mới nhất trên backend thật, desktop/mobile;
+  các trường hợp thiếu/gãy dữ liệu, quota, sai bản dự báo và hủy bằng response giả.
+  Chưa có dự báo theo khoảng ngày hoặc chỉnh sửa input trong task này.
 
 ## Nguồn bản đồ và giới hạn hiển thị
 
@@ -192,6 +218,10 @@ proxy local. Khi deploy static build cần reverse proxy `/api` riêng.
   chọn mốc, auto-fill chỉ đọc và hủy request khi đổi lựa chọn.
 - `src/api/predictionInputs.js`, `src/styles/predictionInputs.css`: hợp đồng API và CSS input.
 - `src/predictionInputs.js`: nhãn đầu vào tiếng Việt và cách trình bày cờ dữ liệu.
+- `src/api/predictions.js`, `src/hooks/usePrediction.js`: POST dự báo và GET thực tế,
+  khóa lượt chạy, hủy và thử lại riêng từng bước.
+- `src/components/PredictionResult.jsx`, `ForecastChart.jsx`: kết quả, biểu đồ và bảng sai số.
+- `src/predictions.js`, `src/styles/predictions.css`: ghép sai số, ngắt đoạn thiếu và giao diện kết quả.
 - `src/hooks/useStations.js`: tải metadata, số đo và hủy/làm mới request.
 - `src/stations.js`: nhãn/icon, tọa độ và quy tắc ưu tiên timestamp trạm nước.
 - `src/mapConfig.js`: tâm nhìn, zoom, vùng điều hướng và các vùng ẩn nhãn ngoài khơi.
