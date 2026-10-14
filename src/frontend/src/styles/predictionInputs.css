@@ -80,3 +80,11 @@
     .prediction-inputs-actions { gap: 6px; }
   }
 }
+
+@layer components {
+  .prediction-feature input:not([readonly]) { border-color: #7dd3fc; background: #fff; }
+  .prediction-feature input[readonly] { background: #f1f5f9; }
+  .prediction-feature select { width: 100%; min-height: 0; padding: 7px 9px; color: #334155; border-color: #cbd5e1; }
+  .prediction-feature [aria-invalid="true"] { border-color: #dc2626; }
+  .prediction-field-error { display: block; margin-top: 4px; color: #b91c1c; font-weight: 400; }
+}

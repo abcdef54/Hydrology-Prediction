@@ -101,7 +101,7 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
   Nút “Đầu vào mới nhất” bỏ `reference_time`, có bộ chọn trạm nước riêng.
 - Vùng đầu vào phía trên bảng hiển thị trạm, mốc yêu cầu/anchor thực tế, trạng thái
   đủ dữ liệu, dữ liệu cũ và lỗi/thử lại. Các giá trị tại bước cuối được tự điền vào
-  ô chỉ đọc, thu gọn/mở rộng được; số lượng/thứ tự/đơn vị đọc từ metadata API.
+  ô có thể sửa nếu API cho phép, thu gọn/mở rộng được; số lượng/thứ tự/đơn vị đọc từ metadata API.
   Giữ số 0/âm, null hiện “Thiếu”; không tự gán đơn vị hoặc thay thiếu bằng 0.
 - Nhãn dùng tiếng Việt dễ hiểu, ví dụ “Mực nước 1 giờ trước”, “Mưa đầu vào”; tên trạm
   nằm ở chú thích dưới ô, tra metadata và không hiển thị mã thay tên. Vùng nhãn
@@ -111,13 +111,20 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
 - Chuỗi đầy đủ được backend chuẩn bị, không ghép từ các ô bảng trên frontend.
   Đổi mốc, bỏ chọn hoặc đóng bảng hủy request; áp dụng bộ lọc xóa lựa chọn,
   đổi trang giữ lựa chọn với trạm/mốc hiển thị rõ. Không tự polling hoặc inference.
-- Input hiện chỉ đọc, chưa chỉnh sửa/overrides. Không chọn cả khoảng thời gian
-  bằng click dòng.
+- Chỉ sửa feature có `editable=true` và nằm trong `editable_features`. Cờ dùng
+  dropdown có nhãn; số chấp nhận dấu chấm/phẩy thập phân, giữ 0/âm. Để trống
+  mưa/lag gửi null; mực nước hiện tại và cờ không được thiếu. Kiểm tra số hữu hạn/
+  phạm vi float32, khóa Dự báo nếu lỗi; backend vẫn kiểm tra lại.
+- “Khôi phục giá trị gốc” bỏ chỉnh sửa. Đổi mốc/tải input mới bỏ chỉnh sửa;
+  quay lại từ kết quả giữ form đang sửa. Không tự cập nhật feature liên quan.
+  Chỉnh sửa chỉ ở React state/request, không dùng localStorage hoặc ghi database.
+  Không chọn cả khoảng thời gian bằng click dòng.
 
 ## Dự báo và biểu đồ kết quả
 
 - Nút “Dự báo” bật khi auto-fill thành công và `input_ready=true`. Gửi một POST
-  `/api/v1/predictions` từ input gốc, không overrides. Với “Mới nhất”, cố định
+  `/api/v1/predictions`; chỉ gửi các giá trị khác gốc qua `overrides` nếu sửa.
+  Với “Mới nhất”, cố định
   `reference_time` bằng `hourly_reference_time` của input đang xem để tránh tự
   chuyển sang mốc mới trong lúc chờ. Backend vẫn kiểm tra lại dữ liệu khi dự báo.
 - Kết quả thay vùng lịch sử trong cùng modal; “Quay lại lịch sử” giữ bộ lọc,
@@ -125,7 +132,7 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
 - Đường dự báo lấy horizon từ API (Dã Viên hiện 5 điểm +1/+3/+6/+12/+24 giờ),
   tính từ `anchor_observed_at` thực tế. Không tạo điểm dự báo ở các giờ còn lại.
   Biểu đồ SVG có điểm/tooltip, hỗ trợ focus và cuộn ngang trên màn hình nhỏ.
-- Đọc `/api/v1/forecasts/{forecast_id}` để lấy thực tế của đúng bản dự báo,
+- Với input gốc, đọc `/api/v1/forecasts/{forecast_id}` để lấy thực tế của đúng bản dự báo,
   xác thực trạm/model/pipeline/anchor/horizon. Thực tế là trung bình từng giờ
   sau anchor, tối đa 24 mốc với model hiện tại, khác số đo đúng giờ của bảng lịch sử.
   Null không nối đường hoặc thay bằng 0; chưa có thực tế chỉ vẽ dự báo.
@@ -138,7 +145,14 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
   không đảm bảo dừng inference hoặc lưu kết quả đã bắt đầu trên server.
 - Đã kiểm chứng luồng quá khứ/hôm nay/mới nhất trên backend thật, desktop/mobile;
   các trường hợp thiếu/gãy dữ liệu, quota, sai bản dự báo và hủy bằng response giả.
-  Chưa có dự báo theo khoảng ngày hoặc chỉnh sửa input trong task này.
+  Chưa có dự báo theo khoảng ngày.
+- Dự báo có chỉnh sửa ghi rõ “Dự báo thử”, không lưu input/kết quả vào database.
+  Metadata lưu trữ (`forecast_id`, `generated_at`, `pipeline_version`) phải null;
+  biểu đồ dùng response POST, không gọi API đọc bản lưu. Hiện chỉ vẽ đường dự báo
+  thử và đọc `/api/v1/stations/{id}/forecast-actuals` để so sánh thực tế theo anchor/
+  horizon POST trả về, không dùng mốc yêu cầu thay anchor. API chỉ nhận trạm/mốc/
+  horizon, không nhận input tự nhập. Cùng quy tắc trung bình giờ, ngắt null và sai số
+  như dự báo gốc. Retry thực tế chỉ GET; retry POST giữ nguyên overrides của lượt lỗi.
 
 ## Nguồn bản đồ và giới hạn hiển thị
 
@@ -215,7 +229,7 @@ proxy local. Khi deploy static build cần reverse proxy `/api` riêng.
 - `src/hooks/useHourlyHistory.js`, `src/api/history.js`: tải từng trang, xác thực và hủy request.
 - `src/history.js`, `src/styles/history.css`: quy tắc lịch Việt Nam và giao diện lịch sử.
 - `src/components/PredictionInputsPanel.jsx`, `src/hooks/usePredictionInputs.js`:
-  chọn mốc, auto-fill chỉ đọc và hủy request khi đổi lựa chọn.
+  chọn mốc, auto-fill, chỉnh sửa/khôi phục và hủy request khi đổi lựa chọn.
 - `src/api/predictionInputs.js`, `src/styles/predictionInputs.css`: hợp đồng API và CSS input.
 - `src/predictionInputs.js`: nhãn đầu vào tiếng Việt và cách trình bày cờ dữ liệu.
 - `src/api/predictions.js`, `src/hooks/usePrediction.js`: POST dự báo và GET thực tế,

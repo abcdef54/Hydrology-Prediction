@@ -31,3 +31,30 @@ export function describePredictionFeature(feature, stations, index) {
   const unit = flag || feature.unit === 'dimensionless' ? '' : feature.unit ?? 'Chưa rõ đơn vị';
   return { label, value, unit, sourceName: station?.name ?? (rain ? 'Trạm mưa' : '') };
 }
+
+/**
+ * @param {object} inputs Response auto-fill gốc, gồm features và editable_features.
+ * @param {object} drafts Các giá trị chuỗi đang sửa theo tên feature, chỉ ở bộ nhớ frontend.
+ * @returns {{overrides: object, errors: object}} Chỉ gửi giá trị khác gốc; null là thiếu, không phải 0.
+ * Kiểm tra hữu hạn/float32, cờ 0/1 và mực nước bắt buộc; backend vẫn kiểm tra lại.
+ */
+export function buildInputOverrides(inputs, drafts) {
+  const overrides = {};
+  const errors = {};
+  for (const feature of inputs?.features ?? []) {
+    if (!feature.editable || !inputs.editable_features.includes(feature.name)
+      || !Object.hasOwn(drafts, feature.name)) continue;
+    const text = drafts[feature.name].trim();
+    const isFlag = feature.name.endsWith('_missing') || feature.name === 'flood_season';
+    const numeric = /^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/.test(text);
+    const value = text === '' ? null : Number(text.replace(',', '.'));
+    if (text !== '' && (!numeric || !Number.isFinite(value) || Math.abs(value) > 3.4028234663852886e38)) {
+      errors[feature.name] = 'Nhập một số hợp lệ trong phạm vi cho phép.';
+    } else if (isFlag && value !== 0 && value !== 1) {
+      errors[feature.name] = 'Vui lòng chọn một trạng thái.';
+    } else if (feature.name === 'water_level_depth' && value === null) {
+      errors[feature.name] = 'Mực nước đầu vào không được để trống.';
+    } else if (value !== feature.value) overrides[feature.name] = value;
+  }
+  return { overrides, errors };
+}

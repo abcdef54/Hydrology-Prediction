@@ -28,6 +28,10 @@ export default function PredictionResult({ state, onBack, onRetry, onRetryActual
       {state.status === 'error' && <div className="prediction-result-state" role="alert"><p>{state.error}</p>
         <button type="button" onClick={onRetry}>Thử lại dự báo</button></div>}
       {prediction && <>
+        {Object.keys(state.overrides).length > 0 && <p className="prediction-result-meta">
+          <strong>Dự báo thử từ đầu vào đã chỉnh sửa.</strong> Giá trị tự nhập và kết quả này không lưu vào database.
+          Đường thực tế là số đo quan trắc để đối chiếu với kịch bản này.
+        </p>}
         <p className="prediction-result-meta">Mốc đầu vào thực tế: <strong>{formatObservationTime(prediction.anchor_observed_at)}</strong>
           {' · '}Dự báo đến {formatObservationTime(prediction.predictions.at(-1).forecast_at)} · Đơn vị: mm</p>
         {Date.parse(state.referenceTime) !== Date.parse(prediction.anchor_observed_at)

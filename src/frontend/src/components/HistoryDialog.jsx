@@ -74,9 +74,9 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
     setInputSelection({ station: selectedStation, referenceTime });
   }
 
-  function predict() {
+  function predict(overrides) {
     if (inputState.status !== 'ready' || !inputState.data?.input_ready || !inputSelection) return;
-    predictionFlow.run(inputSelection, inputState.data);
+    predictionFlow.run(inputSelection, inputState.data, overrides);
     setShowResult(true);
   }
 
@@ -164,7 +164,7 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
       </footer>
       {showResult && predictionFlow.state && <PredictionResult state={predictionFlow.state}
         onBack={returnToHistory}
-        onRetry={() => predictionFlow.run(predictionFlow.state.selection, predictionFlow.state.inputs)}
+        onRetry={() => predictionFlow.run(predictionFlow.state.selection, predictionFlow.state.inputs, predictionFlow.state.overrides)}
         onRetryActuals={predictionFlow.retryActuals} />}
     </dialog>
   );

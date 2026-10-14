@@ -68,3 +68,22 @@ test('nhãn dễ hiểu dùng tên trạm, thời gian và chữ thay cờ số'
   assert.equal(describe('water_level_depth', null).value, '');
   assert.equal(describe('unknown_technical_name').label, 'Thông tin bổ sung 1');
 });
+
+test('chỉnh sửa chỉ gửi phần khác gốc, giữ 0/âm/null và kiểm tra cờ/quyền sửa', async () => {
+  const { buildInputOverrides } = await import('../src/predictionInputs.js');
+  const inputs = { editable_features: ['water_level_depth', 'rain_1_depth', 'water_level_missing'], features: [
+    { name:'water_level_depth',value:100,editable:true },
+    { name:'rain_1_depth',value:0,editable:true },
+    { name:'water_level_missing',value:0,editable:true },
+    { name:'locked',value:20,editable:false },
+  ] };
+  assert.deepEqual(buildInputOverrides(inputs,{water_level_depth:'100.0'}),{overrides:{},errors:{}});
+  assert.deepEqual(buildInputOverrides(inputs,{water_level_depth:'-25,5',rain_1_depth:'',water_level_missing:'1',locked:'99'}),{
+    overrides:{water_level_depth:-25.5,rain_1_depth:null,water_level_missing:1},errors:{},
+  });
+  for(const value of ['', 'abc', 'Infinity', '1e40', '0xFF']) {
+    assert.ok(buildInputOverrides(inputs,{water_level_depth:value}).errors.water_level_depth);
+  }
+  assert.ok(buildInputOverrides(inputs,{water_level_missing:'2'}).errors.water_level_missing);
+  assert.deepEqual(buildInputOverrides(inputs,{water_level_depth:'0'}).overrides,{water_level_depth:0});
+});

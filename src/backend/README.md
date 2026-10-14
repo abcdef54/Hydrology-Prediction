@@ -397,10 +397,43 @@ Luồng frontend: chọn mốc và tự điền input → bấm Dự báo gọi 
 đọc endpoint này để vẽ kết quả và thực tế. Predict và biểu đồ đã gộp trong một
 luồng, không có nút Visualize riêng. Lỗi GET chỉ cần tải lại thực tế. Kịch bản
 overrides không có forecast_id; nếu vẽ thì dùng response Predict và gắn nhãn
-kịch bản, không coi là bản dự báo gốc đã lưu.
+kịch bản, không coi là bản dự báo gốc đã lưu. Đọc thực tế cho overrides qua API
+không cần ID bên dưới.
 
 Kiểm chứng local: `scripts/local/verify_forecast_detail_api.py` đối chiếu ba mốc
 GPU với các điểm đã lưu và từng trung bình giờ từ quan trắc gốc, ở chế độ chỉ đọc.
+
+## API thực tế cho dự báo thử
+
+```text
+GET /api/v1/stations/{station_id}/forecast-actuals
+    ?anchor_observed_at=2026-10-13T10:00:00%2B07:00&horizon_minutes=1440
+```
+
+- Lấy `anchor_observed_at` và horizon lớn nhất từ **response POST dự báo thử**,
+  không dùng mốc người dùng yêu cầu nếu khác anchor. Không gửi overrides vào API này.
+- Anchor bắt buộc có timezone, từ năm 1900 và không trong tương lai;
+  `horizon_minutes` là số nguyên 1–10080 (tối đa 7 ngày, tối đa 168 ô giờ).
+  Tham số dư/sai trả 422. Chưa cần schema migration.
+- Chỉ trạm nước có đơn vị mm: trạm không tồn tại trả 404 `STATION_NOT_FOUND`,
+  loại khác trả 400 `INVALID_STATION_TYPE`, chưa xác nhận mm trả 503 `UNIT_UNAVAILABLE`.
+  API đọc quan trắc không yêu cầu model hoặc quyền chạy dự báo còn hiệu lực.
+- Response: `station_id`, `anchor_observed_at`, `window_end`, `as_of`, `unit=mm`,
+  `actuals[{timestamp, actual_water_level_mm, actual_sample_count}]`.
+  Từ anchor +1 giờ đến window_end, trung bình trong `(t−1h, t]`; horizon không
+  tròn giờ chỉ có các mốc giờ nằm trong cửa sổ. Dùng cùng SQL với API bản dự báo lưu.
+- Giờ thiếu/chưa tới có null/count 0; giữ 0/âm, không nội suy. Frontend vẽ đường
+  dự báo thử từ POST, đường thực tế từ GET và tính sai số đúng timestamp, bằng mm.
+- Chỉ SELECT quan trắc và metadata, không tải model/scaler hoặc chạy inference,
+  không ghi input, kết quả dự báo hay quan trắc. Lỗi DB trả 503 an toàn.
+  Lỗi GET vẫn giữ dự báo, nút tải lại chỉ gọi GET.
+- Khởi động lại API process để nạp route mới; không cần khởi động lại ingestion.
+
+Kiểm thử tập trung:
+
+```bash
+.venv/bin/python -m unittest src.backend.api.tests.test_forecast_actuals src.backend.api.tests.test_forecast_detail -v
+```
 
 ## API chạy dự báo
 

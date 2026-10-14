@@ -239,10 +239,12 @@ Không triển khai đăng nhập, đăng ký, tài khoản, lịch sử riêng 
   Nút “Đầu vào mới nhất” bỏ `reference_time`. Không dùng riêng giá trị mực nước
   của ô để thay cho toàn bộ feature; không hardcode số feature/horizon trong UI.
   Ô thiếu số đo vẫn cho backend kiểm tra lịch sử; ô tương lai không cho chọn.
-- Trạng thái triển khai: **đã có chọn mốc và auto-fill chỉ đọc**, hiển thị mốc yêu cầu,
+- Trạng thái triển khai: **đã có chọn mốc, auto-fill và chỉnh sửa**, hiển thị mốc yêu cầu,
   anchor thực tế, đủ/chưa đủ đầu vào, dữ liệu cũ và giá trị thiếu. Feature có thể
   thu gọn; đổi mốc/đóng bảng hủy request cũ, áp dụng bộ lọc xóa lựa chọn. Đã nối
-  Predict và biểu đồ một mốc (FR-07.1); chưa có sửa input/overrides trên frontend.
+  Predict và biểu đồ một mốc (FR-07.1). Chỉ sửa feature theo `editable` và
+  `editable_features`; kiểm tra số/cờ, có khôi phục gốc. Đổi mốc bỏ chỉnh sửa,
+  quay lại từ kết quả giữ chỉnh sửa. Không tự cập nhật feature liên quan.
 - Nhãn input phải dễ hiểu cho người dùng: dịch tên feature thành mô tả tiếng Việt,
   dùng tên trạm từ metadata thay mã, cờ dữ liệu hiển thị bằng chữ. Khóa kỹ thuật
   và giá trị gốc giữ trong dữ liệu để gọi API; không đổi tên feature gửi backend.
@@ -337,7 +339,17 @@ Không thêm charts mang tính trang trí. Dữ liệu chart phải có schema n
   dùng bản của model/pipeline khác.
 - Với “Đầu vào mới nhất”, POST cố định mốc bằng `hourly_reference_time` của input
   đang hiển thị; backend vẫn chuẩn bị và kiểm tra lại chuỗi, UI dùng anchor POST
-  thực tế để vẽ. Chỉ input_ready mới bật nút. Hiện không gửi overrides.
+  thực tế để vẽ. Chỉ input_ready và form hợp lệ mới bật nút. Gửi overrides cho
+  các giá trị khác gốc ở bước cuối; giữ nguyên thì không gửi overrides.
+- Giá trị user sửa chỉ tồn tại trong React state/request, không lưu database
+  hoặc localStorage. Dự báo thử không có forecast_id/generated_at/pipeline_version;
+  frontend kiểm tra metadata null, ghi rõ kịch bản chỉnh sửa và vẽ từ response POST.
+  Đã có so sánh thực tế cho kịch bản qua `GET /stations/{id}/forecast-actuals`,
+  truyền anchor thực tế và horizon lớn nhất từ POST, không truyền overrides.
+  API chỉ đọc, không tải model/scaler hoặc tạo bản dự báo gốc phụ để lấy ID.
+  Tái sử dụng cùng SQL trung bình giờ như bản lưu, giới hạn cửa sổ tối đa 7 ngày.
+  Không nối qua null; bảng sai số ghép đúng timestamp. Retry thực tế chỉ GET;
+  retry POST giữ nguyên overrides của lượt lỗi. Đã kiểm chứng dữ liệu thật và mobile.
 - Khóa bấm liên tiếp, không tự retry POST; chờ dự báo tối đa 60 giây. Lỗi GET
   thực tế vẫn giữ đường dự báo và cho retry riêng GET. Quay lại/đóng hủy chờ và
   bỏ response cũ; không cam kết dừng inference đã chạy hoặc thao tác lưu trên server.

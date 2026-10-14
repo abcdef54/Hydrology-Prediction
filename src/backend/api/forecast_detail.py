@@ -1,9 +1,10 @@
-"""Visualize every saved horizon from one anchor against hourly observed truth."""
+"""Compare saved or transient single-anchor forecasts with hourly observed truth."""
 
 from datetime import datetime, timedelta, timezone
+from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 import sqlalchemy as sa
 
 from src.backend.api.forecast_history import hourly_truth_subquery
@@ -11,6 +12,8 @@ from src.backend.api.schemas import (
     ActualWaterLevelPoint,
     ErrorResponse,
     ForecastDetailResponse,
+    ForecastActualsQuery,
+    ForecastActualsResponse,
     PredictedWaterLevel,
 )
 from src.backend.db.models import Forecast, ForecastPoint, Station
@@ -144,4 +147,78 @@ def get_forecast_detail(request: Request, forecast_id: UUID) -> ForecastDetailRe
         window_end=window_end,
         predictions=[PredictedWaterLevel(**point) for point in points],
         actuals=[ActualWaterLevelPoint(**actual) for actual in actuals],
+    )
+
+
+@router.get(
+    "/stations/{station_id}/forecast-actuals",
+    tags=["Observed comparison"],
+    response_model=ForecastActualsResponse,
+    responses={status: {"model": ErrorResponse} for status in (400, 404, 422, 503)},
+)
+def get_forecast_actuals(
+    request: Request, station_id: str, query: Annotated[ForecastActualsQuery, Query()]
+) -> ForecastActualsResponse:
+    """Read hourly truth without a stored forecast or model artifacts.
+
+    Args:
+        request: Request providing the database engine.
+        station_id: Water station whose units are confirmed as mm.
+        query: Timezone-aware actual inference anchor and maximum forecast horizon,
+            bounded to seven days. Use values returned by POST, not the requested time.
+
+    Returns:
+        Mean water level in (t - 1h, t] at anchor + 1h, +2h, etc. through the
+        window end. Missing/future slots remain null with count zero. Uses the same
+        SQL as saved forecasts; no inputs, predictions or observations are written.
+
+    Raises:
+        HTTPException: 404 for unknown station, 400 for non-water station, 422 for
+            future anchor, or 503 for unconfirmed mm units.
+        sqlalchemy.exc.SQLAlchemyError: Database errors handled as safe 503 by the app.
+    """
+    now = datetime.now(timezone.utc)
+    anchor = query.anchor_observed_at.astimezone(timezone.utc)
+    if anchor > now:
+        raise HTTPException(
+            422, {"code": "INVALID_REFERENCE_TIME", "message": "Anchor cannot be in the future."}
+        )
+    window_end = anchor + timedelta(minutes=query.horizon_minutes)
+    with request.app.state.database_engine.connect() as connection:
+        station = (
+            connection.execute(
+                sa.select(Station.station_type, Station.measurement_unit).where(
+                    Station.id == station_id
+                )
+            )
+            .mappings()
+            .first()
+        )
+        if station is None:
+            raise HTTPException(
+                404, {"code": "STATION_NOT_FOUND", "message": "Station does not exist."}
+            )
+        if station["station_type"] != "water_level":
+            raise HTTPException(
+                400, {"code": "INVALID_STATION_TYPE", "message": "Water station required."}
+            )
+        if station["measurement_unit"] != "mm":
+            raise HTTPException(
+                503,
+                {
+                    "code": "UNIT_UNAVAILABLE",
+                    "message": "Water-level unit must be confirmed as mm.",
+                },
+            )
+        actuals = (
+            connection.execute(hourly_actuals_query(station_id, anchor, window_end, now))
+            .mappings()
+            .all()
+        )
+    return ForecastActualsResponse(
+        station_id=station_id,
+        anchor_observed_at=anchor,
+        window_end=window_end,
+        as_of=now,
+        actuals=[ActualWaterLevelPoint(**point) for point in actuals],
     )

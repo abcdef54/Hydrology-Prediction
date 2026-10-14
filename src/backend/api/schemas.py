@@ -320,6 +320,31 @@ class ActualWaterLevelPoint(BaseModel):
     actual_sample_count: int = Field(ge=0)
 
 
+class ForecastActualsQuery(BaseModel):
+    """Bounded observed comparison window; no model input or forecast persistence."""
+
+    model_config = ConfigDict(extra="forbid")
+    anchor_observed_at: AwareDatetime
+    horizon_minutes: int = Field(ge=1, le=10080, description="At most seven days.")
+
+    @model_validator(mode="after")
+    def validate_anchor(self):
+        if self.anchor_observed_at.year < 1900:
+            raise ValueError("Anchor must be in or after 1900.")
+        return self
+
+
+class ForecastActualsResponse(BaseModel):
+    """Hourly observed means for a transient scenario, without storing its inputs."""
+
+    station_id: str
+    anchor_observed_at: AwareDatetime
+    window_end: AwareDatetime
+    as_of: AwareDatetime
+    unit: Literal["mm"] = "mm"
+    actuals: list[ActualWaterLevelPoint]
+
+
 class ForecastDetailResponse(BaseModel):
     """One immutable saved prediction and its current hourly observed comparison."""
 
