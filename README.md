@@ -44,6 +44,7 @@ npm run dev
 
 Mở http://localhost:5173 để xem bản đồ Huế và sidebar số đo mới nhất; lọc loại trạm
 hoặc chọn một trạm để bản đồ di chuyển tới vị trí tương ứng.
+Click marker hoặc item sidebar để mở box thông tin, số đo và các ngưỡng báo động.
 Bản đồ nền cần Internet; marker trạm lấy từ backend đang chạy ở cổng 8000.
 Xem [hướng dẫn frontend](src/frontend/README.md) cho yêu cầu Node.js và cách build.
 

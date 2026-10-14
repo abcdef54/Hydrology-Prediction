@@ -139,6 +139,77 @@ curl --get 'http://127.0.0.1:8000/api/v1/stations/0074647403/observations' \
   để lấy đủ feature theo giờ. Giá trị gốc trên bảng có thể khác giá trị theo giờ
   trong form. API lịch sử không xác nhận thời điểm có đủ dữ liệu để dự báo.
 
+## API bảng lịch sử đúng mốc giờ
+
+`GET /api/v1/observations/hourly` phục vụ bảng tổng nhiều trạm. Mỗi dòng là một
+trạm trong một ngày Việt Nam, có đúng 24 ô từ 00:00 đến 23:00. Đây là **bản ghi
+đúng mốc giờ**, không phải trung bình nước hoặc tổng mưa trong giờ.
+
+```bash
+# Mặc định hôm nay theo Asia/Ho_Chi_Minh, tất cả trạm được bật
+curl 'http://127.0.0.1:8000/api/v1/observations/hourly'
+
+# Một ngày và một trạm; giữ nguyên số 0 đầu trong mã Dã Viên
+curl --get 'http://127.0.0.1:8000/api/v1/observations/hourly' \
+  --data-urlencode 'start_date=2026-10-13' \
+  --data-urlencode 'station_id=0074647403'
+
+# Khoảng ngày tính cả ngày đầu và cuối, lọc trạm mưa theo tên
+curl --get 'http://127.0.0.1:8000/api/v1/observations/hourly' \
+  --data-urlencode 'start_date=2026-10-01' \
+  --data-urlencode 'end_date=2026-10-13' \
+  --data-urlencode 'station_type=rainfall' \
+  --data-urlencode 'station_name=Hồng Thái' \
+  --data-urlencode 'limit=50'
+```
+
+| Tham số | Ý nghĩa |
+|---|---|
+| `start_date`, `end_date` | Ngày `YYYY-MM-DD`, tính cả hai đầu, từ 1900-01-01 đến hôm nay. Bỏ cả hai chọn hôm nay; chỉ gửi một ngày chọn đúng ngày đó. |
+| `station_type` | Tùy chọn `water_level` hoặc `rainfall`; bỏ để lấy tất cả loại hiện hỗ trợ. |
+| `station_id` | Tùy chọn, khớp chính xác mã trạm; dùng khi chọn tên trạm từ danh sách. |
+| `station_name` | Tùy chọn, tìm tên chứa chuỗi, không phân biệt hoa/thường; giữ dấu tiếng Việt. `%` và `_` là ký tự tìm kiếm thông thường. |
+| `limit` | Số dòng trạm/ngày mỗi trang: mặc định 50, tối đa 100. |
+| `cursor_date`, `cursor_station_id` | Luôn gửi cùng nhau để đọc tiếp sau dòng cuối của trang trước. |
+
+- Response có `timezone`, `start_date`, `end_date`, `as_of`, `rows`, `has_more`,
+  `next_cursor`. `as_of` và timestamp ô dùng UTC; ngày dòng/cột giờ dùng giờ Việt Nam.
+- Mỗi row có `date`, `station_id`, `name`, `station_type`, `unit`, `cells`.
+  Các ô sắp tăng theo giờ, mỗi ô gồm `hour` (0–23), `at` (mốc dự kiến, không khẳng
+  định đã có quan trắc), `value` và `status`:
+  - `observed`: có bản ghi hợp lệ đúng timestamp; giữ nguyên số 0 và mực nước âm.
+  - `missing`: không có bản ghi đúng mốc hoặc bản ghi thiếu; `value = null`, UI hiện “—”.
+  - `future`: giờ chưa tới tại `as_of`; `value = null`, UI có thể ghi “Chưa tới giờ”.
+- Không lấy bản ghi gần nhất, làm tròn timestamp, nội suy, cộng mưa hoặc tính trung bình.
+  Ví dụ có 01:10 nhưng không có 01:00 thì ô 01:00 vẫn thiếu. Đơn vị lấy từ metadata.
+- Chỉ lấy trạm `enabled=true`; mọi bộ lọc kết hợp theo AND. Không khớp trạm trả
+  200 với `rows=[]`. Trạm/ngày chưa có quan trắc vẫn có dòng với các ô thiếu.
+- Sắp ngày giảm dần, mã trạm tăng dần theo thứ tự ký tự ổn định. Nếu `has_more=true`,
+  dùng `next_cursor.date` và `next_cursor.station_id` cho hai tham số cursor, giữ
+  nguyên bộ lọc và gửi lại `start_date`/`end_date` đã được resolve trong response.
+  Điều này cũng giữ đúng khoảng ngày khi phân trang qua thời điểm nửa đêm.
+- Sai ngày/cursor/limit hoặc tham số lạ trả 422; PostgreSQL lỗi trả 503 an toàn.
+  API chỉ đọc, dùng giới hạn request hiện có, không tải model hoặc tạo dự báo.
+- Backend chỉ tạo tối đa `limit + 1` dòng ứng viên và tra tối đa 24 × `limit`
+  khóa `(station_id, observed_at)` của trang đó bằng primary key hiện có. Không tải
+  cả khoảng dữ liệu 10 phút; không cần migration hay cache riêng.
+
+Kiểm thử hợp đồng bằng dữ liệu giả:
+
+```bash
+.venv/bin/python -m unittest src.backend.api.tests.test_hourly_history -v
+```
+
+Kiểm thử SQL trên PostgreSQL dùng bảng TEMP riêng, rollback khi kết thúc:
+
+```bash
+# DATABASE_URL cần có trong environment; không đưa URL có mật khẩu vào Git.
+.venv/bin/python -m unittest src.backend.db.tests.test_hourly_history -v
+```
+
+Khởi động lại API process sau khi cập nhật code để nạp route mới; worker ingestion
+không cần khởi động lại. Frontend bảng lịch sử sẽ được triển khai trong task sau.
+
 ## API kiểm tra thời điểm có thể dự báo
 
 ```bash

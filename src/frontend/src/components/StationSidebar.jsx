@@ -1,37 +1,15 @@
 import StationIcon from './StationIcon.jsx';
+import StationReading from './StationReading.jsx';
 import {
   formatObservationTime, getLatestDataTime, getStationAppearance, getStationCoordinates,
 } from '../stations.js';
-
-const valueFormatter = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 });
-
-function StationReading({ reading }) {
-  if (!reading) return <span className="station-reading-placeholder">Đang tải số đo…</span>;
-  if (reading.status === 'missing') return <span className="station-reading-placeholder">Chưa có số đo</span>;
-  if (reading.status === 'error') {
-    return <span className="station-reading-error" title={reading.error}>Không tải được số đo</span>;
-  }
-  const observation = reading.observation;
-  return (
-    <>
-      <span className="station-reading-value">
-        {valueFormatter.format(observation.value)}
-        <span className="station-reading-unit">{observation.unit ?? '(chưa rõ đơn vị)'}</span>
-      </span>
-      <span className={`station-reading-time${observation.is_stale ? ' station-reading-time--stale' : ''}`}>
-        {observation.is_stale ? 'Dữ liệu cũ · ' : 'Đo lúc '}
-        <time dateTime={observation.observed_at}>{formatObservationTime(observation.observed_at)}</time>
-      </span>
-    </>
-  );
-}
 
 /**
  * Sidebar cuộn độc lập: bộ lọc áp dụng cho cả danh sách lẫn marker.
  *
  * @param {object} props Danh sách đầy đủ/đã lọc, số đo theo mã, trạng thái tải và callbacks.
  * @returns {import('react').ReactElement} Danh sách trạm có thể chọn bằng chuột/bàn phím.
- * Click chỉ chọn trạm để focus bản đồ; chưa mở detail hay chạy dự báo.
+ * Click chọn trạm để focus bản đồ và mở box thông tin dùng chung với marker.
  */
 export default function StationSidebar({
   stations, visibleStations, readings, stationType, onFilterChange,

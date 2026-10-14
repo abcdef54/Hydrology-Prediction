@@ -1,6 +1,6 @@
 """Public input-form values use original units, never standardized tensor values."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -93,6 +93,61 @@ class ObservationHistoryResponse(BaseModel):
     next_before: AwareDatetime | None = Field(
         description="Pass as before with the same start/end for the next page."
     )
+
+
+class HourlyHistoryQuery(BaseModel):
+    """Calendar dates are inclusive in Vietnam time; omitted dates select today."""
+
+    model_config = ConfigDict(extra="forbid")
+    start_date: date | None = Field(default=None, ge=date(1900, 1, 1))
+    end_date: date | None = Field(default=None, ge=date(1900, 1, 1))
+    station_type: Literal["water_level", "rainfall"] | None = None
+    station_id: str | None = Field(default=None, min_length=1, max_length=100)
+    station_name: str | None = Field(default=None, min_length=1, max_length=100)
+    limit: int = Field(default=50, ge=1, le=100)
+    cursor_date: date | None = Field(default=None, ge=date(1900, 1, 1))
+    cursor_station_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def validate_cursor_and_dates(self):
+        if (self.cursor_date is None) != (self.cursor_station_id is None):
+            raise ValueError("cursor_date and cursor_station_id must be supplied together.")
+        if self.start_date and self.end_date and self.start_date > self.end_date:
+            raise ValueError("start_date must not be after end_date.")
+        return self
+
+
+class HourlyHistoryCursor(BaseModel):
+    date: date
+    station_id: str
+
+
+class HourlyHistoryCell(BaseModel):
+    """Scheduled hour in UTC; value is an exact raw reading, never an hourly total."""
+
+    hour: int = Field(ge=0, le=23)
+    at: AwareDatetime
+    value: float | None = Field(allow_inf_nan=False)
+    status: Literal["observed", "missing", "future"]
+
+
+class HourlyHistoryRow(BaseModel):
+    date: date
+    station_id: str
+    name: str
+    station_type: Literal["water_level", "rainfall"]
+    unit: str | None
+    cells: list[HourlyHistoryCell] = Field(min_length=24, max_length=24)
+
+
+class HourlyHistoryResponse(BaseModel):
+    timezone: Literal["Asia/Ho_Chi_Minh"] = "Asia/Ho_Chi_Minh"
+    start_date: date
+    end_date: date
+    as_of: AwareDatetime
+    rows: list[HourlyHistoryRow]
+    has_more: bool
+    next_cursor: HourlyHistoryCursor | None
 
 
 class PredictionInputsQuery(BaseModel):

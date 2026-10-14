@@ -31,7 +31,8 @@ Trang gọi `GET /api/v1/stations` qua proxy Vite, sử dụng `station_type` v�
 - Loại khác: marker 24 px, màu trung tính; trạm gió dùng icon gió nếu API hỗ trợ.
 - API hiện chỉ hỗ trợ `water_level` và `rainfall`; không tự tạo trạm gió.
 - Thiếu/sai tọa độ: bỏ qua trạm đó và hiển thị thông báo, không dùng vị trí giả.
-- Marker chỉ để xem: không popup, không chọn trạm, không kéo marker hoặc hành động click.
+- Click marker hoặc nhấn Enter/Space khi marker được focus để chọn trạm, focus
+  bản đồ và mở box thông tin. Không kéo marker; kéo bản đồ không coi là click marker.
 - Trạm mưa A Lưới nằm về phía tây Huế; có thể cần kéo/thu nhỏ để xem tùy màn hình.
 
 Request trạm được hủy và marker được gỡ khi component unmount, tránh marker lặp.
@@ -53,9 +54,25 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
   Metadata vẫn hiển thị nếu request số đo thất bại; nút “Thử lại” tải lại dữ liệu.
 - Tối đa 4 request số đo đồng thời, làm mới mỗi 10 phút khi tab đang hiển thị;
   không request lại chỉ vì đổi filter/chọn trạm. Không retry tự động ngay khi lỗi.
-- Click item chỉ di chuyển bản đồ tới trạm trong khoảng 1,4 giây, chừa vùng cho
-  sidebar. Tôn trọng reduced motion; item thiếu/sai tọa độ không cho focus.
+- Click item di chuyển bản đồ tới trạm trong khoảng 1,4 giây và mở box thông tin,
+  chừa vùng cho các panel. Tôn trọng reduced motion; thiếu/sai tọa độ không cho focus.
 - Trên màn hình hẹp, sidebar giới hạn chiều cao để giữ phần bản đồ phía dưới.
+
+## Box thông tin trạm
+
+- Box cố định trên màn hình: loại, tên, địa chỉ, tọa độ (vĩ độ, kinh độ), số đo và
+  giờ quan trắc mới nhất. Dùng địa chỉ backend hiện có, không tự thêm phường/xã.
+- Trạm nước có ba mức báo động bằng mm, chuyển từ `alarm_levels_m` bằng × 1.000.
+  `null` hiện “Chưa cấu hình”; hiện Dã Viên chưa có ngưỡng. Trạm mưa không có mục này.
+- Gọi detail và latest song song mỗi lần mở/chọn lại trạm, hoặc nhấn thử lại.
+  Database bổ sung ngưỡng sẽ được đọc ở lần tải tiếp theo; box không polling riêng.
+- Box giữ nguyên khi pan/wheel/zoom, kể cả double-click zoom. Click đơn nền map
+  hoặc × đóng box; chọn trạm khác đổi nội dung. Click đóng được đợi 300 ms để phân
+  biệt với double-click. Không coi các nút zoom là click nền bản đồ.
+- Detail/latest có trạng thái lỗi riêng; giữ thông tin trạm cơ bản khi lỗi detail,
+  không thay ngưỡng lỗi tải thành “Chưa cấu hình”. Đóng/chuyển trạm hủy request cũ.
+- Box cuộn độc lập khi thiếu chỗ. Trên màn hình hẹp, thu chiều cao cả sidebar và
+  box để giữ một khoảng bản đồ giữa hai panel; nút × luôn nằm trong header cố định.
 
 ## Nguồn bản đồ và giới hạn hiển thị
 
@@ -124,6 +141,7 @@ proxy local. Khi deploy static build cần reverse proxy `/api` riêng.
 - `src/App.jsx`: state chọn trạm/filter dùng chung giữa sidebar và map.
 - `src/components/MapView.jsx`: vòng đời MapLibre, trạng thái tải/lỗi và WebGL worker.
 - `src/components/StationSidebar.jsx`, `StationIcon.jsx`: danh sách, bộ lọc và icon.
+- `src/components/StationDetail.jsx`, `StationReading.jsx`: box chi tiết và số đo dùng chung.
 - `src/hooks/useStations.js`: tải metadata, số đo và hủy/làm mới request.
 - `src/stations.js`: nhãn/icon, tọa độ và quy tắc ưu tiên timestamp trạm nước.
 - `src/mapConfig.js`: tâm nhìn, zoom, vùng điều hướng và các vùng ẩn nhãn ngoài khơi.

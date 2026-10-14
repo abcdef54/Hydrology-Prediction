@@ -1,6 +1,6 @@
 # Water Level Forecasting System
 **Software Architecture & System Design Plan — FINAL v1.0**
-**Ngày cập nhật:** 13/10/2026  
+**Ngày cập nhật:** 14/10/2026
 
 **Trạng thái:** Final architecture baseline — các phần phụ thuộc dữ liệu thực sẽ được xác minh trong Phase 1  
 
@@ -248,6 +248,28 @@ Không triển khai đăng nhập, đăng ký, tài khoản, lịch sử riêng 
 
 - Không giả định từ mốc ngày đầu tiên của Database trở đi lúc nào cũng đủ dữ liệu.
 
+**Bảng lịch sử tổng — quyết định 14/10/2026 [ĐÃ DUYỆT]:**
+
+- Bảng lớn có thể phủ bản đồ, lọc theo loại trạm, tên trạm và một ngày/khoảng ngày.
+  Mặc định hôm nay theo giờ Việt Nam; không tự chuyển về ngày có dữ liệu cuối cùng.
+  Nút chung mở toàn bộ trạm; nút riêng trên sidebar mở bảng lọc sẵn loại/mã trạm đó.
+- Mỗi dòng là một trạm trong một ngày, các cột giờ từ 00:00 đến 23:00. Chọn khoảng
+  nhiều ngày tạo nhiều dòng trạm/ngày, phân trang để xem hết khoảng đã chọn.
+- Chủ dự án chọn **bản ghi đúng mốc giờ**, thiếu hiện “—”. Không dùng bản ghi gần
+  nhất, trung bình nước hoặc tổng mưa. Đây là dữ liệu tra cứu gốc, khác các giá trị
+  tổng hợp theo giờ của pipeline dự báo. Giữ đơn vị từ metadata, hiện tại là mm.
+- Backend đã có `GET /api/v1/observations/hourly`: ngày bắt đầu/kết thúc tính cả
+  hai đầu theo `Asia/Ho_Chi_Minh`, lọc loại/mã/tên trạm; chỉ lấy trạm được bật.
+  Mỗi dòng có 24 ô `{hour, at, value, status}`; status observed/missing/future,
+  value null cho thiếu hoặc chưa tới giờ. `at` là mốc giờ dự kiến trả theo UTC.
+- Phân trang theo cursor `(date, station_id)`, ngày mới trước, mã trạm tăng dần;
+  mặc định 50, tối đa 100 dòng. Frontend giữ nguyên khoảng ngày/bộ lọc khi đọc trang
+  tiếp, reset cursor khi đổi filter. Response có `as_of` để xử lý các giờ chưa tới.
+- Chỉ tra đúng timestamp cho trang hiện tại qua primary key có sẵn; không tải toàn
+  bộ dữ liệu 10 phút hoặc đổi số đo gốc. API chỉ đọc; không cần schema migration.
+  Hợp đồng/giới hạn và ví dụ chi tiết nằm trong `src/backend/README.md`.
+- Trạng thái: **backend đã triển khai và kiểm chứng; frontend bảng tổng chưa triển khai**.
+
 ### FR-05. Model Input & Overrides
 - Chỉ hiển thị và chấp nhận feature mà model thực tế hỗ trợ; cấu hình feature và thứ tự feature lấy từ Model Metadata.
 
@@ -461,6 +483,26 @@ Phân tách **Source of Truth**:
   ngay khi lỗi/429; có nút thử lại. Mỗi item có timestamp và trạng thái dữ liệu cũ
   từ backend. Dòng thời gian chung không đổi theo filter; trạm nước xếp trước.
 
+**Thông tin trạm Task 3 — 14/10/2026 [ĐÃ DUYỆT, ĐÃ TRIỂN KHAI]:**
+
+- Click marker hoặc item sidebar dùng chung state chọn trạm, focus từ từ và mở
+  box cố định trên màn hình. Box hiển thị loại, tên, địa chỉ nguyên văn từ API,
+  tọa độ theo thứ tự vĩ độ/kinh độ, số đo mới nhất và giờ quan trắc Việt Nam.
+- Trạm nước có thêm ba ngưỡng từ `alarm_levels_m`: nhân 1.000 để hiển thị mm,
+  `null` hiện “Chưa cấu hình”. Dã Viên hiện chưa có ngưỡng; không dùng số minh họa
+  trong FR-02. Trạm mưa không hiển thị phần báo động. Địa chỉ hành chính còn thiếu
+  phải bổ sung metadata nguồn; không tự suy ra phường/xã từ tên hoặc tọa độ.
+- Box đọc lại `/stations/{id}` và `/stations/{id}/latest` mỗi lần mở/chọn lại trạm
+  hoặc nhấn thử lại, nên cập nhật metadata/ngưỡng sau khi database được bổ sung.
+  Box đang mở không tự polling chi tiết. Lỗi detail/latest xử lý riêng, giữ metadata
+  danh sách làm fallback; lỗi tải ngưỡng không được coi là chưa cấu hình.
+- Kéo, lăn chuột, nút zoom và double-click zoom giữ box mở. Click đơn nền bản đồ
+  hoặc nút × đóng box; click trạm khác chuyển nội dung. Marker thao tác được bằng
+  bàn phím, không kéo marker. Box có vùng cuộn riêng và giữ trên màn hình khi trạm
+  ra ngoài khung nhìn. Trên màn hình hẹp, hai panel giới hạn chiều cao để chừa map.
+- Đóng box/chuyển trạm hủy request cũ; cleanup marker và listener khi unmount.
+  Không gọi API lại do pan/zoom. Filter loại khác tiếp tục bỏ chọn trạm đang bị ẩn.
+
 ### 4.3. Database không đồng nghĩa bắt buộc có user account
 PostgreSQL lưu station metadata và quan trắc lịch sử vì nhu cầu nghiệp vụ; không lưu user account, user-input history hay dữ liệu định danh. Redis cache dữ liệu input gốc theo trạm và thời gian như dữ liệu tạm thời, không định danh người dùng.
 
@@ -601,6 +643,7 @@ Một số API endpoints gợi ý, nếu trong quá trình implement cần phả
 | `GET` | `/api/v1/stations/{station_id}` | Metadata, vị trí, thresholds, model support |
 | `GET` | `/api/v1/stations/{station_id}/latest` | Dữ liệu mới nhất, timestamp, freshness |
 | `GET` | `/api/v1/stations/{station_id}/observations?start=...&end=...` | Dữ liệu lịch sử theo khoảng thời gian |
+| `GET` | `/api/v1/observations/hourly?start_date=...&end_date=...` | Bảng tổng trạm/ngày, đúng mốc giờ Việt Nam, lọc trạm và phân trang |
 | `GET` | `/api/v1/stations/{station_id}/prediction-availability?start=...&end=...` | Timestamp/range đủ N bản ghi hợp lệ cho model |
 | `GET` | `/api/v1/stations/{station_id}/prediction-inputs?reference_time=...` | Dữ liệu auto-fill form ở Latest/Historical, qua Prediction Input Cache |
 | `POST` | `/api/v1/predictions` | Latest hoặc Historical Replay + overrides |

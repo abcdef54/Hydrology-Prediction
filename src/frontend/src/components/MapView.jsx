@@ -12,11 +12,13 @@ setWorkerUrl(workerUrl);
  * Hiển thị OpenMapTiles tại Huế, chỉ vẽ biên giới được gắn maritime = 0.
  *
  * @param {object} props stations đã lọc và selectedStation cần focus, hoặc null.
+ * onStationSelect chọn trạm; onDismiss đóng box khi click nền map.
  * @returns {import('react').ReactElement} Bản đồ vector, marker trạm và trạng thái tải/lỗi.
  * Request bị hủy; marker và tài nguyên WebGL được giải phóng khi unmount.
  */
-export default function MapView({ stations, selectedStation }) {
+export default function MapView({ stations, selectedStation, onStationSelect, onDismiss }) {
   const containerRef = useRef(null);
+  const dismissTimerRef = useRef(null);
   const [mapInstance, setMapInstance] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
@@ -85,13 +87,37 @@ export default function MapView({ stations, selectedStation }) {
 
   useEffect(() => {
     if (!mapInstance) return;
-    const { markers, skippedCount } = addStationMarkers(mapInstance, stations);
+    const { markers, skippedCount } = addStationMarkers(mapInstance, stations, onStationSelect);
     setStationMessage(skippedCount
       ? `${skippedCount} trạm thiếu hoặc sai tọa độ nên chưa thể hiển thị trên bản đồ.` : '');
     return () => markers.forEach((marker) => marker.remove());
-  }, [mapInstance, stations]);
+  }, [mapInstance, stations, onStationSelect]);
 
   useEffect(() => {
+    if (!mapInstance) return;
+    const cancelDismiss = () => clearTimeout(dismissTimerRef.current);
+    function dismissOnMapClick(event) {
+      const target = event.originalEvent.target;
+      if (target instanceof Element && target.closest('.station-map-marker, .maplibregl-ctrl')) return;
+      cancelDismiss();
+      if (event.originalEvent.detail > 1) return;
+      // Đợi phân biệt click đơn với double-click zoom trước khi đóng box.
+      dismissTimerRef.current = setTimeout(onDismiss, 300);
+    }
+    // MapLibre loại click sau drag theo clickTolerance; wheel/pan không gọi handler này.
+    mapInstance.on('click', dismissOnMapClick);
+    mapInstance.on('dblclick', cancelDismiss);
+    mapInstance.on('movestart', cancelDismiss);
+    return () => {
+      cancelDismiss();
+      mapInstance.off('click', dismissOnMapClick);
+      mapInstance.off('dblclick', cancelDismiss);
+      mapInstance.off('movestart', cancelDismiss);
+    };
+  }, [mapInstance, onDismiss]);
+
+  useEffect(() => {
+    clearTimeout(dismissTimerRef.current);
     if (mapInstance && selectedStation) focusStation(mapInstance, selectedStation);
   }, [mapInstance, selectedStation]);
 

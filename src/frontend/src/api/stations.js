@@ -18,6 +18,22 @@ export async function fetchStations(signal) {
 }
 
 /**
+ * Đọc metadata và các ngưỡng báo động mới nhất mỗi lần mở box thông tin.
+ *
+ * @param {string} stationId Mã trạm, giữ số 0 đầu.
+ * @param {AbortSignal} [signal] Hủy request khi đóng box hoặc chuyển trạm.
+ * @returns {Promise<object>} Chi tiết trạm; alarm_levels_m dùng mét, null là chưa cấu hình.
+ * @throws {Error} Lỗi API hoặc response không khớp mã trạm/yêu cầu metadata.
+ */
+export async function fetchStationDetail(stationId, signal) {
+  const detail = await fetchApiJson(`/api/v1/stations/${encodeURIComponent(stationId)}`, signal);
+  if (detail?.station_id !== stationId || !detail.location || !detail.alarm_levels_m) {
+    throw new Error('Thông tin chi tiết trạm từ backend không hợp lệ.');
+  }
+  return detail;
+}
+
+/**
  * Đọc lần đo mới nhất, giữ số 0, giá trị âm và đơn vị gốc từ backend.
  *
  * @param {string} stationId Mã trạm, giữ số 0 đầu.

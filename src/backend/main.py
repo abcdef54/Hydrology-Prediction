@@ -17,6 +17,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from src.backend.api.prediction_inputs import router as prediction_inputs_router
 from src.backend.api.observations import router as observations_router
+from src.backend.api.hourly_history import router as hourly_history_router
 from src.backend.api.prediction_availability import router as prediction_availability_router
 from src.backend.api.predictions import router as predictions_router
 from src.backend.api.forecast_history import router as forecast_history_router
@@ -191,6 +192,7 @@ def create_app(
 
     application.include_router(stations_router)
     application.include_router(observations_router)
+    application.include_router(hourly_history_router)
     application.include_router(prediction_availability_router)
     application.include_router(prediction_inputs_router)
     application.include_router(predictions_router)

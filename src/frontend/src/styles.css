@@ -51,6 +51,172 @@
     background: #e2e8f0;
   }
 
+  .station-map-marker {
+    padding: 0;
+    pointer-events: auto;
+    cursor: pointer;
+  }
+
+  .station-map-marker:focus-visible {
+    outline: 3px solid #0284c7;
+    outline-offset: 4px;
+  }
+
+  .station-detail {
+    position: absolute;
+    z-index: 6;
+    right: 16px;
+    bottom: 48px;
+    display: flex;
+    flex-direction: column;
+    width: 320px;
+    max-width: calc(100% - 392px);
+    max-height: calc(100dvh - 132px);
+    overflow: hidden;
+    border: 1px solid #e2e8f0;
+    border-radius: 16px;
+    background: #fff;
+    color: #1e293b;
+    box-shadow: 0 8px 32px rgb(15 23 42 / 18%);
+  }
+
+  .station-detail-header {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 11px;
+    padding: 18px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .station-detail-heading {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .station-detail-heading p {
+    margin: 0 0 4px;
+    color: #64748b;
+    font-size: 12px;
+  }
+
+  .station-detail-heading h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .station-detail-close {
+    display: grid;
+    flex-shrink: 0;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    color: #64748b;
+    cursor: pointer;
+  }
+
+  .station-detail-close svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  .station-detail-close:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
+  .station-detail-close:focus-visible, .station-detail-error button:focus-visible {
+    outline: 2px solid #0284c7;
+    outline-offset: 2px;
+  }
+
+  .station-detail-content {
+    padding: 18px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+
+  .station-detail-location {
+    display: grid;
+    gap: 14px;
+    margin: 0;
+  }
+
+  .station-detail-location dt, .station-detail h3 {
+    margin: 0 0 5px;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .station-detail-location dd {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.6;
+    overflow-wrap: anywhere;
+  }
+
+  .station-detail-measurement {
+    margin-top: 18px;
+    padding: 16px;
+    border-radius: 10px;
+    background: #f0f9ff;
+  }
+
+  .station-detail-measurement .station-reading {
+    margin-top: 8px;
+  }
+
+  .station-detail-measurement .station-reading-value {
+    font-size: 26px;
+  }
+
+  .station-detail-alarms {
+    margin-top: 20px;
+  }
+
+  .station-detail-alarms dl {
+    margin: 8px 0 0;
+  }
+
+  .station-detail-alarms dl > div {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 9px 0;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 12px;
+  }
+
+  .station-detail-alarms dd {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  .station-detail-error {
+    margin-top: 16px;
+    color: #92400e;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .station-detail-error p {
+    margin: 0 0 6px;
+  }
+
+  .station-detail-error button {
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
   .station-sidebar {
     position: absolute;
     z-index: 5;
@@ -347,6 +513,19 @@
   }
 
   @media (width < 640px) {
+    .has-station-detail .station-sidebar {
+      max-height: 36dvh;
+    }
+
+    .station-detail {
+      left: 12px;
+      right: 12px;
+      bottom: 44px;
+      width: auto;
+      max-width: none;
+      max-height: 36dvh;
+    }
+
     .station-sidebar {
       top: 12px;
       left: 12px;
