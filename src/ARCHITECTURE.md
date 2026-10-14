@@ -116,6 +116,10 @@ metadata DCU đã bổ sung đơn vị. Khoảng tích lũy của mỗi bản gh
 
 **Quy ước hiện tại và phần cần xác minh:**
 
+- **Xác nhận lại của chủ dự án [ĐÃ DUYỆT], 14/10/2026:** số đo lượng mưa
+  và lượng mưa tích lũy dùng đơn vị **mm**. mm là đơn vị chiều cao lượng mưa,
+  không xác định độ dài khoảng thời gian tích lũy; phần thời gian vẫn chưa rõ.
+
 - Mực nước Dã Viên: **mm**, đã được chủ dự án xác nhận.
 - Mưa của bốn trạm trên: **mm [ĐÃ DUYỆT]**, theo quyết định chủ dự án dựa trên
   bằng chứng đối chiếu; database và API trả đơn vị mm sau migration `0004`.
@@ -211,6 +215,18 @@ Không triển khai đăng nhập, đăng ký, tài khoản, lịch sử riêng 
 **Quy ước dữ liệu:** `0.51 m` chỉ là **giá trị minh họa người dùng cung cấp**, không phải số liệu quan trắc thực tế tại thời điểm hệ thống chạy. Khi có API/DB, mực nước phải được lấy động từ bản ghi mới nhất và hiển thị `observed_at`. Tọa độ, địa chỉ và ngưỡng cũng được nhập ban đầu theo thông tin người dùng; Agent xác minh metadata nguồn trước khi công bố Production. Đã chuẩn hóa lỗi lặp từ "thành phố Thành phố" trong ví dụ gốc.
 
 - Tooltip trên hover ưu tiên ngắn gọn: tên, mực nước, trạng thái dữ liệu, thời gian quan trắc.
+
+**Hover marker — đã triển khai [ĐÃ DUYỆT], 14/10/2026:**
+- Desktop hover marker hoặc focus bằng bàn phím hiện tooltip: tên/loại trạm,
+  số đo mới nhất, đơn vị, giờ đo Việt Nam và tình trạng dữ liệu.
+- Dùng metadata và số đo đã tải cho sidebar; không gọi API mới mỗi lần hover.
+- Thiếu/lỗi/đang tải số đo có thông báo tương ứng; giữ giá trị 0, âm và đơn vị
+  từ backend. Áp dụng cho cả trạm nước và trạm mưa, có fallback cho loại khác.
+- Tooltip đóng khi rời marker/mất focus; click/tap giữ hành vi focus bản đồ và
+  mở box thông tin hiện tại. Tooltip không làm đổi trạm đang chọn.
+- Marker nhấc lên nhẹ 4 px và có quầng sáng dịu khi hover/focus bàn phím.
+  Hiệu ứng áp dụng trên phần icon bên trong, không ghi đè transform định vị của
+  MapLibre; khi `prefers-reduced-motion` thì giữ quầng sáng, bỏ chuyển động.
 
 - Popup/Detail khi click hiển thị đầy đủ vị trí, tọa độ, mực nước, ba ngưỡng, biểu đồ và thao tác dự báo.
 
@@ -398,7 +414,7 @@ Không thêm charts mang tính trang trí. Dữ liệu chart phải có schema n
 
 - Prediction Input Cache: cache dữ liệu đầu vào gốc đã chuẩn bị cho form theo trạm và thời điểm; không lưu overrides của user.
 
-- Prediction Cache: trả kết quả inference đối với cùng model/version/chuỗi input/override.
+- Prediction Cache: trả kết quả inference đối với cùng model/version/chuỗi input gốc.
 
 - Đã triển khai Redis cho kết quả **input gốc đã commit**, TTL dùng chung
   CACHE_TTL_HYDROLOGY_SECONDS (600 giây). Key gồm station/pipeline/full input hash;
@@ -406,7 +422,8 @@ Không thêm charts mang tính trang trí. Dữ liệu chart phải có schema n
   Dự báo thử không cache/lưu. Không sửa mã numerical pipeline để tránh thay đổi
   identity các bản đã backfill; orchestration mới nằm ở cached_service.py.
 
-- Dự báo từ dữ liệu quan trắc gốc được lưu lâu dài trong PostgreSQL để dùng lại và vẽ biểu đồ so sánh. Redis là cache tạm của các kết quả đó. Dự báo có overrides chỉ được cache tạm, không lưu lâu dài hoặc đưa vào đường dự báo từ dữ liệu gốc.
+- **Quyết định chủ dự án [ĐÃ DUYỆT], 14/10/2026: KHÔNG cache dự báo có input features do người dùng chỉnh sửa.** Dự báo có overrides bỏ qua cả cache kết quả (Redis/RAM) và lưu PostgreSQL; chỉ giữ kết quả trong state giao diện để xem lượt hiện tại. Không đưa vào series dự báo từ dữ liệu gốc. Cache đầu vào gốc không bị sửa bởi overrides.
+- Dự báo từ dữ liệu quan trắc gốc được lưu lâu dài trong PostgreSQL để dùng lại và vẽ biểu đồ so sánh. Redis là cache tạm của các kết quả đó.
 
 - Nếu phát hiện thêm cơ hội cache có lợi, Agent cần báo cáo chi phí-lợi ích và đề xuất thay đổi; **không tự ý bổ sung nhiều cache layer**.
 
@@ -1032,7 +1049,7 @@ Dữ liệu thực tế vẫn đọc mới riêng. Metadata/quyền dự báo v�
 1. Chuẩn bị đầu vào, kiểm tra quyền dự báo và tạo dấu nhận diện chuỗi hiện tại. Latest/Historical đều áp dụng cùng quy tắc.
 2. Tìm kết quả trong Redis. Nếu có kết quả khớp dấu nhận diện, trả lại mà không chạy mô hình.
 3. Nếu Redis chưa có và request không có overrides, tìm dự báo tương ứng trong PostgreSQL. Nếu tìm thấy, đưa lại vào Redis và trả kết quả.
-4. Nếu chưa có kết quả, chạy mô hình. Với request không có overrides, lưu `forecasts` và `forecast_points` trong một transaction rồi cache Redis. Với request có overrides, chỉ cache Redis.
+4. Nếu chưa có kết quả, chạy mô hình. Với request không có overrides, lưu `forecasts` và `forecast_points` trong một transaction rồi cache Redis. Với request có overrides, không đọc/ghi cache kết quả và không lưu PostgreSQL; trả kết quả cho lượt xem hiện tại.
 5. Nếu nhiều request cùng tạo một dự báo, unique constraint bảo đảm chỉ lưu một bản; request gặp xung đột đọc lại bản đã lưu. Chưa cần thêm distributed locking.
 
 - Kết quả lâu dài chỉ chứa giá trị dự báo và thông tin nguồn gốc. `requested_reference_time`, tuổi dữ liệu và `is_stale` phải được tính theo request hiện tại, không lấy nguyên các trạng thái động từ lần lưu/cache trước.

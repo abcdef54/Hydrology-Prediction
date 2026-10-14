@@ -37,6 +37,11 @@ Trang gọi `GET /api/v1/stations` qua proxy Vite, sử dụng `station_type` v�
 
 Request trạm được hủy và marker được gỡ khi component unmount, tránh marker lặp.
 
+Hover marker hoặc focus bằng bàn phím hiện tooltip tên/loại trạm, số đo, đơn vị
+và giờ đo Việt Nam; dùng số đo đã tải cho sidebar, không gọi thêm API. Rời marker/
+mất focus hoặc nhấn Escape đóng tooltip; click/tap vẫn mở box thông tin trạm.
+Marker nhấc nhẹ 4 px và có quầng sáng khi hover/focus; reduced motion bỏ chuyển động.
+
 ## Sidebar trạm
 
 - Có khoảng trống với mép màn hình; phần danh sách cuộn độc lập bằng chuột/bàn phím.

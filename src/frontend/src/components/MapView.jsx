@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
-import { AttributionControl, Map, NavigationControl, setWorkerUrl } from 'maplibre-gl';
+import { AttributionControl, Map, NavigationControl, Popup, setWorkerUrl } from 'maplibre-gl';
+import { createPortal } from 'react-dom';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import { mapConfig } from '../mapConfig.js';
 import { createMapStyle } from '../maps/mapStyle.js';
 import { addStationMarkers } from '../maps/stationMarkers.js';
 import { focusStation } from '../maps/focusStation.js';
+import StationMarkerTooltip from './StationMarkerTooltip.jsx';
+import { getStationCoordinates } from '../stations.js';
 
 setWorkerUrl(workerUrl);
 
@@ -12,17 +15,20 @@ setWorkerUrl(workerUrl);
  * Hiển thị OpenMapTiles tại Huế, chỉ vẽ biên giới được gắn maritime = 0.
  *
  * @param {object} props stations đã lọc và selectedStation cần focus, hoặc null.
+ * readings là số đo sidebar đã tải; hover/focus dùng lại, không gọi thêm API.
  * onStationSelect chọn trạm; onDismiss đóng box khi click nền map.
  * @returns {import('react').ReactElement} Bản đồ vector, marker trạm và trạng thái tải/lỗi.
  * Request bị hủy; marker và tài nguyên WebGL được giải phóng khi unmount.
  */
-export default function MapView({ stations, selectedStation, onStationSelect, onDismiss }) {
+export default function MapView({ stations, readings, selectedStation, onStationSelect, onDismiss }) {
   const containerRef = useRef(null);
   const dismissTimerRef = useRef(null);
   const [mapInstance, setMapInstance] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const [stationMessage, setStationMessage] = useState('');
+  const [hoveredStation, setHoveredStation] = useState(null);
+  const [tooltipContainer, setTooltipContainer] = useState(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -87,11 +93,31 @@ export default function MapView({ stations, selectedStation, onStationSelect, on
 
   useEffect(() => {
     if (!mapInstance) return;
-    const { markers, skippedCount } = addStationMarkers(mapInstance, stations, onStationSelect);
+    const { markers, skippedCount } = addStationMarkers(mapInstance, stations, onStationSelect, setHoveredStation);
     setStationMessage(skippedCount
       ? `${skippedCount} trạm thiếu hoặc sai tọa độ nên chưa thể hiển thị trên bản đồ.` : '');
-    return () => markers.forEach((marker) => marker.remove());
+    return () => {
+      setHoveredStation(null);
+      markers.forEach((marker) => marker.remove());
+    };
   }, [mapInstance, stations, onStationSelect]);
+
+  useEffect(() => {
+    if (!mapInstance || !hoveredStation) {
+      setTooltipContainer(null);
+      return;
+    }
+    const container = document.createElement('div');
+    container.id = 'station-marker-tooltip';
+    container.setAttribute('role', 'tooltip');
+    const popup = new Popup({
+      closeButton: false, closeOnClick: false, focusAfterOpen: false,
+      anchor: 'bottom', offset: 29, maxWidth: '260px',
+      className: 'station-marker-tooltip',
+    }).setLngLat(getStationCoordinates(hoveredStation)).setDOMContent(container).addTo(mapInstance);
+    setTooltipContainer(container);
+    return () => popup.remove();
+  }, [mapInstance, hoveredStation]);
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -124,6 +150,10 @@ export default function MapView({ stations, selectedStation, onStationSelect, on
   return (
     <div className="relative h-full w-full">
       <div ref={containerRef} className="h-full w-full" />
+      {tooltipContainer && hoveredStation && createPortal(
+        <StationMarkerTooltip station={hoveredStation} reading={readings?.[hoveredStation.station_id]} />,
+        tooltipContainer,
+      )}
       {(isLoading || errorMessage || stationMessage) && (
         <p
           role="status"

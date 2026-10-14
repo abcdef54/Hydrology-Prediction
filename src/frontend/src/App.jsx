@@ -30,7 +30,7 @@ export default function App() {
 
   return (
     <main aria-label="Bản đồ khu vực Huế, Việt Nam" className={`relative h-dvh w-full overflow-hidden${selectedStation ? ' has-station-detail' : ''}`}>
-      <MapView stations={visibleStations} selectedStation={selectedStation} onStationSelect={selectStation} onDismiss={closeStation} />
+      <MapView stations={visibleStations} readings={readings} selectedStation={selectedStation} onStationSelect={selectStation} onDismiss={closeStation} />
       <StationSidebar
         stations={orderedStations} visibleStations={visibleStations} readings={readings}
         stationType={stationType} onFilterChange={changeFilter}
