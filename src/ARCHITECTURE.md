@@ -1003,9 +1003,21 @@ Trong thời gian chờ phân tích, giữ quy tắc hiện tại: dữ liệu t
 - API `/latest` luôn đọc thông tin trạm và đơn vị từ PostgreSQL, nhưng cache hit bỏ qua truy vấn quan trắc. Cache chỉ lưu giá trị đo gốc, station ID và timestamps; `data_age_minutes`/`is_stale` được tính lại ở mỗi request. PostgreSQL lỗi vẫn trả 503.
 - Worker invalidation sau khi toàn bộ transaction commit, chỉ với trạm đã thêm/sửa dữ liệu. Dry-run, rollback và hàng không đổi không xóa cache. Mã phiên bản cache (`cache_version`) phụ và Lua nguyên tử ngăn request đọc dữ liệu cũ ghi lại cache sau invalidation.
 - Invalidation Redis thất bại hoặc process dừng giữa commit/invalidation có thể giữ cache cũ đến TTL; báo cáo worker có trạng thái invalidation. Các công cụ sửa DB khác chưa tự invalidation, cần xóa key hoặc chờ TTL. Mỗi trạm có tối đa một key mã phiên bản cache không TTL; chưa cần Redis Cluster hoặc khóa chống request trùng.
-- Task này chỉ cache `/latest`; cache form, kết quả dự báo và Visualize vẫn làm sau. Chi tiết vận hành/kiểm tra: `src/backend/cache/README.md`.
+- Cache `/latest` hoạt động cùng cache đầu vào/kết quả dự báo mô tả ở 8.2–8.3. Chi tiết vận hành/kiểm tra: `src/backend/cache/README.md`.
 
 ### 8.2. Prediction Input Cache
+
+**Đã triển khai ngày 14/10/2026:** auto-fill và POST dự báo dùng chung cache đầu vào
+gốc trong RAM API, tối đa 256 entry, TTL 600 giây theo cấu hình cache hiện tại.
+Cache giữ bản sao feature/tensor để không bị thay đổi bởi caller; overrides bypass.
+Key gồm cấu hình/scaler (mtime/size), trạm, latest/historical và giờ UTC; thời điểm
+request và freshness được tính lại. Kiểm tra generation Redis của tất cả trạm nguồn
+trước khi dùng và sau khi dựng input, tránh publish qua một lần ingestion commit.
+Redis lỗi/không cấu hình thì bypass; cache hết khi API dừng. Không đổi mã pipeline
+số học hoặc artifact nên định danh các dự báo lịch sử được giữ nguyên.
+Các đoạn dự báo khoảng thời gian đã đủ kết quả cũng được cache theo station/model/
+pipeline/start/end/horizon, cùng giới hạn và invalidation; đoạn thiếu không cache.
+Dữ liệu thực tế vẫn đọc mới riêng. Metadata/quyền dự báo vẫn kiểm tra từ database.
 
 - Pattern: Cache-Aside; cache dữ liệu gốc đã chuẩn bị cho biểu mẫu, **không phải** toàn bộ kết quả dự báo hay giá trị user overrides.
 - Key gợi ý: `prediction-inputs:v1:{station_id}:{reference_time_or_latest}:{model_version}:{feature_schema_version}:{data_revision}`. Với Latest cần phân biệt thời điểm/cửa sổ dữ liệu hiện hành để tránh dùng nhầm cache cũ. Nếu chưa có `data_revision`, dùng TTL kiểm soát và xóa các key bị ảnh hưởng khi ingestion cập nhật bản ghi.

@@ -180,7 +180,7 @@ def prediction_inputs(
         )
     service, source_units = service_and_units
     try:
-        prepared = service.prepare(query.reference_time)
+        prepared = request.app.state.prediction_input_cache.prepare(service, query.reference_time)
     except InsufficientHistoryError as error:
         raise HTTPException(
             400,

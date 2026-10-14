@@ -50,7 +50,10 @@ def get_prediction_service(request: Request, config: StationModelConfig) -> Pred
                 503, {"code": "MODEL_UNAVAILABLE", "message": "Station model could not be loaded."}
             ) from None
         service = CachedPredictionService(
-            request.app.state.database_engine, runtime, request.app.state.forecast_cache
+            request.app.state.database_engine,
+            runtime,
+            request.app.state.forecast_cache,
+            request.app.state.prediction_input_cache,
         )
         request.app.state.prediction_services[config.station_id] = service
         return service

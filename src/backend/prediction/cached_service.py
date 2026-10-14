@@ -15,11 +15,13 @@ class CachedPredictionService(PredictionService):
         engine: Engine owned by the app, used for current inputs and atomic storage.
         runtime: Existing station runtime; numerical code and artifact hashes unchanged.
         result_cache: Optional committed-output cache, bypassed entirely for overrides.
+        input_cache: Optional shared original-input cache used also by auto-fill.
     """
 
-    def __init__(self, engine, runtime, result_cache):
+    def __init__(self, engine, runtime, result_cache, input_cache=None):
         super().__init__(engine, runtime)
         self.result_cache = result_cache
+        self.input_cache = input_cache
 
     def predict(self, reference_time=None, overrides=None, *, required_anchor=None):
         """Prepare inputs, check cache/storage, then infer and atomically save a miss.
@@ -41,7 +43,11 @@ class CachedPredictionService(PredictionService):
         """
         if overrides:
             return super().predict(reference_time, overrides)
-        prepared = self.inputs.prepare(reference_time)
+        prepared = (
+            self.input_cache.prepare(self.inputs, reference_time)
+            if self.input_cache is not None
+            else self.inputs.prepare(reference_time)
+        )
         if required_anchor is not None and prepared.anchor_observed_at != required_anchor:
             raise AnchorUnavailableError("Exact hourly anchor is unavailable.")
         config = self.runtime.config

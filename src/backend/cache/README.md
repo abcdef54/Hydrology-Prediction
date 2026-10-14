@@ -1,7 +1,15 @@
 # Redis cache cho dữ liệu mới nhất
 
 Cache áp dụng cho `/latest` và kết quả dự báo **input gốc đã commit**.
-Form đầu vào và dữ liệu thực tế vẫn đọc theo luồng hiện có.
+Form đầu vào và POST dự báo dùng chung cache chuỗi đầu vào gốc trong RAM của API.
+Cache tối đa 256 entry, TTL theo `CACHE_TTL_HYDROLOGY_SECONDS` (600 giây mặc định).
+Key phân biệt trạm/cấu hình/scaler, latest và mốc giờ lịch sử; mỗi request giữ đúng
+`requested_reference_time`, tính lại tuổi dữ liệu và trạng thái stale.
+Cache giữ bản sao độc lập của bảng feature/tensor; không lưu giá trị user sửa.
+Trước mỗi lần dùng, kiểm tra generation Redis của trạm nước và mọi trạm mưa nguồn.
+Worker cập nhật generation sau commit nên lần gọi tiếp theo dựng lại input khi
+bất kỳ nguồn nào thay đổi. Không có Redis hoặc Redis lỗi thì bypass cache đầu vào.
+Cache này chỉ sống cùng API process, không serialize tensor/joblib vào Redis.
 
 Kết quả dự báo dùng key `hydrology:v1:forecast:{station}:{pipeline}:{input_hash}`,
 TTL dùng chung `CACHE_TTL_HYDROLOGY_SECONDS`. Chỉ chứa output/ID đã lưu; không có
@@ -13,6 +21,10 @@ Dự báo có overrides bỏ qua cả cache và persistence.
 Chế độ khoảng đọc hàng loạt bản dự báo lịch sử từ DB trước, tránh dựng lại 96×29
 cho mỗi mốc đã có. Chỉ mốc còn thiếu đi qua luồng cache đầy đủ. Không tự replay
 các bản lịch sử khi dữ liệu nguồn được sửa. Cache chỉ publish sau commit thành công.
+Đoạn đã có đầy đủ dự báo được cache trong RAM theo trạm/model/pipeline/khoảng/horizon,
+cùng TTL và generation nguồn; đoạn thiếu chưa được cache để không che kết quả mới.
+Chỉ giữ giá trị dự báo và ID/anchor. Dữ liệu thực tế được đọc lại riêng mỗi request.
+Cache hit vẫn đọc metadata trạm để kiểm tra quyền/đơn vị; không bỏ mọi query DB.
 
 ## Cấu hình
 
@@ -33,7 +45,7 @@ Sau khi thay đổi code hoặc `.env`, khởi động lại API và worker:
 ```bash
 # API: dừng process Uvicorn đang chạy bằng Ctrl+C rồi chạy lại
 .venv/bin/python -m uvicorn src.backend.main:app --env-file .env --host 127.0.0.1 --port 8000
-systemctl --user restart hydrology-sync.service
+# Worker do API quản lý sẽ khởi động lại cùng backend khi bật HYDROLOGY_SYNC_AUTOSTART.
 ```
 
 Redis local chỉ nên lắng nghe trên máy nội bộ. Khi dùng Docker sau này, API và

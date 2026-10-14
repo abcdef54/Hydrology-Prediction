@@ -99,6 +99,36 @@ class RangeApiTests(TestCase):
         )
         self.assertEqual(len(data["points"]), 2)
 
+    def test_complete_stored_range_is_cached_but_actuals_are_refreshed(self):
+        from src.backend.cache.inputs import ObservationDependentCache
+
+        redis = MagicMock()
+        redis.mget.return_value = [b"generation"] * 5
+        self.app.state.prediction_input_cache = ObservationDependentCache(redis)
+        self.stored_rows = [
+            {
+                "forecast_at": self.start + timedelta(hours=i),
+                "forecast_id": uuid4(),
+                "anchor_observed_at": self.start + timedelta(hours=i - 1),
+                "predicted_water_level_mm": 100,
+            }
+            for i in range(2)
+        ]
+        first = self.client.post("/api/v1/predictions/range", json=self.body)
+        self.assertEqual(first.status_code, 200, first.text)
+        self.connection.execute.reset_mock()
+        self.actual_rows[0]["actual_water_level_mm"] = 123
+        second = self.client.post("/api/v1/predictions/range", json=self.body)
+        self.assertEqual(second.status_code, 200, second.text)
+        self.assertEqual(second.json()["points"][0]["actual_water_level_mm"], 123)
+        self.assertEqual(self.connection.execute.call_count, 1)
+        self.service.predict.assert_not_called()
+        redis.mget.return_value = [b"changed"] * 5
+        self.connection.execute.reset_mock()
+        third = self.client.post("/api/v1/predictions/range", json=self.body)
+        self.assertEqual(third.status_code, 200, third.text)
+        self.assertEqual(self.connection.execute.call_count, 2)
+
     def test_missing_history_and_shifted_anchor_are_skipped_not_mislabeled(self):
         self.service.predict.side_effect = [
             InsufficientHistoryError(96, 10),

@@ -25,6 +25,7 @@ from src.backend.api.forecast_history import router as forecast_history_router
 from src.backend.api.forecast_detail import router as forecast_detail_router
 from src.backend.api.prediction_range import router as prediction_range_router
 from src.backend.cache.forecasts import ForecastCache
+from src.backend.cache.inputs import ObservationDependentCache
 from src.backend.api.schemas import ErrorDetail, ErrorResponse
 from src.backend.api.stations import router as stations_router
 from src.backend.cache.latest import LatestObservationCache
@@ -133,6 +134,10 @@ def create_app(
         )
         application.state.stale_after_minutes = configured_threshold
         application.state.forecast_cache = ForecastCache(
+            application.state.latest_observation_cache.client,
+            application.state.latest_observation_cache.ttl_seconds,
+        )
+        application.state.prediction_input_cache = ObservationDependentCache(
             application.state.latest_observation_cache.client,
             application.state.latest_observation_cache.ttl_seconds,
         )

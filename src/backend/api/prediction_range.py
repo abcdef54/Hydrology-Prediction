@@ -109,16 +109,43 @@ def predict_range(request: Request, body: RangePredictionRequest) -> RangePredic
                     "message": "Model/pipeline changed; restart the range.",
                 },
             )
-        with request.app.state.database_engine.connect() as connection:
-            stored_rows = (
-                connection.execute(
-                    forecast_comparison_query(
-                        body.station_id, config.model_version, pipeline, history_query, now
+
+        def load_stored_rows():
+            """Read committed forecast fields; observed truth is refreshed separately."""
+            with request.app.state.database_engine.connect() as connection:
+                return [
+                    {
+                        name: row[name]
+                        for name in (
+                            "forecast_at",
+                            "forecast_id",
+                            "anchor_observed_at",
+                            "predicted_water_level_mm",
+                        )
+                    }
+                    for row in connection.execute(
+                        forecast_comparison_query(
+                            body.station_id, config.model_version, pipeline, history_query, now
+                        )
                     )
-                )
-                .mappings()
-                .all()
-            )
+                    .mappings()
+                    .all()
+                ]
+
+        stored_rows = request.app.state.prediction_input_cache.load(
+            (
+                "range",
+                body.station_id,
+                config.model_version,
+                pipeline,
+                start,
+                end,
+                body.horizon_minutes,
+            ),
+            (config.station_id, *config.rain_station_ids),
+            load_stored_rows,
+            retain=lambda rows: len(rows) == int((end - start).total_seconds() / 3600),
+        )
         stored_by_time = {row["forecast_at"]: row for row in stored_rows}
         service = None
         target = start

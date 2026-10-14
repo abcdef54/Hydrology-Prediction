@@ -176,6 +176,8 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
 - Mỗi target T dùng đúng anchor T−horizon. Thiếu input/đúng anchor hoặc anchor
   chưa tới thì bỏ qua, không thay bằng một mốc cũ. Biểu đồ gồm toàn bộ các nhóm,
   cùng thực tế trung bình giờ, bảng sai số/MAE bằng mm; không nối qua null.
+- Biểu đồ và tiến độ cập nhật sau mỗi nhóm; bảng sai số chỉ dựng khi toàn bộ
+  khoảng đã tải xong. Khi đang tải/chờ hoặc lỗi giữa chừng, bảng chưa hiển thị.
 - Dừng hủy chờ và nhóm chưa gửi, không đảm bảo dừng nhóm server đang xử lý;
   những dự báo đã commit vẫn dùng lại được. Quay lại giữ lựa chọn khoảng.
 

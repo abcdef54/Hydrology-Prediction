@@ -5,7 +5,6 @@ import { useChartTooltip } from '../hooks/useChartTooltip.js';
 import ChartTooltip, { ChartInteraction } from './ChartTooltip.jsx';
 
 const timeFormatter = new Intl.DateTimeFormat('vi-VN', {timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
-const reasons = {insufficient_history:'Thiếu lịch sử đầu vào',anchor_unavailable:'Thiếu đúng mốc đầu vào',future_anchor:'Mốc đầu vào chưa tới'};
 
 /**
  * @param {object} props state gồm toàn bộ điểm của các nhóm đã hoàn tất; onResume tiếp nhóm lỗi.
@@ -35,7 +34,7 @@ export default function PredictionRangeResult({state,onBack,onResume}) {
       <p>{formatObservationTime(request.start)} đến trước {formatObservationTime(request.end)} · Dự báo trước {request.horizon/60} giờ · mm</p>
     </div><button type="button" onClick={onBack}>{state.status==='loading'||state.status==='waiting'?'Dừng và quay lại lịch sử':'← Quay lại lịch sử'}</button></div>
     <div className="prediction-result-meta" aria-live="polite">
-      <p>Đã xử lý {points.length}/{total} mốc giờ · Dùng lại {state.reused} · Tạo mới {state.created} · Bỏ qua {state.skipped}</p>
+      <p>Đã xử lý {points.length}/{total} mốc giờ</p>
       {(state.status==='loading'||state.status==='waiting')&&<p role="status">{state.status==='waiting'?`Đang chờ giới hạn yêu cầu: ${state.waitSeconds} giây…`:'Đang xử lý nhóm tiếp theo…'}</p>}
       <progress value={points.length} max={total} aria-label="Tiến độ dự báo theo khoảng"/>
     </div>
@@ -60,12 +59,12 @@ export default function PredictionRangeResult({state,onBack,onResume}) {
       </div><ChartTooltip control={tooltip} svgRef={svgRef} getX={x} /><figcaption>Giờ Việt Nam · Cuộn ngang trên màn hình nhỏ. Biểu đồ gồm tất cả mốc đã xử lý, không chỉ trang đầu.</figcaption>
     </figure> : <p>{state.status==='ready'?'Không có dự báo hoặc quan trắc trong khoảng đã chọn.':'Biểu đồ sẽ hiện khi có dữ liệu.'}</p>}
     {mae!==null&&<p className="prediction-error-summary">Sai số tuyệt đối trung bình: <strong>{formatWaterLevel(mae)} mm</strong> · {comparable.length} mốc có cả dự báo và thực tế.</p>}
-    {points.length>0&&<div className="prediction-comparison-scroll prediction-range-table" tabIndex={0} role="region" aria-label="Bảng sai số theo khoảng, cuộn để xem thêm">
-      <table className="prediction-comparison"><thead><tr><th scope="col">Thời điểm</th><th scope="col">Dự báo (mm)</th><th scope="col">Thực tế (mm)</th><th scope="col">Sai lệch (mm)</th><th scope="col">Sai số tuyệt đối (mm)</th><th scope="col">Trạng thái</th></tr></thead>
+    {state.status==='ready'&&points.length>0&&<div className="prediction-comparison-scroll prediction-range-table" tabIndex={0} role="region" aria-label="Bảng sai số theo khoảng, cuộn để xem thêm">
+      <table className="prediction-comparison"><thead><tr><th scope="col">Thời điểm</th><th scope="col">Dự báo (mm)</th><th scope="col">Thực tế (mm)</th><th scope="col">Sai lệch (mm)</th><th scope="col">Sai số tuyệt đối (mm)</th></tr></thead>
         <tbody>{points.map(point=>{const difference=point.predicted_water_level_mm===null||point.actual_water_level_mm===null?null:point.predicted_water_level_mm-point.actual_water_level_mm;return <tr key={point.forecast_at}>
           <th scope="row">{formatObservationTime(point.forecast_at)}</th><td>{point.predicted_water_level_mm===null?'—':formatWaterLevel(point.predicted_water_level_mm)}</td>
           <td>{point.actual_water_level_mm===null?'—':formatWaterLevel(point.actual_water_level_mm)}</td><td>{difference===null?'—':formatWaterLevel(difference)}</td><td>{difference===null?'—':formatWaterLevel(Math.abs(difference))}</td>
-          <td>{point.status==='ready'?(point.reused?'Đã có':'Mới tạo'):reasons[point.status]}</td></tr>;})}</tbody></table>
+          </tr>;})}</tbody></table>
     </div>}
   </section>;
 }
