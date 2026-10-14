@@ -65,14 +65,16 @@ class LatestObservationTests(TestCase):
                 self.assertEqual(response.json()["is_stale"], expected)
                 self.assertEqual(response.json()["stale_after_minutes"], 120)
 
-    def test_zero_rain_and_unknown_unit_are_preserved(self):
+    def test_zero_rain_preserves_known_and_unknown_units(self):
         self.observation["depth"] = 0
-        response = self.request_latest(
-            station={"station_type": "rainfall", "measurement_unit": None}
-        )
-        self.assertEqual(response.status_code, 200, response.text)
-        self.assertEqual(response.json()["value"], 0)
-        self.assertIsNone(response.json()["unit"])
+        for unit in ("mm", None):
+            with self.subTest(unit=unit):
+                response = self.request_latest(
+                    station={"station_type": "rainfall", "measurement_unit": unit}
+                )
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.json()["value"], 0)
+                self.assertEqual(response.json()["unit"], unit)
 
     def test_unknown_station_does_not_query_observations(self):
         self.connection.execute.return_value.mappings.return_value.first.return_value = None

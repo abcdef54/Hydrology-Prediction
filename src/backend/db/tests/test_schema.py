@@ -60,7 +60,7 @@ class SchemaTests(unittest.TestCase):
         self.assertTrue(water_station.prediction_enabled)
         rain_stations = [station for station in stations if station.station_type == "rainfall"]
         self.assertEqual(len(rain_stations), 4)
-        self.assertTrue(all(station.measurement_unit is None for station in rain_stations))
+        self.assertTrue(all(station.measurement_unit == "mm" for station in rain_stations))
         self.assertTrue(all(not station.prediction_enabled for station in rain_stations))
 
     def test_duplicate_instant_and_source_id(self):

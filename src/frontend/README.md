@@ -4,6 +4,7 @@ React + Vite + Tailwind CSS. Bản đồ dùng MapLibre GL JS và vector tiles t
 OpenMapTiles, dữ liệu OpenStreetMap do OpenFreeMap cung cấp. Không cần API key.
 Trang có bản đồ toàn màn hình, mở sẵn tại Huế, zoom 12; có thể kéo và zoom.
 Marker trạm được lấy động từ backend, hiện gồm Dã Viên và 4 trạm mưa A Lưới.
+Sidebar nổi bên trái hiển thị metadata và số đo mới nhất; chọn item để focus bản đồ.
 
 ## Chạy local
 
@@ -34,6 +35,27 @@ Trang gọi `GET /api/v1/stations` qua proxy Vite, sử dụng `station_type` v�
 - Trạm mưa A Lưới nằm về phía tây Huế; có thể cần kéo/thu nhỏ để xem tùy màn hình.
 
 Request trạm được hủy và marker được gỡ khi component unmount, tránh marker lặp.
+
+## Sidebar trạm
+
+- Có khoảng trống với mép màn hình; phần danh sách cuộn độc lập bằng chuột/bàn phím.
+- Mỗi item có icon cùng loại với marker, tên, loại, địa chỉ, số đo và giờ quan trắc.
+  Trạm nước đứng đầu danh sách; số đo đọc từ `/api/v1/stations/{id}/latest`.
+- Bộ lọc loại trạm áp dụng cho cả sidebar và marker. Loại được tạo từ danh sách
+  API, có icon/nhãn mặc định cho loại mới; backend hiện vẫn chỉ hỗ trợ nước/mưa.
+- Dòng “Dữ liệu mới nhất” ưu tiên `observed_at` mới nhất của nhóm trạm nước;
+  nếu không có thì lấy mới nhất của loại khác. Hiển thị giờ Việt Nam, không đổi
+  theo filter và không dùng `received_at` làm thời điểm quan trắc.
+- Đơn vị đọc từ API: Dã Viên và bốn trạm mưa dùng mm sau migration `0004`, theo
+  quyết định chủ dự án. Chưa xác định khoảng tích lũy bản ghi mưa; không ghi mm/h.
+  Trạm chưa biết đơn vị hiển thị rõ, không tự gán mm. Số 0 và mực nước âm giữ nguyên.
+- Trạng thái đang tải, chưa có số đo, lỗi từng trạm và dữ liệu cũ được phân biệt.
+  Metadata vẫn hiển thị nếu request số đo thất bại; nút “Thử lại” tải lại dữ liệu.
+- Tối đa 4 request số đo đồng thời, làm mới mỗi 10 phút khi tab đang hiển thị;
+  không request lại chỉ vì đổi filter/chọn trạm. Không retry tự động ngay khi lỗi.
+- Click item chỉ di chuyển bản đồ tới trạm trong khoảng 1,4 giây, chừa vùng cho
+  sidebar. Tôn trọng reduced motion; item thiếu/sai tọa độ không cho focus.
+- Trên màn hình hẹp, sidebar giới hạn chiều cao để giữ phần bản đồ phía dưới.
 
 ## Nguồn bản đồ và giới hạn hiển thị
 
@@ -91,17 +113,24 @@ npm run build
 npm run preview
 ```
 
+`npm test` kiểm tra quy tắc ưu tiên timestamp, giữ số 0/âm và đơn vị, cô lập lỗi,
+giới hạn request đồng thời và hủy request; không cần backend hoặc dependency test.
+
 Build ở `dist/`, không đưa vào Git. Preview tại <http://localhost:4173> dùng cùng
 proxy local. Khi deploy static build cần reverse proxy `/api` riêng.
 
 ## Cấu trúc
 
-- `src/App.jsx`: vùng chứa bản đồ toàn màn hình.
+- `src/App.jsx`: state chọn trạm/filter dùng chung giữa sidebar và map.
 - `src/components/MapView.jsx`: vòng đời MapLibre, trạng thái tải/lỗi và WebGL worker.
+- `src/components/StationSidebar.jsx`, `StationIcon.jsx`: danh sách, bộ lọc và icon.
+- `src/hooks/useStations.js`: tải metadata, số đo và hủy/làm mới request.
+- `src/stations.js`: nhãn/icon, tọa độ và quy tắc ưu tiên timestamp trạm nước.
 - `src/mapConfig.js`: tâm nhìn, zoom, vùng điều hướng và các vùng ẩn nhãn ngoài khơi.
 - `src/maps/mapStyle.js`: biên giới đất liền, tên biển tiếng Việt và lọc nhãn ngoài khơi.
 - `src/maps/stationMarkers.js`: tạo marker theo loại trạm và kiểm tra tọa độ.
-- `src/api/stations.js`: đọc danh sách trạm, hỗ trợ timeout và hủy request.
+- `src/maps/focusStation.js`: focus trạm trong vùng map còn nhìn thấy.
+- `src/api/client.js`, `src/api/stations.js`: đọc API danh sách/latest, timeout/hủy request.
 - `src/main.jsx`, `src/styles.css`: khởi tạo React, CSS MapLibre và Tailwind.
 
 Tham khảo: [OpenFreeMap](https://openfreemap.org/quick_start/),

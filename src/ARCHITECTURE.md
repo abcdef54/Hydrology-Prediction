@@ -78,6 +78,55 @@ AI Agent phải đọc hai file này trong Phase 1 — Discovery để xác đ�
 - Authentication và các environment variables cần thiết.
 - Những dữ liệu cần thu thập để phục vụ 29 input features, hiển thị thông tin trạm và các biểu đồ.
 
+### 3. Xác minh đơn vị lượng mưa — 13/10/2026
+
+**Quyết định chủ dự án [ĐÃ DUYỆT], 13/10/2026:** Sau khi xem các bằng chứng đối
+chiếu bên dưới, dùng **milimét (mm)** cho cả bốn trạm mưa hiện tại. Migration
+`0004` đặt `measurement_unit = 'mm'` cho các trạm này; frontend đọc đơn vị từ
+backend. Đây là quyết định sử dụng dữ liệu của dự án, không phải tuyên bố rằng
+metadata DCU đã bổ sung đơn vị. Khoảng tích lũy của mỗi bản ghi vẫn chưa xác định.
+
+**Bằng chứng từ nguồn dữ liệu dự án:**
+
+- Collection Postman mô tả `GET /items/rain_water_depth` là dữ liệu lượng mưa
+  (`depth`), không nêu đơn vị; không có response mẫu được lưu để xác nhận đơn vị.
+- Đã đọc trực tiếp API DCU ngày 13/10/2026: quan trắc mưa chỉ có `id`, `station_id`,
+  `depth`, `time_point`; metadata trạm không có trường đơn vị.
+- `GET /fields/rain_water_depth/depth` trả HTTP 200, kiểu `float`/`real`, nhưng
+  `meta.note`, `meta.options`, `meta.display_options`, `meta.translations` và
+  `schema.comment` đều `null`; không có bằng chứng đơn vị tại đây. Kết quả phù hợp
+  với lần khảo sát 12/10 trong `reports/discovery/api_live_discovery.json`.
+- Sáu bản ghi mới nhất được kiểm tra của Hồ A Lá (`750011`) cách nhau 10 phút,
+  có giá trị `0`, `0.2`, rồi `0`. Đây chỉ là mẫu quan sát; bước giá trị và khoảng
+  cách timestamp không đủ chứng minh đơn vị hoặc khoảng tích lũy lượng mưa.
+
+**Nguồn công khai đối chiếu:**
+
+- [Nghiên cứu Đại học Huế, DOI 10.26459/hueunijese.v131i4A.6654](https://csdlkhoahoc.hueuni.edu.vn/data/2024/7/6519-Article_Text-31346-1-10-20240409.pdf),
+  trang in 150 và Bảng 3 trang 152: lượng mưa tại thị trấn A Lưới, Hồ A Lá và Nhâm
+  được báo cáo bằng mm. Danh sách trạm Vrain có tên và địa điểm lắp đặt khớp API:
+  thị trấn A Lưới (`750003`, Phòng NN và PTNT huyện A Lưới), Hồ A Lá (`750011`,
+  Công trình đầu mối hồ A Lá), Nhâm (`750007`, Đồn biên phòng Nhâm).
+- [Công bố của UBND thành phố Huế về thiên tai năm 2025](https://hue.gov.vn/Trang-chu/Thong-bao/tb/Cong-bo-tinh-huong-khan-cap-thien-tai-de-khac-phuc-hau-qua-mua-lu-dac-biet-lon-tu-ngay-25-10-den-ngay-03-11-bao-so-13-va-mua-lu-ngay-16-17-11-2025-tren-dia-ban-thanh-pho-Hue-329770)
+  báo cáo tổng lượng mưa trạm Vrain Hồng Thái (A Lưới) là 625 mm trong đợt
+  16–17/11/2025. Tên trạm khớp Hồng Thái (`750062`); công bố không cung cấp mã DCU.
+- [Hệ thống Vrain chính thức](https://www.vrain.vn/) hiển thị lượng mưa bằng mm,
+  kèm khoảng thời gian tích lũy. Đây là bằng chứng về hệ thống đo mưa đối chiếu,
+  chưa chứng minh DCU giữ nguyên đơn vị và cách tổng hợp dữ liệu Vrain.
+
+**Quy ước hiện tại và phần cần xác minh:**
+
+- Mực nước Dã Viên: **mm**, đã được chủ dự án xác nhận.
+- Mưa của bốn trạm trên: **mm [ĐÃ DUYỆT]**, theo quyết định chủ dự án dựa trên
+  bằng chứng đối chiếu; database và API trả đơn vị mm sau migration `0004`.
+- Chưa xác định `depth` là lượng mưa của khoảng 10 phút, tổng trượt hay tổng từ
+  một mốc cố định. Không gắn nhãn `mm/h`, “mưa 10 phút” hoặc “mưa 1 giờ”, không
+  tự cộng/chia hay đổi đơn vị dựa vào tần suất bản ghi. Cần tài liệu nguồn hoặc
+  đối chiếu cùng trạm, cùng khoảng thời gian để xác nhận quy ước này.
+- Frontend đọc đơn vị từ backend; trạm khác có đơn vị `null` vẫn hiển thị chưa
+  rõ đơn vị, không tự gán mm cho loại/trạm mới. Chỉ sửa metadata của bốn trạm mưa,
+  không đổi số đo gốc, training data, model/scaler hoặc MLflow runs.
+
 
 ---
 
@@ -392,6 +441,25 @@ Phân tách **Source of Truth**:
 - Trong lớp `water_name`, ẩn thêm tên địa hình dưới biển (núi ngầm/sống núi/rãnh biển) thuộc loại ocean/sea/bay/strait được nhận diện bằng thuật ngữ trong tên, kể cả ngoài vùng đảo. Không áp quy tắc này lên tên địa danh đất liền, hồ hoặc sông; hai tên biển tiếng Việt được ưu tiên giữ.
 
 - Tile Provider phải là cấu hình thay được; giữ attribution và tuân thủ chính sách của nhà cung cấp. OpenStreetMap public tiles không có SLA, không bulk-prefetch tiles.
+
+**Quyết định cho sidebar Task 2 — 13/10/2026 [ĐÃ DUYỆT]:**
+
+- Dòng “Dữ liệu mới nhất” lấy `observed_at` mới nhất của các trạm nước có quan
+  trắc trong database; nếu không có thì dùng thời điểm mới nhất của các trạm
+  còn lại. Hiển thị theo giờ Việt Nam. Không dùng giờ hiện tại, `received_at`
+  hoặc thời điểm tải trang làm thời điểm quan trắc; nếu không có quan trắc thì
+  hiển thị chưa có dữ liệu. Đây không phải thời điểm worker đồng bộ thành công.
+- Frontend lấy danh sách trạm từ API và chuẩn bị xử lý loại trạm mở rộng: cấu
+  hình nhãn/icon theo `station_type`, có cách hiển thị mặc định cho loại chưa
+  biết, bộ lọc dựa trên các loại thực tế API trả về. Backend hiện chỉ hỗ trợ
+  `water_level` và `rainfall`; bổ sung loại mới vẫn cần mở rộng backend tương ứng.
+- Đơn vị lấy từ metadata backend và tuân thủ kết luận khảo sát ở mục tài nguyên
+  phía trên. Task 2 đã triển khai sidebar nổi, cuộn độc lập, filter chung với marker
+  và click item để `flyTo`; chưa mở Station Detail hoặc gắn hành động click marker.
+- Sidebar dùng một request danh sách và `/latest` riêng từng trạm, tối đa 4
+  request đồng thời. Làm mới số đo mỗi 10 phút khi tab đang hiển thị, không tự retry
+  ngay khi lỗi/429; có nút thử lại. Mỗi item có timestamp và trạng thái dữ liệu cũ
+  từ backend. Dòng thời gian chung không đổi theo filter; trạm nước xếp trước.
 
 ### 4.3. Database không đồng nghĩa bắt buộc có user account
 PostgreSQL lưu station metadata và quan trắc lịch sử vì nhu cầu nghiệp vụ; không lưu user account, user-input history hay dữ liệu định danh. Redis cache dữ liệu input gốc theo trạm và thời gian như dữ liệu tạm thời, không định danh người dùng.
@@ -1030,6 +1098,22 @@ Không commit credentials. API keys đưa vào biến build client (`VITE_*`) **
 | **6. Frontend** | Map + Sidebar + Details, forms, historical modes, Recharts | Chọn trạm đồng bộ map; click predict; show charts/data-status/mobile |
 | **7. Deploy & QA** | Docker Compose, Nginx, observability, E2E, benchmark, security checks | Repeatable deployment; có metrics; đáp ứng acceptance criteria |
 
+### Hạng mục có thể bổ sung sau khi hoàn thành app
+
+**Tối ưu tốc độ tải và cache bản đồ [ĐỀ XUẤT — ghi nhận ngày 13/10/2026]:**
+
+- Mục tiêu: bản đồ xuất hiện sớm, kéo/zoom mượt và tải nhanh khi người dùng quay lại.
+- Đo trên bản production ở ba tình huống: mở lần đầu, quay lại trang và zoom/kéo.
+  Phân biệt thời gian tải tiles với tải JavaScript, khởi tạo MapLibre/WebGL và dựng
+  bản đồ; ưu tiên tận dụng HTTP cache của trình duyệt trước khi thêm cache riêng.
+- Nếu kết quả đo cho thấy cần thiết, triển khai cache tài nguyên bản đồ trong một
+  task riêng, có giới hạn dung lượng, thời hạn lưu và cơ chế cập nhật theo phiên bản.
+  Cache trên máy người dùng chủ yếu hỗ trợ tài nguyên đã tải; không bảo đảm lần mở
+  đầu tiên sẽ nhanh tương đương những lần quay lại.
+- Giữ quy tắc lọc biên giới/nhãn hiện tại, attribution và chính sách nhà cung cấp;
+  không tải trước toàn bộ bản đồ Việt Nam. Chọn cơ chế cache sau khi đánh giá lợi ích
+  thực tế và chi phí bảo trì.
+
 ### Nguyên tắc cho AI Coding Agent
 - Đọc `ARCHITECTURE.md` và Model/API investigation report trước khi triển khai.
 
@@ -1057,3 +1141,29 @@ Không commit credentials. API keys đưa vào biến build client (`VITE_*`) **
 - Redis: \<https\://redis.io/docs/latest/>
 
 - PostgreSQL: \<https\://www.postgresql.org/docs/>
+
+
+
+
+
+Các task frontend còn lại, theo thứ tự đề xuất:
+
+| Task | Nội dung |
+|---|---|
+| 1. Marker Dã Viên | Lấy tọa độ từ backend và hiển thị marker; chưa thêm popup. |
+| 2. Danh sách và chọn trạm | Hiển thị sidebar; chọn trạm đồng bộ marker và di chuyển bản đồ tới trạm. |
+| 3. Thông tin trạm | Hiển thị tên, địa chỉ, tọa độ và ngưỡng báo động bằng mm. |
+| 4. Quan trắc mới nhất | Hiển thị giá trị, giờ đo Việt Nam, trạng thái cũ/thiếu và nút làm mới. |
+| 5. Bảng lịch sử quan trắc | Chọn khoảng thời gian, xem dữ liệu gốc và phân trang. |
+| 6. Tự điền đầu vào mới nhất | Gọi prediction-inputs, hiển thị feature và anchor thực tế; bước đầu chỉ đọc. |
+| 7. Chọn mốc dự báo lịch sử | Chọn thời điểm, kiểm tra availability và tải đầu vào tương ứng. |
+| 8. Chỉnh sửa và reset đầu vào | Chỉ sửa feature được phép; giữ riêng dữ liệu gốc và bản chỉnh sửa. |
+| 9. Predict và bảng kết quả | Gửi yêu cầu dự báo; hiển thị các horizon, giá trị mm, loading và lỗi. |
+| 10. Visualize một mốc | Vẽ 5 điểm dự báo cùng tối đa 24 giá trị thực tế theo giờ từ đúng forecast_id. |
+| 11. Biểu đồ kịch bản chỉnh sửa | Vẽ kết quả có overrides, ghi rõ là kịch bản và phân biệt với dự báo gốc. |
+| 12. Biểu đồ quan trắc lịch sử | Vẽ khoảng thời gian đã chọn, đọc đủ dữ liệu và thể hiện khoảng thiếu. |
+| 13. Biểu đồ dự báo theo khoảng | Chọn một horizon; đọc đủ các trang và giữ cùng model/pipeline. |
+| 14. Hoàn thiện giao diện | Rà soát mobile, bàn phím và cách hiển thị trạng thái. |
+| 15. Kiểm tra luồng frontend | Kiểm tra chọn trạm → chọn mốc → sửa input → Predict/Visualize. |
+
+Mỗi lượt làm một task, giải thích phạm vi trước khi bắt đầu và kiểm chứng đúng phần thay đổi.

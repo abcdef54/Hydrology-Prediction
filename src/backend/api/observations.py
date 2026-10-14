@@ -38,7 +38,7 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
 
     Returns:
         Latest valid raw value, source unit, observation/receipt times and data age.
-        Water uses mm; an unconfirmed rain unit is None. Freshness is based on
+        Supported water/rain stations use mm; unknown units are None. Freshness is based on
         observed_at, not the time the record was imported into PostgreSQL.
 
     Raises:

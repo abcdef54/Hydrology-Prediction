@@ -20,7 +20,7 @@ def station_metadata(station_id, *, prediction_enabled=True, station_type="water
         "latitude": None,
         "longitude": None,
         "address": None,
-        "measurement_unit": "mm" if station_type == "water_level" else None,
+        "measurement_unit": "mm",
         "prediction_enabled": prediction_enabled,
         "enabled": True,
         "alarm_level_1_m": None,
@@ -55,7 +55,7 @@ class StationsApiTests(TestCase):
         self.assertTrue(water_payload["prediction_enabled"])
         self.assertFalse(rain_payload["model_configured"])
         self.assertFalse(rain_payload["prediction_enabled"])
-        self.assertIsNone(rain_payload["measurement_unit"])
+        self.assertEqual(rain_payload["measurement_unit"], "mm")
         self.assertIsNone(rain_payload["location"]["latitude"])
         self.assertEqual(self.application.state.prediction_services, {})
         self.assertNotIn("model_path", response.text)
@@ -117,10 +117,10 @@ class StationsApiTests(TestCase):
         self.assertEqual(self.application.state.prediction_services, {})
 
     def test_rain_detail_preserves_unknown_thresholds_and_units(self):
-        self.rows.first.return_value = station_metadata(
-            "750062", station_type="rainfall", prediction_enabled=False
-        )
-        response = self.client.get("/api/v1/stations/750062")
+        station = station_metadata("future-rain", station_type="rainfall", prediction_enabled=False)
+        station["measurement_unit"] = None
+        self.rows.first.return_value = station
+        response = self.client.get("/api/v1/stations/future-rain")
         self.assertEqual(response.status_code, 200, response.text)
         payload = response.json()
         self.assertIsNone(payload["measurement_unit"])

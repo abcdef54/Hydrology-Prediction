@@ -1,3 +1,5 @@
+import { fetchApiJson } from './client.js';
+
 /**
  * Đọc danh sách trạm được bật và metadata vị trí từ backend.
  *
@@ -7,49 +9,64 @@
  * @throws {DOMException} Khi caller hủy request bằng signal.
  */
 export async function fetchStations(signal) {
-  let response;
-
-  try {
-    response = await fetch('/api/v1/stations', {
-      headers: { Accept: 'application/json' },
-      signal: signal
-        ? AbortSignal.any([signal, AbortSignal.timeout(10_000)])
-        : AbortSignal.timeout(10_000),
-    });
-  } catch (error) {
-    if (signal?.aborted) throw error;
-    if (error.name === 'TimeoutError') {
-      throw new Error('Backend phản hồi quá chậm. Vui lòng thử lại.');
-    }
-
-    throw new Error('Không thể kết nối. Kiểm tra mạng và thử lại.');
-  }
-
-  if (!response.ok) {
-    if (response.status === 429) {
-      const retryAfterSeconds = Number(response.headers.get('Retry-After'));
-      const retryMessage = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-        ? `Vui lòng đợi ${Math.ceil(retryAfterSeconds)} giây rồi thử lại.`
-        : 'Vui lòng đợi một lúc rồi thử lại.';
-      throw new Error(`Đã vượt giới hạn yêu cầu. ${retryMessage}`);
-    }
-
-    throw new Error(
-      `Chưa kết nối được backend (HTTP ${response.status}). Kiểm tra backend đang chạy tại cổng 8000 và PostgreSQL khả dụng.`,
-    );
-  }
-
-  let payload;
-
-  try {
-    payload = await response.json();
-  } catch {
-    throw new Error('Backend trả về dữ liệu không phải JSON hợp lệ.');
-  }
-
+  const payload = await fetchApiJson('/api/v1/stations', signal);
   if (!Array.isArray(payload?.stations)) {
     throw new Error('Dữ liệu từ backend không có danh sách trạm hợp lệ.');
   }
 
   return payload.stations;
+}
+
+/**
+ * Đọc lần đo mới nhất, giữ số 0, giá trị âm và đơn vị gốc từ backend.
+ *
+ * @param {string} stationId Mã trạm, giữ số 0 đầu.
+ * @param {AbortSignal} [signal] Hủy request khi unmount.
+ * @returns {Promise<object|null>} Quan trắc; null nếu chưa có lần đo hợp lệ.
+ * @throws {Error} Lỗi API hoặc sai cấu trúc quan trắc.
+ */
+export async function fetchLatestObservation(stationId, signal) {
+  let observation;
+  try {
+    observation = await fetchApiJson(`/api/v1/stations/${encodeURIComponent(stationId)}/latest`, signal);
+  } catch (error) {
+    if (error.status === 404 && error.code === 'OBSERVATION_NOT_FOUND') return null;
+    throw error;
+  }
+  if (
+    observation?.station_id !== stationId || !Number.isFinite(observation.value)
+    || !Number.isFinite(Date.parse(observation.observed_at))
+    || !(observation.unit === null || typeof observation.unit === 'string')
+  ) {
+    throw new Error('Dữ liệu quan trắc từ backend không hợp lệ.');
+  }
+  return observation;
+}
+
+/**
+ * Đọc số đo với tối đa 4 request đồng thời; lỗi một trạm không ảnh hưởng trạm khác.
+ *
+ * @param {Array<object>} stations Các trạm đã lấy từ API danh sách.
+ * @param {AbortSignal} signal Hủy đợt tải, gồm request đang chạy và đang đợi.
+ * @returns {Promise<object>} Bảng theo mã trạm: status, observation và error nếu có.
+ * @throws {DOMException} Khi caller hủy đợt tải. Không tự retry khi bị giới hạn.
+ */
+export async function fetchStationReadings(stations, signal) {
+  const readings = {};
+  let nextIndex = 0;
+  async function readNextStation() {
+    while (nextIndex < stations.length) {
+      signal.throwIfAborted();
+      const station = stations[nextIndex++];
+      try {
+        const observation = await fetchLatestObservation(station.station_id, signal);
+        readings[station.station_id] = { status: observation ? 'ready' : 'missing', observation };
+      } catch (error) {
+        if (signal.aborted) throw error;
+        readings[station.station_id] = { status: 'error', observation: null, error: error.message };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(4, stations.length) }, readNextStation));
+  return readings;
 }

@@ -50,4 +50,343 @@
     color: #475569;
     background: #e2e8f0;
   }
+
+  .station-sidebar {
+    position: absolute;
+    z-index: 5;
+    top: 16px;
+    left: 16px;
+    display: flex;
+    flex-direction: column;
+    width: 344px;
+    max-width: calc(100% - 80px);
+    max-height: calc(100dvh - 32px);
+    overflow: hidden;
+    border: 1px solid rgb(148 163 184 / 28%);
+    border-radius: 18px;
+    background: #fff;
+    color: #1e293b;
+    box-shadow: 0 8px 32px rgb(15 23 42 / 16%);
+  }
+
+  .station-sidebar-header {
+    flex-shrink: 0;
+    padding: 22px 20px 18px;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .station-sidebar-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .station-sidebar-eyebrow {
+    margin: 0 0 7px;
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+  }
+
+  .station-sidebar h1 {
+    margin: 0;
+    font-size: 21px;
+    font-weight: 700;
+    line-height: 1.3;
+    letter-spacing: -0.4px;
+  }
+
+  .station-count {
+    display: grid;
+    place-items: center;
+    min-width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: #f1f5f9;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .station-latest {
+    margin: 17px 0;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.6;
+  }
+
+  .station-latest strong {
+    display: block;
+    color: #334155;
+    font-size: 12px;
+    font-weight: 500;
+  }
+
+  .station-filter-label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .station-filter {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    background: #fff;
+    color: #334155;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .station-list-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+
+  .station-list {
+    display: grid;
+    gap: 9px;
+    margin: 0;
+    padding: 14px;
+    list-style: none;
+  }
+
+  .station-card {
+    display: block;
+    width: 100%;
+    padding: 15px 14px 13px;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #fff;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 150ms, background-color 150ms;
+  }
+
+  .station-card:hover {
+    border-color: #94a3b8;
+    background: #f8fafc;
+  }
+
+  .station-card[aria-pressed="true"] {
+    border-color: #0284c7;
+    background: #f0f9ff;
+    box-shadow: inset 3px 0 #0284c7;
+  }
+
+  .station-card:disabled {
+    cursor: default;
+    background: #f8fafc;
+  }
+
+  .station-card:focus-visible, .station-filter:focus-visible,
+  .station-list-scroll:focus-visible, .station-sidebar-notice button:focus-visible {
+    outline: 2px solid #0284c7;
+    outline-offset: 2px;
+  }
+
+  .station-card-heading {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+
+  .station-card-icon {
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    border-width: 2px;
+    box-shadow: none;
+  }
+
+  .station-card-name {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .station-card-name strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+  }
+
+  .station-card-name > span {
+    display: block;
+    margin-top: 3px;
+    color: #64748b;
+    font-size: 11px;
+  }
+
+  .station-card-arrow {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    color: #94a3b8;
+  }
+
+  .station-address {
+    display: block;
+    margin-top: 12px;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+  }
+
+  .station-reading {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 5px;
+    margin-top: 12px;
+  }
+
+  .station-reading-value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px;
+    color: #0c4a6e;
+    font-size: 20px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+  }
+
+  .station-reading-unit {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  .station-reading-time, .station-reading-placeholder, .station-reading-error {
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .station-reading-time--stale, .station-reading-error {
+    color: #92400e;
+  }
+
+  .station-sidebar-footer {
+    flex-shrink: 0;
+    padding: 12px 18px;
+    border-top: 1px solid #e2e8f0;
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.5;
+  }
+
+  .station-list-empty {
+    margin: 0;
+    padding: 24px 20px;
+    color: #64748b;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  .station-sidebar-notice {
+    flex-shrink: 0;
+    padding: 12px 18px;
+    border-bottom: 1px solid #fde68a;
+    background: #fffbeb;
+    color: #92400e;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .station-sidebar-notice p {
+    margin: 0 0 6px;
+  }
+
+  .station-sidebar-notice button {
+    padding: 2px 0;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+  }
+
+  .station-sidebar-notice button:disabled {
+    opacity: 0.5;
+    cursor: wait;
+  }
+
+  .map-status {
+    position: absolute;
+    top: 16px;
+    left: 384px;
+    right: 64px;
+    z-index: 4;
+    width: fit-content;
+    max-width: calc(100% - 448px);
+    margin: 0 auto;
+    padding: 10px 14px;
+    border-radius: 9px;
+    background: white;
+    color: #475569;
+    box-shadow: 0 2px 8px rgb(15 23 42 / 12%);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .maplibregl-ctrl-top-right {
+    top: 6px;
+    right: 6px;
+  }
+
+  @media (width < 640px) {
+    .station-sidebar {
+      top: 12px;
+      left: 12px;
+      max-width: calc(100% - 72px);
+      max-height: 48dvh;
+      border-radius: 14px;
+    }
+
+    .station-sidebar-header {
+      padding: 14px;
+    }
+
+    .station-sidebar h1 {
+      font-size: 18px;
+    }
+
+    .station-latest {
+      margin: 10px 0;
+    }
+
+    .station-sidebar-eyebrow {
+      font-size: 9px;
+    }
+
+    .station-sidebar-footer {
+      padding: 9px 14px;
+    }
+
+    .map-status {
+      top: auto;
+      bottom: 42px;
+      left: 12px;
+      right: 12px;
+      max-width: calc(100% - 24px);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .station-card {
+      transition: none;
+    }
+  }
 }

@@ -25,8 +25,9 @@ class Station(Base):
     Attributes:
         id: Stable string ID preserving leading zeros.
         station_type: water_level or rainfall, determining the source collection.
-        measurement_unit: Unit of raw depth; water is mm and unconfirmed rain units
-            remain None. Alarm thresholds are stored separately in metres.
+        measurement_unit: Unit of raw depth; supported water and rain stations use
+            mm by project decision. Unknown units remain None for other stations.
+            Alarm thresholds are stored separately in metres.
         latitude/longitude: Nullable coordinates in decimal degrees.
         alarm_level_1_m/alarm_level_2_m/alarm_level_3_m: Nullable stored thresholds.
         enabled: Whether the station appears in the public enabled-station list.
@@ -96,7 +97,8 @@ class Station(Base):
     source_station_id: Mapped[str] = mapped_column(sa.Text)
     observation_collection: Mapped[str] = mapped_column(sa.Text)
     measurement_unit: Mapped[str | None] = mapped_column(
-        sa.Text, comment="Water mm confirmed by project owner; rain unit unconfirmed (NULL)."
+        sa.Text,
+        comment="Raw depth unit; supported water and rain stations use mm by project decision.",
     )
     created_at: Mapped[datetime] = mapped_column(
         sa.DateTime(timezone=True), server_default=sa.func.now()

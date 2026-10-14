@@ -105,7 +105,8 @@ curl 'http://127.0.0.1:8000/api/v1/stations/0074647403/latest'
   giá trị 0 hoặc mực nước âm vẫn hợp lệ.
 - `value` là giá trị quan trắc gốc, chưa tổng hợp theo giờ hoặc chuẩn hóa.
   Đầu vào mô hình theo giờ vẫn lấy qua `prediction-inputs`.
-- Thời gian trả về UTC; mực nước có đơn vị mm, đơn vị mưa chưa xác nhận trả null.
+- Thời gian trả về UTC; mực nước và bốn trạm mưa hiện tại dùng mm theo quyết định
+  chủ dự án (migration `0004`). Đơn vị chưa biết của trạm khác vẫn trả null.
 - Tuổi dữ liệu tính từ `observed_at` đến lúc xử lý request. Dữ liệu trễ hơn
   120 phút được trả kèm `is_stale = true`; đúng 120 phút vẫn chưa cũ.
   Ngưỡng dùng chung cấu hình `INPUT_STALE_AFTER_MINUTES` với API đầu vào.
@@ -186,7 +187,7 @@ Response gồm:
   feature; không gửi toàn bộ tensor 96 × 29 về form.
 - Mỗi feature có `name`, `value`, `unit`, `source_station_id` và `editable`.
   Mực nước dùng mm; cờ dùng `dimensionless`. Đơn vị mưa lấy từ metadata database;
-  hiện chưa xác nhận nên trả `null`, không tự gán mm hoặc chuyển đổi giá trị.
+  bốn trạm mưa hiện tại dùng mm. Đơn vị chưa biết vẫn trả `null`; không chuyển đổi giá trị.
 - Giá trị thiếu là `null`, không phải 0. Mưa/lag thiếu vẫn có thể `input_ready=true`
   vì preprocessing đã hỗ trợ xử lý thiếu giống lúc training.
 - `editable_features`, `missing_features`, `sequence_length`, `feature_count` và

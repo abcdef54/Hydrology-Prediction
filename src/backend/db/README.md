@@ -59,8 +59,10 @@ Metadata khởi tạo gồm Dã Viên và bốn trạm mưa Hồng Thái, Nhâm,
 Hồ A Lá, theo API khảo sát ngày 12/10/2026. Mã `0074647403` giữ số 0 đầu. Hồ A Lá
 ở đây là **trạm mưa**, không phải dữ liệu vận hành hồ chứa.
 
-- `depth` giữ nguyên giá trị API. Nước dùng mm theo xác nhận của chủ dự án; đơn vị
-  mưa chưa xác nhận nên để `measurement_unit = NULL`. Chưa đổi đơn vị hoặc tổng hợp giờ.
+- `depth` giữ nguyên giá trị API. Nước và bốn trạm mưa hiện tại dùng mm theo quyết
+  định của chủ dự án. Migration `0004` cập nhật metadata đơn vị mưa từ NULL sang mm,
+  không đổi số đo hoặc tổng hợp giờ. Khoảng tích lũy của từng bản ghi mưa vẫn chưa
+  xác định; không suy ra mm/h từ khoảng cách timestamp. Xem `src/ARCHITECTURE.md`.
 - `observed_at` là `TIMESTAMPTZ`; truyền timestamp có múi giờ. Hiển thị giờ Việt Nam
   thuộc bước ứng dụng. Không tạo thêm hàng cho những thời điểm thiếu.
 - Giá trị thiếu dùng `depth = None`, `quality_status = 'missing'`. Không thay bằng 0;
