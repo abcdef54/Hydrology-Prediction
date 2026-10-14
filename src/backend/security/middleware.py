@@ -77,8 +77,9 @@ class PublicApiMiddleware:
             return
         client = scope.get("client")
         client_ip = client[0] if client else "unknown"
-        is_prediction = (
-            scope["method"] == "POST" and scope["path"].rstrip("/") == "/api/v1/predictions"
+        is_prediction = scope["method"] == "POST" and scope["path"].rstrip("/") in (
+            "/api/v1/predictions",
+            "/api/v1/predictions/range",
         )
         retry_after = await run_in_threadpool(
             scope["app"].state.request_rate_limiter.check, client_ip, is_prediction

@@ -369,8 +369,21 @@ Không thêm charts mang tính trang trí. Dữ liệu chart phải có schema n
 - Khi mở rộng sang model khác, số điểm dự báo và horizon lấy từ metadata/bản lưu, không cố định 5 điểm hoặc 24 giờ cho mọi model.
 
 **Chế độ 2 — chọn một khoảng bắt đầu/kết thúc:**
-- **Để task sau**; hiện không tự điền khoảng ngày bằng click toàn bộ dòng lịch sử.
-- Cho nhập start/end để vẽ toàn bộ các điểm đã lưu trong khoảng. Đọc hết các trang dữ liệu cần thiết; không chỉ vẽ trang đầu mặc định 100 điểm.
+- Đã triển khai chọn start/end theo giờ Việt Nam, [start,end), tối đa 31 ngày.
+  Không tự điền khoảng bằng click toàn bộ dòng. Khi đang chọn ô giờ/latest, ẩn
+  phần khoảng; Bỏ chọn mở lại. Click ô giờ tự chuyển về auto-fill một mốc.
+  Chế độ khoảng không tải/hiện/sửa feature; horizon đọc từ prediction-options.
+- Xử lý tuần tự nhóm tối đa 24 giờ qua POST /predictions/range, hiển thị tiến độ,
+  tạo mới/dùng lại/bỏ qua. Dừng ngăn nhóm tiếp theo; nhóm đã bắt đầu có thể lưu xong.
+  Retry tiếp nhóm chưa hoàn tất; 429/busy chờ theo Retry-After, không chạy song song.
+- Đọc hàng loạt dự báo lịch sử đúng model/pipeline trước. Các giờ đã lưu không dựng
+  chuỗi input hoặc tải runtime. Đây là bản dự báo lịch sử bất biến, không tự tính
+  lại khi nguồn quan trắc được sửa. Chỉ mốc thiếu mới chuẩn bị đầu vào, kiểm tra
+  Redis theo full input hash, kiểm tra DB rồi infer và lưu nguyên tử nếu vẫn thiếu.
+  Giữ mã pipeline bằng nhóm đầu; đổi model/pipeline giữa chừng trả 409.
+- Target T dùng anchor chính xác T−horizon; thiếu lịch sử, không có đúng anchor hoặc
+  anchor tương lai được bỏ qua, không gán dự báo của giờ khác. Thực tế vẫn hiển thị
+  khi có. Vẽ tất cả nhóm, ngắt tại null, bảng sai số/MAE bằng mm.
 - Chọn một horizon để vẽ một đường dự báo liên tục theo các `forecast_at` trong khoảng, ví dụ chuỗi dự báo +1 giờ từ nhiều anchor khác nhau, cùng đường thực tế theo giờ.
 - Phân biệt rõ chế độ này với dự báo 24 giờ từ một anchor: không ghép các điểm khác horizon/anchor thành một đường rồi gọi đó là dự báo từ một mốc duy nhất.
 - Giữ cùng trạm, model và pipeline trong một series; ghi rõ horizon đang xem. Dữ liệu thực tế thiếu vẫn để trống, dữ liệu dự báo chưa được tạo không được tự điền giả.
@@ -381,6 +394,12 @@ Không thêm charts mang tính trang trí. Dữ liệu chart phải có schema n
 - Prediction Input Cache: cache dữ liệu đầu vào gốc đã chuẩn bị cho form theo trạm và thời điểm; không lưu overrides của user.
 
 - Prediction Cache: trả kết quả inference đối với cùng model/version/chuỗi input/override.
+
+- Đã triển khai Redis cho kết quả **input gốc đã commit**, TTL dùng chung
+  CACHE_TTL_HYDROLOGY_SECONDS (600 giây). Key gồm station/pipeline/full input hash;
+  không lưu feature, overrides, tuổi dữ liệu hoặc thực tế. Redis hỏng fallback DB.
+  Dự báo thử không cache/lưu. Không sửa mã numerical pipeline để tránh thay đổi
+  identity các bản đã backfill; orchestration mới nằm ở cached_service.py.
 
 - Dự báo từ dữ liệu quan trắc gốc được lưu lâu dài trong PostgreSQL để dùng lại và vẽ biểu đồ so sánh. Redis là cache tạm của các kết quả đó. Dự báo có overrides chỉ được cache tạm, không lưu lâu dài hoặc đưa vào đường dự báo từ dữ liệu gốc.
 

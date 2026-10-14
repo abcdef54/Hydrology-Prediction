@@ -359,3 +359,60 @@ class ForecastDetailResponse(BaseModel):
     window_end: AwareDatetime
     predictions: list[PredictedWaterLevel]
     actuals: list[ActualWaterLevelPoint]
+
+
+class PredictionOptionsResponse(BaseModel):
+    station_id: str
+    model_version: str
+    forecast_horizons_minutes: list[int]
+
+
+class RangePredictionRequest(BaseModel):
+    """One bounded chunk of target hours [start, end), without user overrides."""
+
+    model_config = ConfigDict(extra="forbid")
+    station_id: str = Field(min_length=1)
+    start: AwareDatetime
+    end: AwareDatetime
+    horizon_minutes: int = Field(gt=0)
+    model_version: str | None = None
+    pipeline_version: str | None = None
+
+    @model_validator(mode="after")
+    def validate_window(self):
+        from datetime import timezone
+
+        if self.start >= self.end or self.end - self.start > timedelta(hours=24):
+            raise ValueError("Chunk must span at most 24 hours with start < end.")
+        for instant in (self.start, self.end):
+            utc = instant.astimezone(timezone.utc)
+            if utc.year < 1900 or utc.minute or utc.second or utc.microsecond:
+                raise ValueError("Bounds must be whole UTC hours in or after 1900.")
+        if (self.model_version is None) != (self.pipeline_version is None):
+            raise ValueError("Model and pipeline versions must be provided together.")
+        return self
+
+
+class RangePredictionPoint(BaseModel):
+    forecast_at: AwareDatetime
+    status: Literal["ready", "insufficient_history", "anchor_unavailable", "future_anchor"]
+    forecast_id: UUID | None = None
+    anchor_observed_at: AwareDatetime | None = None
+    predicted_water_level_mm: float | None = Field(default=None, allow_inf_nan=False)
+    actual_water_level_mm: float | None = Field(allow_inf_nan=False)
+    actual_sample_count: int = Field(ge=0)
+    reused: bool | None = None
+
+
+class RangePredictionResponse(BaseModel):
+    station_id: str
+    start: AwareDatetime
+    end: AwareDatetime
+    horizon_minutes: int
+    model_version: str
+    pipeline_version: str
+    unit: Literal["mm"] = "mm"
+    points: list[RangePredictionPoint]
+    created_count: int
+    reused_count: int
+    skipped_count: int

@@ -1,7 +1,18 @@
 # Redis cache cho dữ liệu mới nhất
 
-Cache hiện chỉ áp dụng cho `GET /api/v1/stations/{station_id}/latest`.
-API lịch sử, form đầu vào, dự báo và Visualize vẫn dùng luồng hiện có.
+Cache áp dụng cho `/latest` và kết quả dự báo **input gốc đã commit**.
+Form đầu vào và dữ liệu thực tế vẫn đọc theo luồng hiện có.
+
+Kết quả dự báo dùng key `hydrology:v1:forecast:{station}:{pipeline}:{input_hash}`,
+TTL dùng chung `CACHE_TTL_HYDROLOGY_SECONDS`. Chỉ chứa output/ID đã lưu; không có
+feature, overrides hay trạng thái stale. Mỗi POST một mốc chuẩn bị input hiện tại
+trước, kiểm tra Redis → DB → inference/save khi miss. Đổi dữ liệu/model/scaler
+đổi hash nên không dùng nhầm entry; Redis hỏng fallback DB, không chặn lưu dự báo.
+Dự báo có overrides bỏ qua cả cache và persistence.
+
+Chế độ khoảng đọc hàng loạt bản dự báo lịch sử từ DB trước, tránh dựng lại 96×29
+cho mỗi mốc đã có. Chỉ mốc còn thiếu đi qua luồng cache đầy đủ. Không tự replay
+các bản lịch sử khi dữ liệu nguồn được sửa. Cache chỉ publish sau commit thành công.
 
 ## Cấu hình
 

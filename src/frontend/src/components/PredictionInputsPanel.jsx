@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { formatObservationTime } from '../stations.js';
 import { buildInputOverrides, describePredictionFeature } from '../predictionInputs.js';
+import PredictionRangeForm from './PredictionRangeForm.jsx';
 
 /**
  * @param {object} props stations dùng tra tên nguồn; eligibleStations là trạm nước được backend cho phép dự báo;
@@ -9,7 +10,7 @@ import { buildInputOverrides, describePredictionFeature } from '../predictionInp
  * @returns {import('react').ReactElement} Input có thể sửa theo quyền API, reset và kiểm tra lỗi.
  */
 export default function PredictionInputsPanel({ stations, eligibleStations, selection, onSelect, onClear, defaultStationId,
-  inputState, onPredict, predictButtonRef }) {
+  inputState, onPredict, predictButtonRef, onPredictRange, rangeButtonRef }) {
   const [latestStationId, setLatestStationId] = useState(defaultStationId ?? '');
   const { status, data, error } = inputState;
   const [editState, setEditState] = useState(null);
@@ -26,7 +27,7 @@ export default function PredictionInputsPanel({ stations, eligibleStations, sele
     <section className="prediction-inputs-panel" aria-labelledby="prediction-inputs-title">
       <div className="prediction-inputs-toolbar">
         <div><h3 id="prediction-inputs-title">Đầu vào dự báo</h3>
-          <p>Chọn ô giờ của trạm nước để tự điền đầu vào tại mốc đó.</p></div>
+          <p>Chọn một ô giờ để tự điền đầu vào, hoặc bỏ chọn để xem theo khoảng.</p></div>
         <div className="prediction-inputs-actions">
           <label className="sr-only" htmlFor="prediction-latest-station">Trạm lấy đầu vào mới nhất</label>
           <select id="prediction-latest-station" value={latestStation?.station_id ?? ''}
@@ -43,6 +44,7 @@ export default function PredictionInputsPanel({ stations, eligibleStations, sele
         </div>
       </div>
       {!eligibleStations.length && <p>Chưa có trạm nước được bật dự báo và cấu hình mô hình.</p>}
+      <PredictionRangeForm station={latestStation} enabled={!selection} onRun={onPredictRange} buttonRef={rangeButtonRef} />
       {selection && <div className="prediction-inputs-status" aria-live="polite">
         <strong>{selection.station.name}</strong> · Mốc yêu cầu: {selection.referenceTime ? formatObservationTime(selection.referenceTime) : 'Mới nhất'}
         {status === 'loading' && <p role="status">Đang chuẩn bị đầu vào…</p>}

@@ -145,7 +145,7 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
   không đảm bảo dừng inference hoặc lưu kết quả đã bắt đầu trên server.
 - Đã kiểm chứng luồng quá khứ/hôm nay/mới nhất trên backend thật, desktop/mobile;
   các trường hợp thiếu/gãy dữ liệu, quota, sai bản dự báo và hủy bằng response giả.
-  Chưa có dự báo theo khoảng ngày.
+  Đã có chế độ theo khoảng ở phần bên dưới.
 - Dự báo có chỉnh sửa ghi rõ “Dự báo thử”, không lưu input/kết quả vào database.
   Metadata lưu trữ (`forecast_id`, `generated_at`, `pipeline_version`) phải null;
   biểu đồ dùng response POST, không gọi API đọc bản lưu. Hiện chỉ vẽ đường dự báo
@@ -153,6 +153,23 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
   horizon POST trả về, không dùng mốc yêu cầu thay anchor. API chỉ nhận trạm/mốc/
   horizon, không nhận input tự nhập. Cùng quy tắc trung bình giờ, ngắt null và sai số
   như dự báo gốc. Retry thực tế chỉ GET; retry POST giữ nguyên overrides của lượt lỗi.
+
+## Dự báo theo khoảng
+
+- Bỏ chọn ô giờ/latest để mở phần chọn khoảng. Chọn trạm, start/end theo giờ Việt
+  Nam và một horizon lấy từ `/prediction-options`. End không tính vào khoảng;
+  tối đa 31 ngày. Chế độ khoảng không hiện/sửa feature. Click ô giờ trở lại auto-fill.
+- POST `/api/v1/predictions/range` từng nhóm tối đa 24 giờ, tuần tự. Có tiến độ,
+  thống kê dùng lại/tạo mới/bỏ qua, dừng/quay lại và tiếp tục nhóm lỗi. Chờ quota/
+  busy theo Retry-After. Giữ cùng model/pipeline giữa các nhóm, không trộn phiên bản.
+- Backend đọc hàng loạt dự báo lịch sử đã lưu trước; chỉ giờ thiếu mới chuẩn bị
+  input và chạy khi cache/DB đều miss. Không dựng lại input của các giờ đã có.
+  Bản đã lưu giữ ý nghĩa lịch sử, không tự replay khi nguồn quan trắc được sửa.
+- Mỗi target T dùng đúng anchor T−horizon. Thiếu input/đúng anchor hoặc anchor
+  chưa tới thì bỏ qua, không thay bằng một mốc cũ. Biểu đồ gồm toàn bộ các nhóm,
+  cùng thực tế trung bình giờ, bảng sai số/MAE bằng mm; không nối qua null.
+- Dừng hủy chờ và nhóm chưa gửi, không đảm bảo dừng nhóm server đang xử lý;
+  những dự báo đã commit vẫn dùng lại được. Quay lại giữ lựa chọn khoảng.
 
 ## Nguồn bản đồ và giới hạn hiển thị
 

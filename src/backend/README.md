@@ -403,6 +403,30 @@ không cần ID bên dưới.
 Kiểm chứng local: `scripts/local/verify_forecast_detail_api.py` đối chiếu ba mốc
 GPU với các điểm đã lưu và từng trung bình giờ từ quan trắc gốc, ở chế độ chỉ đọc.
 
+## API dự báo theo khoảng
+
+- `GET /api/v1/stations/{id}/prediction-options`: horizon từ registry, không tải
+  input/model. Chỉ trạm được phép dự báo và xác nhận đơn vị mm.
+- `POST /api/v1/predictions/range`: JSON `station_id`, `start`, `end`,
+  `horizon_minutes`; nhóm sau gửi thêm `model_version`, `pipeline_version` từ nhóm
+  đầu. Bounds có timezone, đúng giờ tròn UTC, [start,end), tối đa 24 giờ mỗi nhóm.
+  Không nhận overrides. Frontend chia khoảng tối đa 31 ngày thành các nhóm tuần tự.
+- Đọc hàng loạt bản lịch sử cùng pipeline/horizon trước; giờ đã có không tải model/
+  dựng chuỗi. Bản lưu không tự tính lại khi quan trắc nguồn được sửa. Chỉ thiếu mới
+  chuẩn bị input, kiểm tra cache/hash/DB rồi infer/save nếu chưa có.
+- Target T đòi hỏi anchor đúng T−horizon. `points` có forecast_at, status,
+  forecast_id/anchor/predicted_water_level_mm/reused nếu ready, cùng thực tế trung
+  bình giờ và sample count. Status khác: insufficient_history, anchor_unavailable,
+  future_anchor; dự báo null, thực tế vẫn trả khi có. Không dùng mốc gần nhất.
+- Response có identity, start/end/horizon/unit và created_count/reused_count/
+  skipped_count. Pin identity giữa các nhóm; đổi pipeline trả 409 PIPELINE_CHANGED.
+  Cùng quota Predict 20/phút/IP và semaphore với POST một mốc. Lỗi giữa nhóm có thể
+  đã commit một số mốc; retry dùng lại chúng, không tạo bản trùng.
+- Redis output cache TTL 600 giây (dùng chung CACHE_TTL_HYDROLOGY_SECONDS), chỉ
+  publish sau commit, Redis lỗi fallback DB. Không cache hoặc lưu overrides.
+- Cần khởi động lại API sau cập nhật. Không thay schema, training data, model hoặc
+  mã pipeline numerical; giữ identity và các dự báo đã backfill.
+
 ## API thực tế cho dự báo thử
 
 ```text

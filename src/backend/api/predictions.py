@@ -10,6 +10,7 @@ from src.backend.api.prediction_inputs import get_station_model_config
 from src.backend.api.schemas import ErrorResponse, PredictionRequest, PredictionResponse
 from src.backend.prediction.config import StationModelConfig
 from src.backend.prediction.inference import PredictionService, ResidualLSTMRuntime
+from src.backend.prediction.cached_service import CachedPredictionService
 from src.backend.prediction.inputs import InsufficientHistoryError
 from src.backend.prediction.preprocessing import InvalidOverrideError
 from src.backend.security.inference import prediction_slot
@@ -48,7 +49,9 @@ def get_prediction_service(request: Request, config: StationModelConfig) -> Pred
             raise HTTPException(
                 503, {"code": "MODEL_UNAVAILABLE", "message": "Station model could not be loaded."}
             ) from None
-        service = PredictionService(request.app.state.database_engine, runtime)
+        service = CachedPredictionService(
+            request.app.state.database_engine, runtime, request.app.state.forecast_cache
+        )
         request.app.state.prediction_services[config.station_id] = service
         return service
 

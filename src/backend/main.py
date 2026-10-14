@@ -22,6 +22,8 @@ from src.backend.api.prediction_availability import router as prediction_availab
 from src.backend.api.predictions import router as predictions_router
 from src.backend.api.forecast_history import router as forecast_history_router
 from src.backend.api.forecast_detail import router as forecast_detail_router
+from src.backend.api.prediction_range import router as prediction_range_router
+from src.backend.cache.forecasts import ForecastCache
 from src.backend.api.schemas import ErrorDetail, ErrorResponse
 from src.backend.api.stations import router as stations_router
 from src.backend.cache.latest import LatestObservationCache
@@ -124,6 +126,10 @@ def create_app(
             latest_cache if latest_cache is not None else LatestObservationCache.from_env()
         )
         application.state.stale_after_minutes = configured_threshold
+        application.state.forecast_cache = ForecastCache(
+            application.state.latest_observation_cache.client,
+            application.state.latest_observation_cache.ttl_seconds,
+        )
         application.state.prediction_device = os.environ.get("PREDICTION_DEVICE", "cpu")
         application.state.prediction_services = {}
         application.state.prediction_service_lock = Lock()
@@ -198,6 +204,7 @@ def create_app(
     application.include_router(predictions_router)
     application.include_router(forecast_history_router)
     application.include_router(forecast_detail_router)
+    application.include_router(prediction_range_router)
     application.add_middleware(PublicApiMiddleware)
     # Last added is outermost: CORS also wraps admission errors and safe route 500s.
     application.add_middleware(

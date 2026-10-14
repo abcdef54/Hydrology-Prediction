@@ -43,3 +43,20 @@
     .forecast-mobile-hint { display: inline; }
   }
 }
+
+@layer components {
+  .prediction-range-form[hidden] { display: none; }
+  .prediction-range-form { margin-top: 12px; padding-top: 12px; border-top: 1px solid #bae6fd; }
+  .prediction-range-form h4 { font-size: 13px; font-weight: 700; }
+  .prediction-range-fields { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; margin: 10px 0; }
+  .prediction-range-fields > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .prediction-range-fields input { max-width: 100%; padding: 7px 9px; border: 1px solid #cbd5e1; border-radius: 7px; background: white; color: #334155; }
+  .prediction-range-form [role="alert"] { color: #b91c1c; }
+  .prediction-result progress { width: 100%; height: 10px; accent-color: #075985; }
+  .prediction-range-table { max-height: 380px; overflow: auto; margin-top: 16px; }
+  .prediction-range-table thead th { position: sticky; top: 0; }
+  @media (width < 640px) {
+    .prediction-range-fields > div { width: 100%; }
+    .prediction-range-fields input { width: 100%; }
+  }
+}

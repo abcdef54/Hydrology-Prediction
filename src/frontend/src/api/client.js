@@ -46,6 +46,7 @@ export async function fetchApiJson(path, signal, { method = 'GET', json, timeout
     throw Object.assign(new Error(message), {
       status: response.status,
       code: payload?.error?.code,
+      retryAfter: Number(response.headers.get('Retry-After')) || null,
     });
   }
   return payload;

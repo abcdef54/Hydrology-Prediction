@@ -183,6 +183,15 @@ class PublicApiSecurityTests(TestCase):
         self.assert_error(second, 429, "RATE_LIMITED")
         self.assertEqual(self.application.state.prediction_services, {})
 
+    def test_range_and_single_predictions_share_quota(self):
+        settings = replace(self.settings, predictions_per_minute=1)
+        self.application.state.request_rate_limiter = RequestRateLimiter(settings)
+        self.assert_error(
+            self.client.post("/api/v1/predictions/range", json={}), 422, "INVALID_REQUEST"
+        )
+        self.assert_error(self.client.post("/api/v1/predictions", json={}), 429, "RATE_LIMITED")
+        self.assertEqual(self.application.state.prediction_services, {})
+
     def test_safe_route_500_has_cors_and_request_id(self):
         response = self.client.get("/explode", headers={"Origin": "http://localhost:5173"})
         self.assert_error(response, 500, "INTERNAL_ERROR")

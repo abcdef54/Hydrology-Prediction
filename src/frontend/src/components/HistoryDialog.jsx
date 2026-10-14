@@ -10,6 +10,8 @@ import PredictionInputsPanel from './PredictionInputsPanel.jsx';
 import PredictionResult from './PredictionResult.jsx';
 import { usePredictionInputs } from '../hooks/usePredictionInputs.js';
 import { usePrediction } from '../hooks/usePrediction.js';
+import { usePredictionRange } from '../hooks/usePredictionRange.js';
+import PredictionRangeResult from './PredictionRangeResult.jsx';
 
 /**
  * Bảng lịch sử độc lập với bộ lọc bản đồ; chỉ tải khi mở/áp dụng lọc/đổi trang.
@@ -31,6 +33,9 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
   const predictionFlow = usePrediction();
   const [showResult, setShowResult] = useState(false);
   const predictButtonRef = useRef(null);
+  const rangeButtonRef = useRef(null);
+  const rangeFlow = usePredictionRange();
+  const [resultMode, setResultMode] = useState('single');
   const eligibleStations = stations.filter((item) => item.station_type === 'water_level'
     && item.prediction_enabled && item.model_configured);
   const request = useMemo(() => ({
@@ -77,13 +82,21 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
   function predict(overrides) {
     if (inputState.status !== 'ready' || !inputState.data?.input_ready || !inputSelection) return;
     predictionFlow.run(inputSelection, inputState.data, overrides);
+    setResultMode('single');
     setShowResult(true);
   }
 
   function returnToHistory() {
     predictionFlow.cancel();
+    rangeFlow.cancel();
     setShowResult(false);
-    requestAnimationFrame(() => predictButtonRef.current?.focus({ preventScroll: true }));
+    requestAnimationFrame(() => (resultMode === 'range' ? rangeButtonRef : predictButtonRef).current?.focus({ preventScroll: true }));
+  }
+
+  function predictRange(request) {
+    rangeFlow.run(request);
+    setResultMode('range');
+    setShowResult(true);
   }
 
   return (
@@ -134,7 +147,8 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
 
       <PredictionInputsPanel stations={stations} eligibleStations={eligibleStations} selection={inputSelection}
         defaultStationId={station?.station_id} onSelect={selectInputs} onClear={() => setInputSelection(null)}
-        inputState={inputState} onPredict={predict} predictButtonRef={predictButtonRef} />
+        inputState={inputState} onPredict={predict} predictButtonRef={predictButtonRef}
+        onPredictRange={predictRange} rangeButtonRef={rangeButtonRef} />
 
       <div className="history-summary" aria-live="polite">
         <span>Đang xem: {formatHistoryDate(appliedFilters.startDate)}
@@ -162,10 +176,12 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
             onClick={() => setCursors((previous) => [...previous, data.next_cursor])}>Trang tiếp</button>
         </nav>
       </footer>
-      {showResult && predictionFlow.state && <PredictionResult state={predictionFlow.state}
+      {showResult && resultMode === 'single' && predictionFlow.state && <PredictionResult state={predictionFlow.state}
         onBack={returnToHistory}
         onRetry={() => predictionFlow.run(predictionFlow.state.selection, predictionFlow.state.inputs, predictionFlow.state.overrides)}
         onRetryActuals={predictionFlow.retryActuals} />}
+      {showResult && resultMode === 'range' && rangeFlow.state && <PredictionRangeResult state={rangeFlow.state}
+        onBack={returnToHistory} onResume={rangeFlow.resume} />}
     </dialog>
   );
 }
