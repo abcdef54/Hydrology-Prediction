@@ -14,7 +14,7 @@ import math
 import os
 from pathlib import Path
 import signal
-from threading import Event
+from threading import Event, Thread
 import time
 
 from dotenv import load_dotenv
@@ -486,6 +486,49 @@ def sync_once(
                 connection.commit()
 
 
+def wait_for_next_cycle(stop: Event, wake: Event, next_run_at: datetime) -> None:
+    """Wait until the wall-clock deadline or an API/resume wake request.
+
+    Args:
+        stop: Shutdown event; signal handlers also set wake to interrupt this wait.
+        wake: SIGCONT/API request for a new cycle, consumed once.
+        next_run_at: Aware UTC deadline for the next start-to-start cycle.
+
+    Returns:
+        None when due, woken or stopped. Wall time is rechecked at least every five
+        seconds so machine/WSL suspension does not extend an expired deadline.
+        A wake during an active sync queues one subsequent cycle, never overlaps it.
+    """
+    while not stop.is_set():
+        remaining = (next_run_at - datetime.now(timezone.utc)).total_seconds()
+        if remaining <= 0:
+            wake.clear()
+            return
+        if wake.wait(min(5.0, remaining)):
+            wake.clear()
+            return
+
+
+def watch_api_parent(parent_pid: int, stop: Event, wake: Event) -> None:
+    """Stop an API-owned worker when its spawning process disappears.
+
+    Args:
+        parent_pid: API PID passed through environment by the local process manager.
+        stop: Cancellation event used by the sync/source client.
+        wake: Interrupt scheduler waiting so shutdown can proceed.
+
+    Returns:
+        None after normal shutdown or parent reparenting. Checked each second;
+        standalone/systemd workers do not start this watcher.
+    """
+    while not stop.is_set():
+        if os.getppid() != parent_pid:
+            stop.set()
+            wake.set()
+            return
+        stop.wait(1.0)
+
+
 def main() -> int:
     """Run once or schedule start-to-start cycles without overlapping workers.
 
@@ -509,8 +552,18 @@ def main() -> int:
     settings = SyncSettings.from_env()
     latest_cache = LatestObservationCache.from_env()
     stop = Event()
+    wake = Event()
+
+    def request_stop(*_):
+        stop.set()
+        wake.set()
+
     for signum in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(signum, lambda *_: stop.set())
+        signal.signal(signum, request_stop)
+    signal.signal(signal.SIGCONT, lambda *_: wake.set())
+    parent_pid = os.environ.get("HYDROLOGY_SYNC_PARENT_PID")
+    if parent_pid:
+        Thread(target=watch_api_parent, args=(int(parent_pid), stop, wake), daemon=True).start()
     engine = build_engine()
     client = HueSourceClient(settings, stop)
     last_failed = False
@@ -538,16 +591,13 @@ def main() -> int:
             report["interval_minutes"] = settings.interval_minutes
             report["overlap_hours"] = settings.overlap_hours
             report["elapsed_seconds"] = round(time.monotonic() - began, 2)
-            report["next_run_at_utc"] = (
-                (started_at + timedelta(minutes=settings.interval_minutes)).isoformat()
-                if not arguments.once
-                else None
-            )
+            next_run_at = started_at + timedelta(minutes=settings.interval_minutes)
+            report["next_run_at_utc"] = next_run_at.isoformat() if not arguments.once else None
             write_report(report_path, report)
             print(json.dumps(report, ensure_ascii=False), flush=True)
             if arguments.once:
                 break
-            stop.wait(max(0, settings.interval_minutes * 60 - (time.monotonic() - began)))
+            wait_for_next_cycle(stop, wake, next_run_at)
     finally:
         client.session.close()
         engine.dispose()

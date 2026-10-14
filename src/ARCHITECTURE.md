@@ -356,6 +356,11 @@ Không thêm charts mang tính trang trí. Dữ liệu chart phải có schema n
 - Biểu đồ SVG co giãn, cuộn ngang trên mobile; tooltip/focus từng điểm. Bảng sai lệch,
   sai số tuyệt đối và trung bình sai số tuyệt đối chỉ tính trên horizon có thực tế,
   không ghép số đo gần nhất. Giá trị hiển thị tối đa 2 số thập phân, không sửa dữ liệu gốc.
+- Tooltip chung đã có cho biểu đồ một mốc/kịch bản/khoảng: hover/tap chọn timestamp
+  gần nhất, crosshair và giá trị dự báo/thực tế/sai lệch/sai số tuyệt đối, tất cả mm.
+  Ghép giá trị theo đúng timestamp, không tạo điểm giữa horizon; thiếu không tính
+  sai số. Hỗ trợ Tab, ←/→, Home/End, Escape; touch không chặn cuộn. Đổi kích thước/
+  cuộn ngang đóng tooltip, hộp được giới hạn trong figure. Không gọi thêm API.
 - Biểu đồ dự báo có chỉnh sửa input, nếu được hiển thị sau Predict, phải ghi rõ là kịch bản chỉnh sửa; không trộn với đường dự báo từ quan trắc gốc hoặc lưu overrides lâu dài.
 - Chỉ dùng **mm** cho giá trị mực nước, trục tung, tooltip và sai số. Không thêm nút đổi mm/cm.
 
@@ -894,13 +899,25 @@ Select station / open page
 
 ### 7.2.1. Pipeline đồng bộ quan trắc tự động — đã triển khai
 
-- Worker nằm trong code chính `src/backend/ingestion/`, chạy bằng `python -m src.backend.ingestion` qua systemd user service `hydrology-sync.service`, không chạy trong từng process FastAPI. Mã nguồn, tests và unit triển khai được quản lý cùng backend; các công cụ nhập lịch sử/kiểm tra thủ công vẫn ở `scripts/local/`.
+- Worker nằm trong `src/backend/ingestion/`, chạy bằng `python -m src.backend.ingestion`
+  như process riêng. Local được API quản lý vòng đời; deployment có thể dùng worker
+  container/systemd độc lập. Các công cụ nhập lịch sử/kiểm tra ở `scripts/local/`.
 - JSON trạng thái mặc định ở `reports/hydrology_sync_status.json`, có thể đổi bằng `HYDROLOGY_SYNC_REPORT_PATH` hoặc `--report`; không ghi runtime output vào package nguồn.
 - **Polling mỗi 11 phút** theo quyết định chủ dự án; không coi đây là cam kết API nguồn phát dữ liệu mới mỗi 11 phút. Nhịp đo 10 phút đã thấy trong mẫu vẫn khác nhịp công bố dữ liệu.
 - Mỗi trạm dùng watermark riêng, đọc chồng **24 giờ có thể cấu hình**, rồi lấy đến mốc bắt đầu lượt. Phân trang ID tăng dần đã kiểm tra live với nguồn nước và mưa, không chỉ lấy bản ghi mới nhất.
 - Validate toàn bộ nhóm trước khi UPSERT PostgreSQL trong một transaction. Không ghi lại hàng không đổi, giữ thời điểm received_at đầu tiên; lỗi một trạm rollback nhóm. Khóa advisory dùng chung importer để tránh ghi chồng.
 - Có timeout, retry giới hạn, token renewal qua login khi cần, report/log không chứa credentials, và signal shutdown. Lượt lỗi giữ quan trắc cũ và thử lại chu kỳ kế tiếp.
-- Credentials và chu kỳ nằm trong `.env` private. Đã bật enable và linger cho user service; cần môi trường máy/WSL hoạt động để chạy. Docker sau này dùng một worker container riêng, không nhân bản job theo số API workers.
+- Credentials và chu kỳ ở `.env` private. Service systemd local đã disable/stop;
+  không đổi linger chung vì có thể phục vụ các ứng dụng khác. Docker dùng worker
+  container riêng với HYDROLOGY_SYNC_AUTOSTART=false.
+- Local `HYDROLOGY_SYNC_AUTOSTART=true`: lifespan tạo worker con, chạy ngay và mỗi
+  11 phút; API shutdown gửi SIGTERM/đợi, kill/reap nếu quá 40 giây. Worker theo dõi
+  PID cha mỗi giây để thoát nếu API chết; file lock reports do cha/con giữ chống
+  worker API trùng. Không chạy worker nền ngoài phiên backend. Tests injected
+  engine mặc định không tạo process. Lỗi start chỉ warning, API vẫn đọc dữ liệu.
+- Scheduler kiểm tra deadline UTC tối đa mỗi 5 giây khi chờ để bắt kịp sau ngủ/
+  suspend. SIGCONT đánh thức hoặc xếp một lượt sau lượt đang chạy; không nhân bản
+  writer. Restart backend sẽ nạp worker mới.
 - Chỉ đồng bộ quan trắc; không tự train, backfill forecast, sửa dataset hoặc xóa bản ghi nguồn biến mất. Sửa đổi cũ ngoài cửa sổ overlap cần đối soát/backfill riêng. Đã nối Redis cache `/latest`: xóa cache trạm có dữ liệu thay đổi sau commit; Redis lỗi không làm mất kết quả đồng bộ, cache cũ hết hạn theo TTL.
 
 ### 7.3. Historical Replay / Last-N Selection

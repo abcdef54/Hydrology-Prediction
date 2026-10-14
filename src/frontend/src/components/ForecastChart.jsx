@@ -1,6 +1,9 @@
-import { useId } from 'react';
+import { useId, useMemo, useRef } from 'react';
 import { formatObservationTime } from '../stations.js';
 import { formatWaterLevel, getWaterLevelDomain, splitActualSegments } from '../predictions.js';
+import { buildForecastTooltipRows } from '../chartTooltip.js';
+import { useChartTooltip } from '../hooks/useChartTooltip.js';
+import ChartTooltip, { ChartInteraction } from './ChartTooltip.jsx';
 
 const hourFormatter = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
 
@@ -21,12 +24,15 @@ export default function ForecastChart({ prediction, actuals = [] }) {
   const x = (timestamp) => 80 + (Date.parse(timestamp) - anchor) / (end - anchor) * 840;
   const y = (value) => 300 - (value - low) / (high - low) * 255;
   const line = (points, timeKey, valueKey) => points.map((point) => `${x(point[timeKey])},${y(point[valueKey])}`).join(' ');
+  const svgRef = useRef(null);
+  const tooltipRows = useMemo(() => buildForecastTooltipRows(prediction.predictions, actuals), [prediction.predictions, actuals]);
+  const tooltip = useChartTooltip(tooltipRows, svgRef, x);
   return (
     <figure className="forecast-chart">
       <div className="forecast-chart-legend"><span className="forecast-legend-predicted">● Dự báo</span>
         <span className="forecast-legend-actual">● Thực tế — trung bình giờ</span></div>
-      <div className="forecast-chart-scroll" tabIndex={0} role="region" aria-label="Biểu đồ mực nước, cuộn ngang trên màn hình nhỏ">
-        <svg viewBox="0 0 960 380" role="img" aria-labelledby={`${titleId} ${descriptionId}`}>
+      <div className="forecast-chart-scroll" tabIndex={0} role="region" aria-label="Biểu đồ mực nước, cuộn ngang trên màn hình nhỏ" onScroll={tooltip.clear}>
+        <svg ref={svgRef} viewBox="0 0 960 380" role="group" aria-labelledby={`${titleId} ${descriptionId}`}>
           <title id={titleId}>Dự báo và mực nước thực tế, đơn vị mm</title>
           <desc id={descriptionId}>Dự báo có {prediction.predictions.length} mốc. Thực tế có {observed.length} mốc theo giờ;
             ngắt đường tại giờ thiếu. Thời gian theo giờ Việt Nam. Bảng dưới biểu đồ cung cấp giá trị dự báo và sai số.</desc>
@@ -47,16 +53,24 @@ export default function ForecastChart({ prediction, actuals = [] }) {
           <polyline points={line(prediction.predictions, 'forecast_at', 'water_level_mm')} className="forecast-line forecast-line--predicted" />
           {observed.map((point) => <circle key={point.timestamp} cx={x(point.timestamp)} cy={y(point.actual_water_level_mm)} r="3.5"
             className="forecast-dot forecast-dot--actual" tabIndex={0}
+            onFocus={() => tooltip.selectTime(point.timestamp)}
+            onBlur={tooltip.clear} onKeyDown={tooltip.handlers.onKeyDown}
+            aria-describedby={tooltip.row ? tooltip.tooltipId : undefined}
             aria-label={`Thực tế ${formatObservationTime(point.timestamp)}: ${formatWaterLevel(point.actual_water_level_mm)} mm`}>
             <title>{`Thực tế ${formatObservationTime(point.timestamp)}: ${formatWaterLevel(point.actual_water_level_mm)} mm (${point.actual_sample_count} số đo)`}</title>
           </circle>)}
           {prediction.predictions.map((point) => <circle key={point.horizon_minutes} cx={x(point.forecast_at)} cy={y(point.water_level_mm)} r="5"
             className="forecast-dot forecast-dot--predicted" tabIndex={0}
+            onFocus={() => tooltip.selectTime(point.forecast_at)}
+            onBlur={tooltip.clear} onKeyDown={tooltip.handlers.onKeyDown}
+            aria-describedby={tooltip.row ? tooltip.tooltipId : undefined}
             aria-label={`Dự báo ${formatObservationTime(point.forecast_at)}: ${formatWaterLevel(point.water_level_mm)} mm`}>
             <title>{`Dự báo ${formatObservationTime(point.forecast_at)}: ${formatWaterLevel(point.water_level_mm)} mm`}</title>
           </circle>)}
+          <ChartInteraction control={tooltip} getX={x} getY={y} count={tooltipRows.length} />
         </svg>
       </div>
+      <ChartTooltip control={tooltip} svgRef={svgRef} getX={x} />
       <figcaption><span className="forecast-mobile-hint">Cuộn ngang biểu đồ để xem đủ các mốc. </span>
         Giờ Việt Nam · Các đoạn nối giữa mốc dự báo chỉ thể hiện xu hướng, không phải dự báo bổ sung.
         Thực tế là trung bình từng giờ, khác số đo đúng mốc giờ trong bảng lịch sử.</figcaption>

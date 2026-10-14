@@ -6,8 +6,26 @@ nguồn hoặc kết nối database.
 
 
 `src/backend/ingestion/worker.py` chạy như process riêng, không chạy bên trong Uvicorn.
-Service local: `hydrology-sync.service`, đã enable trong systemd user. Chu kỳ
+Worker local được API quản lý khi `HYDROLOGY_SYNC_AUTOSTART=true`; service
+`hydrology-sync.service` đã tắt và bỏ enable để không chạy ngoài dự án. Chu kỳ
 start-to-start là **11 phút**; đó là lựa chọn polling, không phải SLA của nguồn.
+
+### Tự bật worker khi backend khởi động (local Linux/WSL)
+
+Đặt `HYDROLOGY_SYNC_AUTOSTART=true` trong `.env` private và khởi động lại API.
+API tạo process con bằng cùng Python interpreter, không cần systemd. Worker chạy
+một lượt ngay, sau đó theo chu kỳ; tắt API thì gửi SIGTERM và đợi worker đóng an
+toàn. Quá 40 giây sẽ kill/reap. Worker kiểm tra process cha mỗi giây để ngừng khi
+API chết bất ngờ; request nguồn đang chạy có thể cần đợi timeout trước khi thoát.
+File lock `reports/hydrology_sync_worker.lock` được giữ bởi cha/con để ngăn hai
+API tạo worker trùng, tự nhả khi chúng thoát. File rỗng không chứa credentials.
+Lỗi tạo worker chỉ warning, API vẫn đọc database. Injected engine trong tests mặc
+định không tạo process. Docker/worker độc lập giữ flag false.
+
+Worker dùng deadline UTC và kiểm tra lại tối đa mỗi 5 giây khi chờ; sau khi
+máy/WSL ngủ, deadline đã qua sẽ được xử lý sớm. SIGCONT đánh thức lần chờ hoặc
+xếp một lượt tiếp theo nếu đang đồng bộ, không chạy hai lượt song song. Shutdown
+SIGINT/SIGTERM ngắt cả chờ. Khởi động lại backend sẽ nạp code worker mới.
 
 ### Cách chạy và quản lý
 
@@ -24,7 +42,8 @@ systemctl --user stop hydrology-sync.service
 systemctl --user restart hydrology-sync.service
 ```
 
-Cài trên môi trường có systemd user (điều chỉnh đường dẫn trong unit nếu đổi nơi đặt project):
+Cài systemd **chỉ khi chủ động muốn worker chạy độc lập kể cả ngoài phiên API**
+(đặt HYDROLOGY_SYNC_AUTOSTART=false; chỉnh đường dẫn nếu đổi nơi đặt project):
 
 ```bash
 .venv/bin/python -m pip install -r src/backend/requirements.txt

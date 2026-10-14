@@ -14,6 +14,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException
 from starlette.middleware.cors import CORSMiddleware
+from starlette.concurrency import run_in_threadpool
 
 from src.backend.api.prediction_inputs import router as prediction_inputs_router
 from src.backend.api.observations import router as observations_router
@@ -28,6 +29,7 @@ from src.backend.api.schemas import ErrorDetail, ErrorResponse
 from src.backend.api.stations import router as stations_router
 from src.backend.cache.latest import LatestObservationCache
 from src.backend.db.session import build_engine
+from src.backend.ingestion.startup import SyncWorkerProcess
 from src.backend.prediction.config import StationModelRegistry
 from src.backend.security.config import SecuritySettings
 from src.backend.security.middleware import PublicApiMiddleware
@@ -67,6 +69,7 @@ def create_app(
     latest_cache: LatestObservationCache | None = None,
     security_settings: SecuritySettings | None = None,
     rate_limiter: RequestRateLimiter | None = None,
+    sync_autostart: bool | None = None,
 ) -> FastAPI:
     """Create the API with optional existing resources for tests or embedding.
 
@@ -88,6 +91,9 @@ def create_app(
         security_settings: Explicit origins/admission limits; None reads environment.
         rate_limiter: Caller-owned limiter for tests/embedding; None configures an
             app-owned limiter using Redis when configured, with local fallback.
+        sync_autostart: Start an API-owned local worker, stopped at API shutdown.
+            None reads HYDROLOGY_SYNC_AUTOSTART, default false. Injected engines
+            disable this by default for tests/embedding; True explicitly enables it.
 
     Returns:
         FastAPI application with routes, request IDs, error handlers and resource
@@ -142,9 +148,24 @@ def create_app(
             if rate_limiter is not None
             else RequestRateLimiter.from_env(configured_security)
         )
+        sync_worker = None
         try:
+            autostart = sync_autostart
+            if autostart is None:
+                value = os.environ.get("HYDROLOGY_SYNC_AUTOSTART", "false").strip().lower()
+                if value not in {"true", "false", "1", "0"}:
+                    raise ValueError("HYDROLOGY_SYNC_AUTOSTART must be true/false or 1/0.")
+                autostart = value in {"true", "1"} and engine is None
+            application.state.sync_startup_status = "disabled"
+            if autostart:
+                sync_worker = SyncWorkerProcess(PROJECT_ROOT)
+                started = await run_in_threadpool(sync_worker.start)
+                application.state.sync_startup_status = "requested" if started else "unavailable"
+            application.state.sync_worker = sync_worker
             yield
         finally:
+            if sync_worker is not None:
+                await run_in_threadpool(sync_worker.stop)
             application.state.prediction_services.clear()
             if rate_limiter is None:
                 application.state.request_rate_limiter.close()

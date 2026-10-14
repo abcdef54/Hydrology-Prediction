@@ -40,12 +40,18 @@ Chạy một API process cho GPU hiện tại; không tự tăng số workers đ
 Pipeline nằm trong [`ingestion/`](ingestion/README.md), chạy như process riêng
 với API để tránh nhân bản lịch đồng bộ theo số Uvicorn workers. Mặc định mỗi
 **11 phút** worker lấy dữ liệu mới của các trạm nguồn được bật và UPSERT vào
-PostgreSQL. API đọc dữ liệu đã lưu từ database.
+database. Local bật `HYDROLOGY_SYNC_AUTOSTART=true` trong `.env`: API tạo một worker
+con khi khởi động, đồng bộ ngay rồi mỗi 11 phút; API đóng sẽ dừng worker. Worker
+cũng theo dõi process cha để thoát nếu API chết đột ngột. File lock trong reports
+ngăn hai API tạo worker local trùng. Không chạy service systemd nền trong chế độ
+này. `.env.example` để false cho môi trường quản lý worker độc lập.
+
+API đọc dữ liệu đã lưu từ PostgreSQL.
 
 ```bash
 # Kiểm tra nguồn, không ghi quan trắc
 .venv/bin/python -m src.backend.ingestion --once --dry-run
-# Chạy worker liên tục
+# Chạy độc lập (tùy chọn; không chạy cùng chế độ API-owned)
 .venv/bin/python -m src.backend.ingestion
 ```
 

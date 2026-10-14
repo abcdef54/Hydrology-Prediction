@@ -60,3 +60,34 @@
     .prediction-range-fields input { width: 100%; }
   }
 }
+
+@layer components {
+  .forecast-chart { position: relative; }
+  .forecast-tooltip-selection { pointer-events: none; }
+  .forecast-crosshair { stroke: #475569; stroke-width: 1.2; stroke-dasharray: 4 3; }
+  .forecast-tooltip-marker { stroke: white; stroke-width: 2; }
+  .forecast-tooltip-marker--predicted { fill: #0369a1; }
+  .forecast-tooltip-marker--actual { fill: #c2410c; }
+  [data-chart-interaction] { cursor: crosshair; }
+  [data-chart-interaction]:focus-visible { outline: 2px solid #0284c7; outline-offset: 2px; }
+  .forecast-tooltip {
+    position: absolute;
+    z-index: 6;
+    top: 64px;
+    width: 250px;
+    max-width: calc(100% - 16px);
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    background: rgb(255 255 255 / 97%);
+    box-shadow: 0 4px 18px rgb(15 23 42 / 16%);
+    color: #334155;
+    font-size: 12px;
+    pointer-events: none;
+  }
+  .forecast-tooltip > strong { display: block; margin-bottom: 9px; }
+  .forecast-tooltip dl { margin: 0; }
+  .forecast-tooltip dl > div { display: flex; justify-content: space-between; gap: 8px; margin-top: 6px; }
+  .forecast-tooltip dt { flex-shrink: 0; color: #64748b; }
+  .forecast-tooltip dd { margin: 0; text-align: right; font-weight: 600; }
+}

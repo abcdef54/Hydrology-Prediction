@@ -139,6 +139,14 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
 - Bảng so sánh ghép theo timestamp chính xác tại các horizon, hiển thị dự báo,
   thực tế, sai lệch (dự báo − thực tế), sai số tuyệt đối và trung bình sai số tuyệt
   đối trên các mốc có thực tế. Tất cả bằng mm; hiển thị tối đa 2 chữ số thập phân.
+- Tooltip chung cho biểu đồ một mốc/dự báo thử/theo khoảng: di chuột hoặc chạm
+  chọn mốc gần nhất, có đường dọc và hộp thời điểm, dự báo, thực tế trung bình giờ,
+  sai lệch và sai số tuyệt đối bằng mm. Ghép đúng timestamp, không nội suy dự báo
+  giữa horizon. Giờ không có horizon ghi “Không có điểm dự báo”; thiếu thực tế
+  ghi “Chưa có dữ liệu”, không tính sai số. Giữ 0 và số âm.
+  Tab vào vùng vẽ, dùng ←/→ hoặc Home/End; Escape đóng tooltip. Touch giữ lựa chọn
+  sau chạm, không chặn cuộn; cuộn ngang/đổi kích thước đóng tooltip để tránh lệch vị trí.
+  Hộp nằm trong khung biểu đồ kể cả mobile; không gọi thêm API.
 - Khóa click liên tiếp, không tự retry POST. Timeout dự báo 60 giây, API đọc vẫn
   10 giây. Có trạng thái tải/lỗi/thử lại; lỗi tải thực tế vẫn giữ dự báo và chỉ
   retry GET thực tế. Quay lại/đóng hủy chờ, ngăn kết quả cũ thay thế lượt mới;

@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { formatObservationTime } from '../stations.js';
 import { formatWaterLevel, getWaterLevelDomain, splitActualSegments } from '../predictions.js';
+import { useChartTooltip } from '../hooks/useChartTooltip.js';
+import ChartTooltip, { ChartInteraction } from './ChartTooltip.jsx';
 
 const timeFormatter = new Intl.DateTimeFormat('vi-VN', {timeZone:'Asia/Ho_Chi_Minh',day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'});
 const reasons = {insufficient_history:'Thiếu lịch sử đầu vào',anchor_unavailable:'Thiếu đúng mốc đầu vào',future_anchor:'Mốc đầu vào chưa tới'};
@@ -23,6 +25,10 @@ export default function PredictionRangeResult({state,onBack,onResume}) {
   const segments = key=>splitActualSegments(points.map(point=>({...point,actual_water_level_mm:point[key]})));
   const comparable=points.filter(point=>point.predicted_water_level_mm!==null&&point.actual_water_level_mm!==null);
   const mae=comparable.length ? comparable.reduce((sum,point)=>sum+Math.abs(point.predicted_water_level_mm-point.actual_water_level_mm),0)/comparable.length : null;
+  const svgRef = useRef(null);
+  const tooltipRows = useMemo(() => points.map(point => ({ timestamp: point.forecast_at,
+    predicted: point.predicted_water_level_mm, actual: point.actual_water_level_mm, hasForecast: true })), [points]);
+  const tooltip = useChartTooltip(tooltipRows, svgRef, x);
   return <section className="prediction-result" aria-labelledby="range-result-title">
     <div className="prediction-result-heading"><div>
       <h3 id="range-result-title" ref={heading} tabIndex={-1}>Dự báo theo khoảng — {request.station.name}</h3>
@@ -38,8 +44,8 @@ export default function PredictionRangeResult({state,onBack,onResume}) {
     <p>Mỗi điểm dự báo dùng dữ liệu đầu vào ở {request.horizon/60} giờ trước đó. Thực tế là trung bình giờ; không nối đường qua mốc thiếu.</p>
     {values.length>0 ? <figure className="forecast-chart">
       <div className="forecast-chart-legend"><span className="forecast-legend-predicted">● Dự báo trước {request.horizon/60} giờ</span><span className="forecast-legend-actual">● Thực tế — trung bình giờ</span></div>
-      <div className="forecast-chart-scroll" tabIndex={0} role="region" aria-label="Biểu đồ theo khoảng, cuộn ngang">
-        <svg viewBox="0 0 960 370" role="img" aria-label="Mực nước dự báo và thực tế theo khoảng, đơn vị mm">
+      <div className="forecast-chart-scroll" tabIndex={0} role="region" aria-label="Biểu đồ theo khoảng, cuộn ngang" onScroll={tooltip.clear}>
+        <svg ref={svgRef} viewBox="0 0 960 370" role="group" aria-label="Mực nước dự báo và thực tế theo khoảng, đơn vị mm">
           <text x="15" y="24">Mực nước (mm)</text>
           {Array.from({length:5},(_,index)=>{const value=low+(high-low)*index/4;return <g key={index}><line x1="80" x2="920" y1={y(value)} y2={y(value)} className="forecast-grid-line"/><text x="68" y={y(value)+4} textAnchor="end">{formatWaterLevel(value)}</text></g>;})}
           {Array.from({length:Math.min(total,6)},(_,index)=>{const count=Math.min(total,6);const time=first+Math.round(index/Math.max(count-1,1)*(total-1))*3600000;return <text key={index} x={x(new Date(time).toISOString())} y="330" textAnchor="middle">{timeFormatter.format(new Date(time))}</text>;})}
@@ -49,8 +55,9 @@ export default function PredictionRangeResult({state,onBack,onResume}) {
             {points.filter(point=>point[key]!==null).map(point=><circle key={point.forecast_at} cx={x(point.forecast_at)} cy={y(point[key])} r="2.5" className={`forecast-dot forecast-dot--${kind}`}>
               <title>{`${kind==='actual'?'Thực tế':'Dự báo'} ${formatObservationTime(point.forecast_at)}: ${formatWaterLevel(point[key])} mm`}</title></circle>)}
           </g>)}
+          <ChartInteraction control={tooltip} getX={x} getY={y} count={tooltipRows.length} />
         </svg>
-      </div><figcaption>Giờ Việt Nam · Cuộn ngang trên màn hình nhỏ. Biểu đồ gồm tất cả mốc đã xử lý, không chỉ trang đầu.</figcaption>
+      </div><ChartTooltip control={tooltip} svgRef={svgRef} getX={x} /><figcaption>Giờ Việt Nam · Cuộn ngang trên màn hình nhỏ. Biểu đồ gồm tất cả mốc đã xử lý, không chỉ trang đầu.</figcaption>
     </figure> : <p>{state.status==='ready'?'Không có dự báo hoặc quan trắc trong khoảng đã chọn.':'Biểu đồ sẽ hiện khi có dữ liệu.'}</p>}
     {mae!==null&&<p className="prediction-error-summary">Sai số tuyệt đối trung bình: <strong>{formatWaterLevel(mae)} mm</strong> · {comparable.length} mốc có cả dự báo và thực tế.</p>}
     {points.length>0&&<div className="prediction-comparison-scroll prediction-range-table" tabIndex={0} role="region" aria-label="Bảng sai số theo khoảng, cuộn để xem thêm">
