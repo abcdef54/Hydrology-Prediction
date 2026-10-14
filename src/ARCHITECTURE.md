@@ -234,7 +234,18 @@ Không triển khai đăng nhập, đăng ký, tài khoản, lịch sử riêng 
 ### FR-04. Historical Observations
 - Khi chọn một trạm nước, hiển thị bảng dữ liệu hiện tại và quá khứ của trạm. Bảng phân trang theo thời gian, ghi rõ thời điểm và đơn vị đo.
 
-- Khi mở trạm, tự chọn thời điểm hợp lệ mới nhất để điền Input Form. Khi người dùng bấm một dòng lịch sử, lấy timestamp của dòng đó làm `reference_time` và gọi `prediction-inputs` để điền lại form; không dùng riêng giá trị mực nước của dòng để thay cho toàn bộ 29 feature.
+- Trong bảng lịch sử, bấm một ô giờ của trạm nước được bật dự báo và có model riêng
+  để lấy timestamp ô làm `reference_time`, gọi `prediction-inputs` tự điền input.
+  Nút “Đầu vào mới nhất” bỏ `reference_time`. Không dùng riêng giá trị mực nước
+  của ô để thay cho toàn bộ feature; không hardcode số feature/horizon trong UI.
+  Ô thiếu số đo vẫn cho backend kiểm tra lịch sử; ô tương lai không cho chọn.
+- Trạng thái triển khai: **đã có chọn mốc và auto-fill chỉ đọc**, hiển thị mốc yêu cầu,
+  anchor thực tế, đủ/chưa đủ đầu vào, dữ liệu cũ và giá trị thiếu. Feature có thể
+  thu gọn; đổi mốc/đóng bảng hủy request cũ, áp dụng bộ lọc xóa lựa chọn. Chưa có
+  sửa input, chạy Predict hoặc biểu đồ kết quả ở bước này.
+- Nhãn input phải dễ hiểu cho người dùng: dịch tên feature thành mô tả tiếng Việt,
+  dùng tên trạm từ metadata thay mã, cờ dữ liệu hiển thị bằng chữ. Khóa kỹ thuật
+  và giá trị gốc giữ trong dữ liệu để gọi API; không đổi tên feature gửi backend.
 
 - Bảng phục vụ dự báo sử dụng các mốc theo giờ phù hợp với mô hình. Phân biệt giá trị quan trắc gốc với giá trị tổng hợp theo giờ; không hiển thị chúng như cùng một loại số liệu.
 
@@ -314,10 +325,15 @@ Không triển khai đăng nhập, đăng ký, tài khoản, lịch sử riêng 
 
 Không thêm charts mang tính trang trí. Dữ liệu chart phải có schema nhất quán và phân biệt `observed`, `predicted`, `actual_after_anchor`.
 
-### FR-07.1. Nút Visualize và chế độ xem dự báo
+### FR-07.1. Dự báo và biểu đồ kết quả
 
-- Đặt nút **Visualize** cạnh **Predict**, dùng chung trạm và mốc thời gian đang chọn. Bấm dòng dữ liệu lịch sử vừa chọn mốc cho Visualize, vừa gọi `prediction-inputs` để điền vùng input như luồng hiện tại.
-- Visualize hiển thị dự báo từ quan trắc gốc đã lưu. Nếu chưa có bản phù hợp tại mốc đang chọn, lấy/tạo dự báo qua luồng `POST /predictions` hiện có rồi hiển thị; API đọc biểu đồ không tự chạy inference. Không âm thầm dùng bản của model/pipeline khác.
+- Quyết định 14/10/2026: **gộp Predict và biểu đồ**, bỏ nút Visualize riêng. Sau khi
+  chọn một mốc và tự điền input trong bảng lịch sử, Predict sẽ mở kết quả với
+  đường dự báo, đường thực tế nếu có và bảng sai số bằng mm. Đây là bước tiếp theo,
+  chưa triển khai cùng auto-fill. Giao diện có đường quay lại lịch sử giữ bộ lọc.
+- Predict dùng `POST /predictions`; với dự báo gốc, lấy `forecast_id` để đọc biểu đồ
+  và thực tế từ API hiện có. API đọc biểu đồ không tự chạy inference. Không âm thầm
+  dùng bản của model/pipeline khác.
 - Biểu đồ dự báo có chỉnh sửa input, nếu được hiển thị sau Predict, phải ghi rõ là kịch bản chỉnh sửa; không trộn với đường dự báo từ quan trắc gốc hoặc lưu overrides lâu dài.
 - Chỉ dùng **mm** cho giá trị mực nước, trục tung, tooltip và sai số. Không thêm nút đổi mm/cm.
 
@@ -331,6 +347,7 @@ Không thêm charts mang tính trang trí. Dữ liệu chart phải có schema n
 - Khi mở rộng sang model khác, số điểm dự báo và horizon lấy từ metadata/bản lưu, không cố định 5 điểm hoặc 24 giờ cho mọi model.
 
 **Chế độ 2 — chọn một khoảng bắt đầu/kết thúc:**
+- **Để task sau**; hiện không tự điền khoảng ngày bằng click toàn bộ dòng lịch sử.
 - Cho nhập start/end để vẽ toàn bộ các điểm đã lưu trong khoảng. Đọc hết các trang dữ liệu cần thiết; không chỉ vẽ trang đầu mặc định 100 điểm.
 - Chọn một horizon để vẽ một đường dự báo liên tục theo các `forecast_at` trong khoảng, ví dụ chuỗi dự báo +1 giờ từ nhiều anchor khác nhau, cùng đường thực tế theo giờ.
 - Phân biệt rõ chế độ này với dự báo 24 giờ từ một anchor: không ghép các điểm khác horizon/anchor thành một đường rồi gọi đó là dự báo từ một mốc duy nhất.

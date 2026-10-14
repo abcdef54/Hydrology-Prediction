@@ -6,10 +6,12 @@ const valueFormatter = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3
 
 /**
  * @param {object} props data là một trang API đã xác thực, có 24 ô cho từng trạm/ngày.
+ * eligibleStations là metadata có quyền dự báo; selection là trạm/mốc đang chọn;
+ * onSelectInputs nhận metadata trạm và timestamp ô, không tự chạy inference.
  * @returns {import('react').ReactElement} Bảng cuộn ngang/dọc, giữ đầu cột và thông tin trạm.
  * Ngày hôm nay đơn lẻ hiện đến giờ as_of; ô thiếu/future hiện — và có chú thích riêng.
  */
-export default function HourlyHistoryTable({ data }) {
+export default function HourlyHistoryTable({ data, eligibleStations = [], selection, onSelectInputs }) {
   const hours = getHistoryHours(data);
   return (
     <div className="history-table-scroll" tabIndex={0} role="region" aria-label="Bảng lịch sử, cuộn ngang để xem các giờ">
@@ -35,12 +37,21 @@ export default function HourlyHistoryTable({ data }) {
               <td className="history-unit-column" title={row.unit ?? 'Chưa rõ đơn vị'}>{row.unit ?? '?'}</td>
               {hours.map((hour) => {
                 const cell = row.cells[hour];
+                const predictionStation = eligibleStations.find((station) => station.station_id === row.station_id);
+                const canSelect = predictionStation && cell.status !== 'future';
+                const isSelected = selection?.station.station_id === row.station_id
+                  && selection.referenceTime === cell.at;
+                const content = cell.status === 'observed' ? valueFormatter.format(cell.value) : '—';
                 const description = cell.status === 'future' ? 'Chưa tới giờ'
                   : cell.status === 'missing' ? 'Không có số đo đúng mốc giờ'
                     : `Đo lúc ${formatObservationTime(cell.at)}`;
                 return (
                   <td key={hour} className={`history-cell history-cell--${cell.status}`} title={description}>
-                    {cell.status === 'observed' ? valueFormatter.format(cell.value) : <span aria-label={description}>—</span>}
+                    {canSelect ? <button type="button" className="history-input-cell"
+                      aria-pressed={isSelected}
+                      aria-label={`Chọn đầu vào ${row.name}, ${formatObservationTime(cell.at)}`}
+                      onClick={() => onSelectInputs(predictionStation, cell.at)}>{content}</button>
+                      : <span aria-label={description}>{content}</span>}
                   </td>
                 );
               })}

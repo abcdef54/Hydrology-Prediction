@@ -6,6 +6,7 @@ import {
   normalizeHistoryFilters,
 } from '../history.js';
 import HourlyHistoryTable from './HourlyHistoryTable.jsx';
+import PredictionInputsPanel from './PredictionInputsPanel.jsx';
 
 /**
  * Bảng lịch sử độc lập với bộ lọc bản đồ; chỉ tải khi mở/áp dụng lọc/đổi trang.
@@ -22,6 +23,9 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
   const [cursors, setCursors] = useState([null]);
   const [retryCount, setRetryCount] = useState(0);
   const [formError, setFormError] = useState('');
+  const [inputSelection, setInputSelection] = useState(null);
+  const eligibleStations = stations.filter((item) => item.station_type === 'water_level'
+    && item.prediction_enabled && item.model_configured);
   const request = useMemo(() => ({
     filters: appliedFilters, cursor: cursors.at(-1), retryCount,
   }), [appliedFilters, cursors, retryCount]);
@@ -56,6 +60,11 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
     setAppliedFilters(normalizeHistoryFilters(draft));
     setCursors([null]);
     setRetryCount(0);
+    setInputSelection(null);
+  }
+
+  function selectInputs(selectedStation, referenceTime) {
+    setInputSelection({ station: selectedStation, referenceTime });
   }
 
   return (
@@ -72,6 +81,7 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
         </button>
       </header>
 
+      <div className="history-content">
       <form className="history-filters" onSubmit={applyFilters} noValidate>
         <div className="history-filter-field"><label htmlFor="history-station-type">Loại trạm</label>
           <select id="history-station-type" value={draft.stationType} onChange={(event) => updateDraft({ stationType: event.target.value, stationId: '' })}>
@@ -102,6 +112,9 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
         {formError && <p className="history-form-error" role="alert">{formError}</p>}
       </form>
 
+      <PredictionInputsPanel stations={stations} eligibleStations={eligibleStations} selection={inputSelection}
+        defaultStationId={station?.station_id} onSelect={selectInputs} onClear={() => setInputSelection(null)} />
+
       <div className="history-summary" aria-live="polite">
         <span>Đang xem: {formatHistoryDate(appliedFilters.startDate)}
           {appliedFilters.endDate !== appliedFilters.startDate && ` – ${formatHistoryDate(appliedFilters.endDate)}`}
@@ -114,7 +127,9 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
         <p>{error}</p>
         <button type="button" className="history-primary-button" onClick={() => setRetryCount((count) => count + 1)}>Thử lại</button>
       </div>}
-      {data && <HourlyHistoryTable data={data} />}
+      {data && <HourlyHistoryTable data={data} eligibleStations={eligibleStations}
+        selection={inputSelection} onSelectInputs={selectInputs} />}
+      </div>
 
       <footer className="history-footer">
         <div><strong>Trang {cursors.length}</strong>{data && ` · ${data.rows.length} dòng trạm/ngày`}</div>

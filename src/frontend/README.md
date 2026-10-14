@@ -91,6 +91,29 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
   Có trạng thái tải, rỗng, lỗi và thử lại; hủy request khi đóng/đổi lọc/trang,
   không cho response cũ thay thế kết quả mới. Không tự tải mọi trang hoặc polling.
 
+## Tự điền đầu vào dự báo
+
+- Trong bảng lịch sử, ô giờ có thể chọn của trạm nước được đánh dấu bằng chữ xanh,
+  gạch dưới nét chấm. Chỉ áp dụng khi metadata có `prediction_enabled` và
+  `model_configured`; trạm mưa và các trạm chưa có model không có hành vi này.
+- Click ô gọi `/stations/{id}/prediction-inputs?reference_time=...` với timestamp
+  chính xác từ API bảng. Ô thiếu vẫn cho backend kiểm tra; ô tương lai không chọn.
+  Nút “Đầu vào mới nhất” bỏ `reference_time`, có bộ chọn trạm nước riêng.
+- Vùng đầu vào phía trên bảng hiển thị trạm, mốc yêu cầu/anchor thực tế, trạng thái
+  đủ dữ liệu, dữ liệu cũ và lỗi/thử lại. Các giá trị tại bước cuối được tự điền vào
+  ô chỉ đọc, thu gọn/mở rộng được; số lượng/thứ tự/đơn vị đọc từ metadata API.
+  Giữ số 0/âm, null hiện “Thiếu”; không tự gán đơn vị hoặc thay thiếu bằng 0.
+- Nhãn dùng tiếng Việt dễ hiểu, ví dụ “Mực nước 1 giờ trước”, “Mưa đầu vào”; tên trạm
+  nằm ở chú thích dưới ô, tra metadata và không hiển thị mã thay tên. Vùng nhãn
+  dành chỗ cho hai dòng để các ô input thẳng hàng.
+  Cờ có/thiếu dữ liệu và mùa lũ hiển thị bằng chữ. Khóa feature gốc giữ trong dữ
+  liệu API; feature mới chưa có mô tả dùng nhãn “Thông tin bổ sung”.
+- Chuỗi đầy đủ được backend chuẩn bị, không ghép từ các ô bảng trên frontend.
+  Đổi mốc, bỏ chọn hoặc đóng bảng hủy request; áp dụng bộ lọc xóa lựa chọn,
+  đổi trang giữ lựa chọn với trạm/mốc hiển thị rõ. Không tự polling hoặc inference.
+- Bước này chưa sửa input/chạy Predict/vẽ kết quả; Predict và biểu đồ sẽ được
+  nối trong bước tiếp theo. Không chọn cả khoảng thời gian bằng click dòng.
+
 ## Nguồn bản đồ và giới hạn hiển thị
 
 Cấu hình nằm trong `src/mapConfig.js`. MapLibre dùng tọa độ `[kinh độ, vĩ độ]`.
@@ -165,6 +188,10 @@ proxy local. Khi deploy static build cần reverse proxy `/api` riêng.
 - `src/components/HistoryDialog.jsx`, `HourlyHistoryTable.jsx`: modal lọc và bảng theo giờ.
 - `src/hooks/useHourlyHistory.js`, `src/api/history.js`: tải từng trang, xác thực và hủy request.
 - `src/history.js`, `src/styles/history.css`: quy tắc lịch Việt Nam và giao diện lịch sử.
+- `src/components/PredictionInputsPanel.jsx`, `src/hooks/usePredictionInputs.js`:
+  chọn mốc, auto-fill chỉ đọc và hủy request khi đổi lựa chọn.
+- `src/api/predictionInputs.js`, `src/styles/predictionInputs.css`: hợp đồng API và CSS input.
+- `src/predictionInputs.js`: nhãn đầu vào tiếng Việt và cách trình bày cờ dữ liệu.
 - `src/hooks/useStations.js`: tải metadata, số đo và hủy/làm mới request.
 - `src/stations.js`: nhãn/icon, tọa độ và quy tắc ưu tiên timestamp trạm nước.
 - `src/mapConfig.js`: tâm nhìn, zoom, vùng điều hướng và các vùng ẩn nhãn ngoài khơi.
