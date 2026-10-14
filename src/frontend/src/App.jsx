@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import MapView from './components/MapView.jsx';
 import StationSidebar from './components/StationSidebar.jsx';
 import StationDetail from './components/StationDetail.jsx';
+import HistoryDialog from './components/HistoryDialog.jsx';
 import { useStations } from './hooks/useStations.js';
 import { getStationAppearance } from './stations.js';
 
@@ -9,6 +10,9 @@ export default function App() {
   const { stations, readings, isLoading, isLoadingReadings, errorMessage, reload } = useStations();
   const [stationType, setStationType] = useState('all');
   const [selectedStation, setSelectedStation] = useState(null);
+  const [historySelection, setHistorySelection] = useState(null);
+  const openHistory = useCallback((station, opener = document.activeElement) => setHistorySelection({ station, opener }), []);
+  const closeHistory = useCallback(() => setHistorySelection(null), []);
   const selectStation = useCallback((station) => setSelectedStation({ ...station }), []);
   const closeStation = useCallback(() => setSelectedStation(null), []);
   const orderedStations = useMemo(() => [...stations].sort((first, second) => (
@@ -34,8 +38,10 @@ export default function App() {
         onStationSelect={selectStation}
         isLoading={isLoading} isLoadingReadings={isLoadingReadings}
         errorMessage={errorMessage} onRetry={reload}
+        onOpenHistory={openHistory}
       />
       {selectedStation && <StationDetail key={selectedStation.station_id} station={selectedStation} onClose={closeStation} />}
+      {historySelection && <HistoryDialog stations={orderedStations} station={historySelection.station} opener={historySelection.opener} onClose={closeHistory} />}
     </main>
   );
 }

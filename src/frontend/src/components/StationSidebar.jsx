@@ -13,7 +13,7 @@ import {
  */
 export default function StationSidebar({
   stations, visibleStations, readings, stationType, onFilterChange,
-  selectedStationId, onStationSelect, isLoading, isLoadingReadings, errorMessage, onRetry,
+  selectedStationId, onStationSelect, isLoading, isLoadingReadings, errorMessage, onRetry, onOpenHistory,
 }) {
   const stationTypes = [...new Set(stations.map((station) => station.station_type))]
     .sort((first, second) => getStationAppearance(first).order - getStationAppearance(second).order
@@ -29,7 +29,13 @@ export default function StationSidebar({
             <p className="station-sidebar-eyebrow">QUAN TRẮC THỦY VĂN</p>
             <h1 id="station-sidebar-title">Trạm quan trắc</h1>
           </div>
-          <span className="station-count" aria-label={`${stations.length} trạm`}>{stations.length}</span>
+          <button type="button" className="history-launch" aria-label="Lịch sử quan trắc" title="Lịch sử quan trắc"
+            onClick={(event) => onOpenHistory(undefined, event.currentTarget)}>
+            Lịch sử
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+              <circle cx="12" cy="12" r="8" /><path d="M12 7v5l3 2" />
+            </svg>
+          </button>
         </div>
         <p className="station-latest" aria-live="polite">
           Dữ liệu mới nhất
@@ -69,7 +75,7 @@ export default function StationSidebar({
           {visibleStations.map((station) => {
             const hasCoordinates = Boolean(getStationCoordinates(station));
             return (
-              <li key={station.station_id}>
+              <li key={station.station_id} className={`station-list-item${selectedStationId === station.station_id ? ' station-list-item--selected' : ''}`}>
                 <button
                   type="button" className="station-card"
                   aria-pressed={selectedStationId === station.station_id}
@@ -92,6 +98,10 @@ export default function StationSidebar({
                   </span>
                   {!hasCoordinates && <span className="station-reading-error">Chưa có tọa độ hợp lệ</span>}
                 </button>
+                <div className="station-card-footer">
+                  <button type="button" className="station-history-button" onClick={(event) => onOpenHistory(station, event.currentTarget)}
+                    aria-label={`Xem lịch sử ${station.name}`}>Xem lịch sử <span aria-hidden="true">↗</span></button>
+                </div>
               </li>
             );
           })}

@@ -268,7 +268,14 @@ Không triển khai đăng nhập, đăng ký, tài khoản, lịch sử riêng 
 - Chỉ tra đúng timestamp cho trang hiện tại qua primary key có sẵn; không tải toàn
   bộ dữ liệu 10 phút hoặc đổi số đo gốc. API chỉ đọc; không cần schema migration.
   Hợp đồng/giới hạn và ví dụ chi tiết nằm trong `src/backend/README.md`.
-- Trạng thái: **backend đã triển khai và kiểm chứng; frontend bảng tổng chưa triển khai**.
+- Frontend đã có modal bảng tổng từ header sidebar và nút riêng từng trạm, mặc định
+  hôm nay theo lịch Việt Nam. Chọn tên gửi mã trạm; nhấn “Áp dụng” mới tải dữ liệu.
+  Bộ lọc độc lập với bản đồ, phân trang 50 dòng trước/sau và reset khi áp dụng lọc.
+  Bảng cuộn ngang/dọc với header/cột nhận diện cố định; hỗ trợ màn hình hẹp.
+  Ngày hôm nay đơn lẻ chỉ hiện đến giờ tại `as_of`; ngày cũ/khoảng ngày đủ 24 cột,
+  giờ tương lai có nền nhạt. Đóng ×/Escape giữ trạng thái bản đồ và hủy request;
+  response cũ không thay thế kết quả mới, có tải/rỗng/lỗi/thử lại.
+- Trạng thái: **backend và frontend bảng tổng đã triển khai, kiểm chứng**.
 
 ### FR-05. Model Input & Overrides
 - Chỉ hiển thị và chấp nhận feature mà model thực tế hỗ trợ; cấu hình feature và thứ tự feature lấy từ Model Metadata.

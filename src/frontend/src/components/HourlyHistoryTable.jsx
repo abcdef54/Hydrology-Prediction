@@ -1,0 +1,56 @@
+import StationIcon from './StationIcon.jsx';
+import { formatObservationTime, getStationAppearance } from '../stations.js';
+import { formatHistoryDate, getHistoryHours } from '../history.js';
+
+const valueFormatter = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 3 });
+
+/**
+ * @param {object} props data là một trang API đã xác thực, có 24 ô cho từng trạm/ngày.
+ * @returns {import('react').ReactElement} Bảng cuộn ngang/dọc, giữ đầu cột và thông tin trạm.
+ * Ngày hôm nay đơn lẻ hiện đến giờ as_of; ô thiếu/future hiện — và có chú thích riêng.
+ */
+export default function HourlyHistoryTable({ data }) {
+  const hours = getHistoryHours(data);
+  return (
+    <div className="history-table-scroll" tabIndex={0} role="region" aria-label="Bảng lịch sử, cuộn ngang để xem các giờ">
+      <table className="history-table">
+        <caption className="sr-only">Số đo đúng mốc giờ Việt Nam. Thiếu dữ liệu hiển thị dấu gạch ngang.</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="history-date-column">Ngày</th>
+            <th scope="col" className="history-type-column">Loại trạm</th>
+            <th scope="col" className="history-name-column">Tên trạm</th>
+            <th scope="col" className="history-unit-column">Đơn vị</th>
+            {hours.map((hour) => <th scope="col" key={hour}>{String(hour).padStart(2, '0')}:00</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {data.rows.map((row) => (
+            <tr key={`${row.date}/${row.station_id}`}>
+              <td className="history-date-column">{formatHistoryDate(row.date)}</td>
+              <td className="history-type-column">{getStationAppearance(row.station_type).label}</td>
+              <th scope="row" className="history-name-column">
+                <span className="history-station-name"><StationIcon stationType={row.station_type} />{row.name}</span>
+              </th>
+              <td className="history-unit-column" title={row.unit ?? 'Chưa rõ đơn vị'}>{row.unit ?? '?'}</td>
+              {hours.map((hour) => {
+                const cell = row.cells[hour];
+                const description = cell.status === 'future' ? 'Chưa tới giờ'
+                  : cell.status === 'missing' ? 'Không có số đo đúng mốc giờ'
+                    : `Đo lúc ${formatObservationTime(cell.at)}`;
+                return (
+                  <td key={hour} className={`history-cell history-cell--${cell.status}`} title={description}>
+                    {cell.status === 'observed' ? valueFormatter.format(cell.value) : <span aria-label={description}>—</span>}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+          {data.rows.length === 0 && (
+            <tr><td className="history-empty" colSpan={hours.length + 4}>Không có trạm khớp bộ lọc đã chọn.</td></tr>
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}

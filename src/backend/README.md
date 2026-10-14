@@ -208,7 +208,8 @@ Kiểm thử SQL trên PostgreSQL dùng bảng TEMP riêng, rollback khi kết t
 ```
 
 Khởi động lại API process sau khi cập nhật code để nạp route mới; worker ingestion
-không cần khởi động lại. Frontend bảng lịch sử sẽ được triển khai trong task sau.
+không cần khởi động lại. Frontend đã dùng route này cho bảng lịch sử tổng;
+xem [README frontend](../frontend/README.md#bảng-lịch-sử-quan-trắc).
 
 ## API kiểm tra thời điểm có thể dự báo
 

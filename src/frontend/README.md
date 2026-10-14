@@ -74,6 +74,23 @@ Request trạm được hủy và marker được gỡ khi component unmount, tr
 - Box cuộn độc lập khi thiếu chỗ. Trên màn hình hẹp, thu chiều cao cả sidebar và
   box để giữ một khoảng bản đồ giữa hai panel; nút × luôn nằm trong header cố định.
 
+## Bảng lịch sử quan trắc
+
+- Nút “Lịch sử” trên header sidebar mở bảng tổng; “Xem lịch sử” của mỗi trạm mở
+  bảng lọc sẵn loại/mã trạm đó. Mỗi lần mở mặc định hôm nay theo giờ Việt Nam.
+- Lọc theo loại, tên trạm và một ngày hoặc khoảng ngày tính cả hai đầu. Chọn tên
+  gửi mã trạm chính xác, giữ số 0 đầu. Nhấn “Áp dụng” để tải; bộ lọc này độc lập
+  với bộ lọc bản đồ. Không tự chuyển về ngày cuối có dữ liệu.
+- Đọc `GET /api/v1/observations/hourly`, mỗi dòng là một trạm/ngày, số đo đúng
+  00:00, 01:00… Thiếu hiện “—”; giữ số 0/âm và đơn vị metadata (hiện tại mm).
+  Ngày hôm nay đơn lẻ chỉ hiện đến giờ tại `as_of`; ngày cũ/khoảng ngày có 24 cột,
+  giờ chưa tới có nền nhạt. Số đo mưa không được coi là tổng mưa trong giờ.
+- Mỗi trang tối đa 50 dòng, nút trước/sau dùng cursor; áp dụng lọc trở về trang 1.
+  Bảng cuộn ngang/dọc, ghim header và cột nhận diện trạm; hỗ trợ màn hình hẹp.
+- Đóng bằng × hoặc Escape, trả focus về nút mở và giữ trạng thái bản đồ/box trạm.
+  Có trạng thái tải, rỗng, lỗi và thử lại; hủy request khi đóng/đổi lọc/trang,
+  không cho response cũ thay thế kết quả mới. Không tự tải mọi trang hoặc polling.
+
 ## Nguồn bản đồ và giới hạn hiển thị
 
 Cấu hình nằm trong `src/mapConfig.js`. MapLibre dùng tọa độ `[kinh độ, vĩ độ]`.
@@ -132,6 +149,9 @@ npm run preview
 
 `npm test` kiểm tra quy tắc ưu tiên timestamp, giữ số 0/âm và đơn vị, cô lập lỗi,
 giới hạn request đồng thời và hủy request; không cần backend hoặc dependency test.
+`node tests/history.test.js` kiểm tra ngày Việt Nam, ngày hợp lệ, cột giờ, tham số
+phân trang và xác thực response lịch sử. Kiểm chứng giao diện bằng trình duyệt
+đã bao gồm bộ lọc, phân trang 50 + 20 dòng, desktop/mobile, lỗi/thử lại và hủy request.
 
 Build ở `dist/`, không đưa vào Git. Preview tại <http://localhost:4173> dùng cùng
 proxy local. Khi deploy static build cần reverse proxy `/api` riêng.
@@ -142,6 +162,9 @@ proxy local. Khi deploy static build cần reverse proxy `/api` riêng.
 - `src/components/MapView.jsx`: vòng đời MapLibre, trạng thái tải/lỗi và WebGL worker.
 - `src/components/StationSidebar.jsx`, `StationIcon.jsx`: danh sách, bộ lọc và icon.
 - `src/components/StationDetail.jsx`, `StationReading.jsx`: box chi tiết và số đo dùng chung.
+- `src/components/HistoryDialog.jsx`, `HourlyHistoryTable.jsx`: modal lọc và bảng theo giờ.
+- `src/hooks/useHourlyHistory.js`, `src/api/history.js`: tải từng trang, xác thực và hủy request.
+- `src/history.js`, `src/styles/history.css`: quy tắc lịch Việt Nam và giao diện lịch sử.
 - `src/hooks/useStations.js`: tải metadata, số đo và hủy/làm mới request.
 - `src/stations.js`: nhãn/icon, tọa độ và quy tắc ưu tiên timestamp trạm nước.
 - `src/mapConfig.js`: tâm nhìn, zoom, vùng điều hướng và các vùng ẩn nhãn ngoài khơi.
