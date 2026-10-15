@@ -54,6 +54,9 @@ def build_station_summary(
         station_id=station["id"],
         name=station["name"],
         station_type=station["station_type"],
+        measurement_units=station.get("measurement_units"),
+        station_subtype=station.get("station_subtype"),
+        station_subtype_label=station.get("station_subtype_label"),
         river_name=station["river_name"],
         location=StationLocation(
             latitude=station["latitude"],

@@ -168,7 +168,9 @@ class LatestObservationTests(TestCase):
         redis_client.mget.assert_not_called()
 
     def test_injected_cache_is_not_closed_by_application(self):
-        cache = MagicMock(spec=LatestObservationCache)
+        cache = MagicMock(spec=LatestObservationCache())
+        cache.client = None
+        cache.ttl_seconds = 600
         app = create_app(engine=self.engine, registry=StationModelRegistry([]), latest_cache=cache)
         with TestClient(app):
             pass

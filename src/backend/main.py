@@ -28,6 +28,7 @@ from src.backend.cache.forecasts import ForecastCache
 from src.backend.cache.inputs import ObservationDependentCache
 from src.backend.api.schemas import ErrorDetail, ErrorResponse
 from src.backend.api.stations import router as stations_router
+from src.backend.api.facilities import router as facilities_router
 from src.backend.cache.latest import LatestObservationCache
 from src.backend.db.session import build_engine
 from src.backend.ingestion.startup import SyncWorkerProcess
@@ -223,6 +224,7 @@ def create_app(
         return response
 
     application.include_router(stations_router)
+    application.include_router(facilities_router)
     application.include_router(observations_router)
     application.include_router(hourly_history_router)
     application.include_router(prediction_availability_router)

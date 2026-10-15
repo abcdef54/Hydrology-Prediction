@@ -69,6 +69,21 @@ class StationsApiTests(TestCase):
         self.assertFalse(station["model_configured"])
         self.assertFalse(station["prediction_enabled"])
 
+    def test_source_subtype_is_returned_without_changing_main_station_type(self):
+        self.rows.all.return_value = [
+            {
+                **station_metadata("tower", prediction_enabled=False),
+                "station_subtype": "flood_3m",
+                "station_subtype_label": "Tháp báo lũ",
+            }
+        ]
+        response = self.client.get("/api/v1/stations")
+        self.assertEqual(response.status_code, 200)
+        station = response.json()["stations"][0]
+        self.assertEqual(station["station_type"], "water_level")
+        self.assertEqual(station["station_subtype"], "flood_3m")
+        self.assertEqual(station["station_subtype_label"], "Tháp báo lũ")
+
     def test_configured_model_does_not_override_database_permission(self):
         self.rows.all.return_value = [
             station_metadata(TEST_CONFIG.station_id, prediction_enabled=False)

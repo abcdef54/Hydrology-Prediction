@@ -11,6 +11,18 @@ const appearances = {
     label: 'Trạm gió', variant: 'other', order: 2,
     paths: ['M3 8h12a3 3 0 1 0-3-3M3 12h16a3 3 0 1 1-3 3M3 16h5a3 3 0 1 1-3 3'],
   },
+  reservoir: {
+    label: 'Hồ chứa', variant: 'reservoir', order: 3,
+    paths: ['M3 5h18l-3 14H6L3 5ZM6 11c2-2 4 2 6 0s4 2 6 0M7 15c2-2 3 2 5 0s3 2 5 0'],
+  },
+  dam: {
+    label: 'Đập', variant: 'dam', order: 4,
+    paths: ['M7 3h10l3 18H4L7 3ZM6 9h12M5 15h14M12 3v6M9 9v6M15 9v6M12 15v6'],
+  },
+  hydropower: {
+    label: 'Thủy điện', variant: 'hydropower', order: 5,
+    paths: ['M13 2 5 13h6l-1 9 9-13h-6l1-7Z'],
+  },
 };
 
 /**
@@ -20,7 +32,7 @@ const appearances = {
 export function getStationAppearance(stationType) {
   return Object.hasOwn(appearances, stationType) ? appearances[stationType] : {
     label: stationType ? `Trạm ${stationType}` : 'Trạm quan trắc',
-    variant: 'other', order: 3,
+    variant: 'other', order: 6,
     paths: ['M16 12a4 4 0 1 0-8 0 4 4 0 0 0 8 0M12 3v2M12 19v2M3 12h2M19 12h2'],
   };
 }

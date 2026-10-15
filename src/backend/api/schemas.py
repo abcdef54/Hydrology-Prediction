@@ -16,7 +16,10 @@ class StationLocation(BaseModel):
 class StationSummary(BaseModel):
     station_id: str
     name: str
-    station_type: Literal["water_level", "rainfall"]
+    station_type: Literal["water_level", "rainfall", "wind"]
+    measurement_units: dict[str, str | None] | None = None
+    station_subtype: str | None = None
+    station_subtype_label: str | None = None
     river_name: str | None
     location: StationLocation
     measurement_unit: str | None
@@ -101,7 +104,7 @@ class HourlyHistoryQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
     start_date: date | None = Field(default=None, ge=date(1900, 1, 1))
     end_date: date | None = Field(default=None, ge=date(1900, 1, 1))
-    station_type: Literal["water_level", "rainfall"] | None = None
+    station_type: Literal["water_level", "rainfall", "wind"] | None = None
     station_id: str | None = Field(default=None, min_length=1, max_length=100)
     station_name: str | None = Field(default=None, min_length=1, max_length=100)
     limit: int = Field(default=50, ge=1, le=100)
@@ -135,7 +138,7 @@ class HourlyHistoryRow(BaseModel):
     date: date
     station_id: str
     name: str
-    station_type: Literal["water_level", "rainfall"]
+    station_type: Literal["water_level", "rainfall", "wind"]
     unit: str | None
     cells: list[HourlyHistoryCell] = Field(min_length=24, max_length=24)
 

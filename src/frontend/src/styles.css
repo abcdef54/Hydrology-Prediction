@@ -85,6 +85,16 @@
     background: #e2e8f0;
   }
 
+  .station-marker--reservoir, .station-marker--dam, .station-marker--hydropower {
+    z-index: 1;
+    width: 32px;
+    height: 32px;
+  }
+
+  .station-marker--reservoir { color: #115e59; background: #ccfbf1; }
+  .station-marker--dam { color: #5b21b6; background: #ede9fe; }
+  .station-marker--hydropower { color: #92400e; background: #fef3c7; }
+
   .station-map-marker {
     padding: 0;
     border: 0;
@@ -479,6 +489,25 @@
     color: #64748b;
     font-size: 12px;
     font-weight: 400;
+  }
+
+  .station-wind-readings {
+    display: grid;
+    gap: 6px;
+    width: 100%;
+    font-size: 12px;
+  }
+
+  .station-wind-reading {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: #475569;
+  }
+
+  .station-wind-reading strong {
+    color: #0c4a6e;
+    font-variant-numeric: tabular-nums;
   }
 
   .station-reading-time, .station-reading-placeholder, .station-reading-error {

@@ -14,13 +14,14 @@ from src.backend.api.schemas import (
     ObservationHistoryResponse,
 )
 from src.backend.db.models import Observation, Station
+from src.backend.api.wind import WindHistoryResponse, WindLatestResponse, latest_wind, wind_history
 
 router = APIRouter(prefix="/api/v1", tags=["Observations"])
 
 
 @router.get(
     "/stations/{station_id}/latest",
-    response_model=LatestObservationResponse,
+    response_model=LatestObservationResponse | WindLatestResponse,
     responses={404: {"model": ErrorResponse}, 503: {"model": ErrorResponse}},
 )
 def get_latest_observation(request: Request, station_id: str) -> LatestObservationResponse:
@@ -34,12 +35,13 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
     Args:
         request: HTTP request providing the database engine, optional latest cache
             and freshness threshold. Station metadata is always read from PostgreSQL.
-        station_id: Exact ID of the water or rain station to inspect.
+        station_id: Exact ID to inspect; wind IDs use the wind: namespace.
 
     Returns:
         Latest valid raw value, source unit, observation/receipt times and data age.
         Supported water/rain stations use mm; unknown units are None. Freshness is based on
         observed_at, not the time the record was imported into PostgreSQL.
+        Wind responses also include all four raw measurements and unit confirmation.
 
     Raises:
         HTTPException: 404 with STATION_NOT_FOUND for an unknown station, or
@@ -47,9 +49,9 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
         sqlalchemy.exc.SQLAlchemyError: Database failures handled as 503 by the app.
     """
     now = datetime.now(timezone.utc)
-    station_query = sa.select(Station.station_type, Station.measurement_unit).where(
-        Station.id == station_id
-    )
+    station_query = sa.select(
+        Station.station_type, Station.measurement_unit, Station.measurement_units
+    ).where(Station.id == station_id)
     observation_query = (
         sa.select(
             Observation.depth,
@@ -72,6 +74,10 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
             raise HTTPException(
                 status_code=404,
                 detail={"code": "STATION_NOT_FOUND", "message": "Station does not exist."},
+            )
+        if station["station_type"] == "wind":
+            return latest_wind(
+                connection, station_id, station, now, request.app.state.stale_after_minutes
             )
         cache = request.app.state.latest_observation_cache
         cache_version, cached = cache.read(station_id, now)
@@ -108,7 +114,7 @@ def get_latest_observation(request: Request, station_id: str) -> LatestObservati
 
 @router.get(
     "/stations/{station_id}/observations",
-    response_model=ObservationHistoryResponse,
+    response_model=ObservationHistoryResponse | WindHistoryResponse,
     responses={
         404: {"model": ErrorResponse},
         422: {"model": ErrorResponse},
@@ -129,7 +135,8 @@ def get_observation_history(
 
     Args:
         request: HTTP request providing the database engine.
-        station_id: Exact water/rain station ID; disabled stations remain readable.
+        station_id: Exact station ID (wind IDs are namespaced); disabled stations
+            remain readable.
         query: Timezone-aware start/end bounds, page limit (1-1000), and optional
             exclusive before cursor. Bounds are [start, end); end cannot be future.
 
@@ -153,9 +160,9 @@ def get_observation_history(
             detail={"code": "INVALID_REQUEST", "message": "end must not be in the future."},
         )
 
-    station_query = sa.select(Station.station_type, Station.measurement_unit).where(
-        Station.id == station_id
-    )
+    station_query = sa.select(
+        Station.station_type, Station.measurement_unit, Station.measurement_units
+    ).where(Station.id == station_id)
     history_query = sa.select(
         Observation.depth,
         Observation.observed_at,
@@ -177,6 +184,8 @@ def get_observation_history(
                 status_code=404,
                 detail={"code": "STATION_NOT_FOUND", "message": "Station does not exist."},
             )
+        if station["station_type"] == "wind":
+            return wind_history(connection, station_id, station, query, start, end)
         history_rows = connection.execute(history_query).mappings().all()
 
     has_more = len(history_rows) > query.limit

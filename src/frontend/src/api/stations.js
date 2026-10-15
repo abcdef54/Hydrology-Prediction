@@ -1,4 +1,5 @@
 import { fetchApiJson } from './client.js';
+import { fetchFacilities, fetchLatestFacilityObservation } from './facilities.js';
 
 /**
  * Đọc danh sách trạm được bật và metadata vị trí từ backend.
@@ -15,6 +16,26 @@ export async function fetchStations(signal) {
   }
 
   return payload.stations;
+}
+
+/**
+ * Tải độc lập hai danh mục để lỗi một nguồn không làm mất bản đồ nguồn còn lại.
+ * @param {AbortSignal} [signal] Hủy cả hai request khi caller unmount.
+ * @returns {Promise<object>} stations và warnings về các danh mục tải thất bại.
+ * @throws {Error} Cả hai danh mục thất bại hoặc mã hiển thị bị trùng.
+ * @throws {DOMException} Khi caller hủy đợt tải.
+ */
+export async function fetchMapStations(signal) {
+  const results = await Promise.allSettled([fetchStations(signal), fetchFacilities(signal)]);
+  signal?.throwIfAborted();
+  if (results.every((result) => result.status === 'rejected')) throw results[0].reason;
+  const stations = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+  if (new Set(stations.map((station) => station.station_id)).size !== stations.length) {
+    throw new Error('Danh sách bản đồ có mã trùng.');
+  }
+  const warnings = results.flatMap((result, index) => result.status === 'rejected'
+    ? [`Không tải được ${index === 0 ? 'danh sách trạm' : 'danh sách công trình'}: ${result.reason.message}`] : []);
+  return { stations, warnings };
 }
 
 /**
@@ -49,8 +70,16 @@ export async function fetchLatestObservation(stationId, signal) {
     if (error.status === 404 && error.code === 'OBSERVATION_NOT_FOUND') return null;
     throw error;
   }
+  const isWind = observation?.station_type === 'wind';
+  const validWind = isWind && ['ws', 'wd', 'wsg', 'wdg'].every((field) => {
+    const measurement = observation.measurements?.[field];
+    return measurement && (measurement.value === null || Number.isFinite(measurement.value))
+      && (measurement.unit === null || typeof measurement.unit === 'string')
+      && typeof measurement.unit_confirmed === 'boolean';
+  }) && observation.value === observation.measurements.ws.value;
   if (
-    observation?.station_id !== stationId || !Number.isFinite(observation.value)
+    observation?.station_id !== stationId
+    || !(isWind ? validWind : Number.isFinite(observation.value))
     || !Number.isFinite(Date.parse(observation.observed_at))
     || !(observation.unit === null || typeof observation.unit === 'string')
   ) {
@@ -75,7 +104,9 @@ export async function fetchStationReadings(stations, signal) {
       signal.throwIfAborted();
       const station = stations[nextIndex++];
       try {
-        const observation = await fetchLatestObservation(station.station_id, signal);
+        const observation = station.facility_id
+          ? await fetchLatestFacilityObservation(station.facility_id, signal)
+          : await fetchLatestObservation(station.station_id, signal);
         readings[station.station_id] = { status: observation ? 'ready' : 'missing', observation };
       } catch (error) {
         if (signal.aborted) throw error;

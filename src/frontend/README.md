@@ -3,7 +3,9 @@
 React + Vite + Tailwind CSS. Bản đồ dùng MapLibre GL JS và vector tiles theo schema
 OpenMapTiles, dữ liệu OpenStreetMap do OpenFreeMap cung cấp. Không cần API key.
 Trang có bản đồ toàn màn hình, mở sẵn tại Huế, zoom 12; có thể kéo và zoom.
-Marker trạm được lấy động từ backend, hiện gồm Dã Viên và 4 trạm mưa A Lưới.
+Marker lấy động từ backend: 19 trạm nước, 55 trạm mưa, 4 trạm gió và 15 công trình
+(11 thủy điện, 1 hồ chứa, 3 đập), tổng 93 điểm. Bốn điểm sông SOHOA đã liên kết
+dùng marker trạm nước hiện có, không tạo trùng.
 Sidebar nổi bên trái hiển thị metadata và số đo mới nhất; chọn item để focus bản đồ.
 
 ## Chạy local
@@ -23,13 +25,31 @@ lỗi API trạm không làm mất bản đồ nền.
 
 ## Marker trạm
 
+Danh mục trạm và công trình tải song song từ /stations và /facilities. Lỗi một
+danh mục vẫn giữ nguồn còn lại trên bản đồ, có thông báo/thử lại. Công trình dùng
+ID sohoa:<id>; không đổi ID nguồn hoặc gán quyền dự báo. Ba loại có bộ lọc và icon
+riêng: hồ xanh ngọc, đập tím, thủy điện vàng; marker 32 px, nước vẫn nổi bật nhất.
+
+Sidebar/hover công trình hiển thị mực nước thượng/hạ lưu, lưu lượng đến/ra và
+chuỗi cửa mở khi có. Box mở theo click có đủ sáu số đo, giờ đo/giờ cập nhật riêng,
+thông số công trình và khoảng vận hành nguyên văn nếu có. Đơn vị/thang đo vận
+hành chưa xác minh được ghi rõ; số 0/âm giữ nguyên, thiếu hiện —. Thông số metadata
+(như +58 m, 0) giữ văn bản nguồn, không tự đổi sang mm. Chưa có địa chỉ thì ghi
+chưa có, không tự suy ra từ tên/tọa độ. Box vẫn giữ khi pan/zoom như trạm cũ.
+
+Công trình chưa có nút lịch sử hoặc dự báo ở task này. Bảng lịch sử quan trắc
+vẫn chỉ nhận nước/mưa/gió; không gửi loại hồ/đập vào API hourly chưa hỗ trợ.
+Latest công trình dùng /facilities/{id}/latest, 404 OPERATION_NOT_FOUND là chưa
+có báo cáo; không nhầm thành lỗi kết nối. Dùng cùng giới hạn 4 request đồng thời,
+làm mới mỗi 10 phút và hủy request khi đóng/chuyển/unmount.
+
 Trang gọi `GET /api/v1/stations` qua proxy Vite, sử dụng `station_type` và
 `location.longitude/latitude` từ API; không hardcode tọa độ hoặc danh sách trạm.
 
 - Trạm nước: marker 40 px, xanh đậm, icon sóng nước; nổi bật và nằm trên marker phụ.
 - Trạm mưa: marker 28 px, màu nhẹ hơn, icon mây/mưa.
 - Loại khác: marker 24 px, màu trung tính; trạm gió dùng icon gió nếu API hỗ trợ.
-- API hiện chỉ hỗ trợ `water_level` và `rainfall`; không tự tạo trạm gió.
+- API hỗ trợ water_level, rainfall và wind; ID gió có dạng `wind:<code>`.
 - Thiếu/sai tọa độ: bỏ qua trạm đó và hiển thị thông báo, không dùng vị trí giả.
 - Click marker hoặc nhấn Enter/Space khi marker được focus để chọn trạm, focus
   bản đồ và mở box thông tin. Không kéo marker; kéo bản đồ không coi là click marker.
@@ -48,13 +68,18 @@ Marker nhấc nhẹ 4 px và có quầng sáng khi hover/focus; reduced motion b
 - Mỗi item có icon cùng loại với marker, tên, loại, địa chỉ, số đo và giờ quan trắc.
   Trạm nước đứng đầu danh sách; số đo đọc từ `/api/v1/stations/{id}/latest`.
 - Bộ lọc loại trạm áp dụng cho cả sidebar và marker. Loại được tạo từ danh sách
-  API, có icon/nhãn mặc định cho loại mới; backend hiện vẫn chỉ hỗ trợ nước/mưa.
+  API, có icon/nhãn mặc định cho loại mới, gồm bộ lọc trạm gió.
 - Dòng “Dữ liệu mới nhất” ưu tiên `observed_at` mới nhất của nhóm trạm nước;
   nếu không có thì lấy mới nhất của loại khác. Hiển thị giờ Việt Nam, không đổi
   theo filter và không dùng `received_at` làm thời điểm quan trắc.
-- Đơn vị đọc từ API: Dã Viên và bốn trạm mưa dùng mm sau migration `0004`, theo
-  quyết định chủ dự án. Chưa xác định khoảng tích lũy bản ghi mưa; không ghi mm/h.
+- Đơn vị đọc từ API: toàn bộ 19 trạm nước và 55 trạm mưa dùng mm theo quyết định
+  chủ dự án; migration `0007` bổ sung mm cho các trạm nước mới. Chưa xác định
+  khoảng tích lũy bản ghi mưa; không ghi mm/h.
   Trạm chưa biết đơn vị hiển thị rõ, không tự gán mm. Số 0 và mực nước âm giữ nguyên.
+- Gió hiển thị tốc độ, hướng, tốc độ giật và hướng giật trong sidebar, hover và
+  box chi tiết. Giữ số gốc; thiếu hiện “—”, số 0 vẫn hiện. Đơn vị/thang đo chưa
+  xác minh được ghi rõ, không gắn m/s/độ hoặc tự chuyển wd=961 thành góc.
+  Backend bổ sung unit/unit_confirmed sau này thì frontend đọc theo từng chỉ tiêu.
 - Trạng thái đang tải, chưa có số đo, lỗi từng trạm và dữ liệu cũ được phân biệt.
   Metadata vẫn hiển thị nếu request số đo thất bại; nút “Thử lại” tải lại dữ liệu.
 - Tối đa 4 request số đo đồng thời, làm mới mỗi 10 phút khi tab đang hiển thị;
@@ -90,6 +115,8 @@ Marker nhấc nhẹ 4 px và có quầng sáng khi hover/focus; reduced motion b
   00:00, 01:00… Thiếu hiện “—”; giữ số 0/âm và đơn vị metadata (hiện tại mm).
   Ngày hôm nay đơn lẻ chỉ hiện đến giờ tại `as_of`; ngày cũ/khoảng ngày có 24 cột,
   giờ chưa tới có nền nhạt. Số đo mưa không được coi là tổng mưa trong giờ.
+- Dòng trạm gió trong bảng giờ hiển thị ws, ghi rõ “Tốc độ gió · Số đo gốc”;
+  chưa có biểu đồ hướng gió hoặc dự báo gió.
 - Mỗi trang tối đa 50 dòng, nút trước/sau dùng cursor; áp dụng lọc trở về trang 1.
   Bảng cuộn ngang/dọc, ghim header và cột nhận diện trạm; hỗ trợ màn hình hẹp.
 - Đóng bằng × hoặc Escape, trả focus về nút mở và giữ trạng thái bản đồ/box trạm.

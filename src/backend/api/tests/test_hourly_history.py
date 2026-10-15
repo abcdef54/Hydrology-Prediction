@@ -154,7 +154,7 @@ class HourlyHistoryTests(TestCase):
             {"end_date": "2999-01-01"},
             {"start_date": "invalid"},
             {"start_date": "0001-01-01"},
-            {"station_type": "wind"},
+            {"station_type": "unsupported_type"},
             {"station_name": ""},
             {"station_id": ""},
             {"limit": 0},
@@ -179,6 +179,36 @@ class HourlyHistoryTests(TestCase):
         self.assertEqual(response.status_code, 503)
         self.assertNotIn("secret", response.text)
         self.assertEqual(response.json()["request_id"], response.headers["X-Request-ID"])
+
+    def test_wind_filter_uses_raw_ws_at_exact_hour_without_assuming_unit(self):
+        self.stations = [
+            {
+                "id": "wind:228005",
+                "name": "Cảng Chân Mây",
+                "station_type": "wind",
+                "measurement_unit": None,
+            }
+        ]
+        stations = MagicMock()
+        stations.mappings.return_value.all.return_value = self.stations
+        depth = MagicMock()
+        depth.mappings.return_value.all.return_value = []
+        wind = MagicMock()
+        wind.mappings.return_value.all.return_value = [
+            self.record(
+                datetime(2026, 10, 13, 17, tzinfo=timezone.utc),
+                0,
+                "wind:228005",
+            )
+        ]
+        self.connection.execute.side_effect = [stations, depth, wind]
+        response = self.client.get(self.url, params={"station_type": "wind"})
+        self.assertEqual(response.status_code, 200, response.text)
+        row = response.json()["rows"][0]
+        self.assertEqual(row["station_type"], "wind")
+        self.assertIsNone(row["unit"])
+        self.assertEqual(row["cells"][0]["value"], 0)
+        self.assertIn("wind_observations", str(self.connection.execute.call_args.args[0]))
 
     def test_openapi_describes_filters_dates_and_row_cursor(self):
         operation = self.client.get("/openapi.json").json()["paths"][self.url]["get"]

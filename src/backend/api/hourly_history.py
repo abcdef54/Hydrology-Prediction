@@ -15,7 +15,7 @@ from src.backend.api.schemas import (
     HourlyHistoryResponse,
     HourlyHistoryRow,
 )
-from src.backend.db.models import Observation, Station
+from src.backend.db.models import Observation, Station, WindObservation
 
 router = APIRouter(prefix="/api/v1", tags=["Observations"])
 VIETNAM_TIME = ZoneInfo("Asia/Ho_Chi_Minh")
@@ -110,7 +110,11 @@ def get_hourly_history(
         )
 
     statement = sa.select(
-        Station.id, Station.name, Station.station_type, Station.measurement_unit
+        Station.id,
+        Station.name,
+        Station.station_type,
+        Station.measurement_unit,
+        Station.measurement_units,
     ).where(Station.enabled.is_(True))
     if query.station_type is not None:
         statement = statement.where(Station.station_type == query.station_type)
@@ -143,6 +147,25 @@ def get_hourly_history(
                 .mappings()
                 .all()
             )
+            wind_ids = {station["id"] for _, station in page if station["station_type"] == "wind"}
+            wind_keys = [(sid, at) for sid, at in keys if sid in wind_ids]
+            if wind_keys:
+                observations = list(observations) + list(
+                    connection.execute(
+                        sa.select(
+                            WindObservation.station_id,
+                            WindObservation.observed_at,
+                            WindObservation.ws.label("depth"),
+                            WindObservation.quality_status,
+                        ).where(
+                            sa.tuple_(WindObservation.station_id, WindObservation.observed_at).in_(
+                                wind_keys
+                            )
+                        )
+                    )
+                    .mappings()
+                    .all()
+                )
 
     readings = {(row["station_id"], row["observed_at"]): row for row in observations}
     rows = []
@@ -168,7 +191,11 @@ def get_hourly_history(
                 station_id=station["id"],
                 name=station["name"],
                 station_type=station["station_type"],
-                unit=station["measurement_unit"],
+                unit=(
+                    (station.get("measurement_units") or {}).get("ws")
+                    if station["station_type"] == "wind"
+                    else station["measurement_unit"]
+                ),
                 cells=cells,
             )
         )

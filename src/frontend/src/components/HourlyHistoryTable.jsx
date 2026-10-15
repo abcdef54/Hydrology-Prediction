@@ -33,6 +33,7 @@ export default function HourlyHistoryTable({ data, eligibleStations = [], select
               <td className="history-type-column">{getStationAppearance(row.station_type).label}</td>
               <th scope="row" className="history-name-column">
                 <span className="history-station-name"><StationIcon stationType={row.station_type} />{row.name}</span>
+                {row.station_type === 'wind' && <small>Tốc độ gió · Số đo gốc</small>}
               </th>
               <td className="history-unit-column" title={row.unit ?? 'Chưa rõ đơn vị'}>{row.unit ?? '?'}</td>
               {hours.map((hour) => {

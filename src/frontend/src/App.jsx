@@ -41,7 +41,7 @@ export default function App() {
         onOpenHistory={openHistory}
       />
       {selectedStation && <StationDetail key={selectedStation.station_id} station={selectedStation} onClose={closeStation} />}
-      {historySelection && <HistoryDialog stations={orderedStations} station={historySelection.station} opener={historySelection.opener} onClose={closeHistory} />}
+      {historySelection && <HistoryDialog stations={orderedStations.filter((station) => !station.facility_id)} station={historySelection.station} opener={historySelection.opener} onClose={closeHistory} />}
     </main>
   );
 }

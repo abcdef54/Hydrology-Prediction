@@ -27,7 +27,7 @@ export default function StationSidebar({
         <div className="station-sidebar-heading">
           <div>
             <p className="station-sidebar-eyebrow">QUAN TRẮC THỦY VĂN</p>
-            <h1 id="station-sidebar-title">Trạm quan trắc</h1>
+            <h1 id="station-sidebar-title">Quan trắc Huế</h1>
           </div>
           <button type="button" className="history-launch" aria-label="Lịch sử quan trắc" title="Lịch sử quan trắc"
             onClick={(event) => onOpenHistory(undefined, event.currentTarget)}>
@@ -50,7 +50,7 @@ export default function StationSidebar({
           id="station-type-filter" className="station-filter" value={stationType}
           onChange={(event) => onFilterChange(event.target.value)}
         >
-          <option value="all">Tất cả trạm ({stations.length})</option>
+          <option value="all">Tất cả ({stations.length})</option>
           {stationTypes.map((type) => (
             <option key={type} value={type}>
               {getStationAppearance(type).label} ({stations.filter((station) => station.station_type === type).length})
@@ -98,17 +98,17 @@ export default function StationSidebar({
                   </span>
                   {!hasCoordinates && <span className="station-reading-error">Chưa có tọa độ hợp lệ</span>}
                 </button>
-                <div className="station-card-footer">
+                {!station.facility_id && <div className="station-card-footer">
                   <button type="button" className="station-history-button" onClick={(event) => onOpenHistory(station, event.currentTarget)}
                     aria-label={`Xem lịch sử ${station.name}`}>Xem lịch sử <span aria-hidden="true">↗</span></button>
-                </div>
+                </div>}
               </li>
             );
           })}
         </ul>
       </div>
       <footer className="station-sidebar-footer">
-        {visibleStations.length} trạm hiển thị · Chọn trạm để xem vị trí
+        {visibleStations.length} điểm hiển thị · Chọn để xem thông tin
       </footer>
     </aside>
   );

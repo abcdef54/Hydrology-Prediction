@@ -288,7 +288,9 @@ class SyncCacheTests(TestCase):
         self.client = MagicMock()
         self.client.settings.overlap_hours = 24
         self.client.stop.is_set.return_value = False
-        self.client.observations.return_value = [{"observed_at": START, "depth": 1}]
+        self.client.observations.return_value = [
+            {"observed_at": START, "depth": 1, "quality_status": "observed"}
+        ]
         self.cache = MagicMock()
         self.cache.enabled = True
         self.cache.invalidate.return_value = True

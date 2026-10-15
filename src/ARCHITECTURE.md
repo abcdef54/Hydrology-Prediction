@@ -560,8 +560,9 @@ Phân tách **Source of Truth**:
   hiển thị chưa có dữ liệu. Đây không phải thời điểm worker đồng bộ thành công.
 - Frontend lấy danh sách trạm từ API và chuẩn bị xử lý loại trạm mở rộng: cấu
   hình nhãn/icon theo `station_type`, có cách hiển thị mặc định cho loại chưa
-  biết, bộ lọc dựa trên các loại thực tế API trả về. Backend hiện chỉ hỗ trợ
-  `water_level` và `rainfall`; bổ sung loại mới vẫn cần mở rộng backend tương ứng.
+  biết, bộ lọc dựa trên các loại thực tế API trả về. Backend hỗ trợ water_level,
+  rainfall và wind; gió tạm ẩn chờ xác minh đơn vị và phần hiển thị bốn chỉ tiêu.
+  Bổ sung loại mới khác vẫn cần mở rộng backend tương ứng.
 - Đơn vị lấy từ metadata backend và tuân thủ kết luận khảo sát ở mục tài nguyên
   phía trên. Task 2 đã triển khai sidebar nổi, cuộn độc lập, filter chung với marker
   và click item để `flyTo`; chưa mở Station Detail hoặc gắn hành động click marker.
@@ -596,6 +597,177 @@ PostgreSQL lưu station metadata và quan trắc lịch sử vì nhu cầu nghi�
 ---
 
 ## 5. Component Responsibilities & Data Model
+
+**Mở rộng danh mục nước/mưa — task 1, 14/10/2026:** nguồn API có 19 trạm nước và
+55 trạm mưa, trong khi SQLite cũ có 17/55. Migration `0005` bổ sung subtype/nhãn
+subtype nguồn. Importer metadata riêng có dry-run và apply nguyên tử, phân trang
+tới trang rỗng, không tạo trùng khi chạy lại. Trạm mới mặc định `enabled=false`,
+`prediction_enabled=false`; chưa hiển thị trong list enabled và chưa được worker
+đồng bộ. Năm trạm đang dùng giữ tên/đơn vị/ngưỡng/quyền dự báo; trạm mới không dùng
+model của Dã Viên. Chỉ metadata được ghi, chưa nhập lịch sử hoặc sửa worker.
+Mưa mới dùng mm theo quyết định dự án; đơn vị nước mới chưa xác minh giữ NULL.
+Các task sau: lịch sử/activation nước-mưa, worker, rồi schema/ingestion gió và
+hồ-đập. Gió/hồ cần nhiều chỉ tiêu và mapping nguồn riêng, không nhét vào `depth`.
+
+**Nhập lịch sử nước/mưa — task 2, 14/10/2026:** importer `history_import` đã đọc
+SQLite chỉ đọc, kiểm tra 3.318.285 bản ghi có metadata và thêm 3.080.331 hàng chưa
+có vào PostgreSQL. Bổ sung từ API 135.792 hàng tới cutoff cố định
+`2026-10-14T09:26:55.782500Z` (16:26:55 giờ Việt Nam).
+SQLite dùng COPY theo batch rồi INSERT ON CONFLICT DO NOTHING, không ghi đè
+giá trị hiện có; API trực tiếp dùng UPSERT, giữ received_at. Mỗi batch phối hợp
+writer lock với worker và invalidate cache sau commit; checkpoint cho phép tiếp
+sau khi ngắt. Các nguồn chưa có trong SQLite (hai trạm nước mới) lấy lịch sử từ
+API. Mã mưa `750031` thiếu metadata có 27.994 hàng trong SQLite được báo cáo,
+chưa nhập hoặc tạo trạm giả. Trạm mới vẫn chưa enabled, dự báo chỉ dành cho Dã Viên.
+Không sửa SQLite/dataset/model/MLflow hoặc dự báo đã lưu. Worker/activation toàn
+bộ trạm thuộc task tiếp theo; lượt nhập lịch sử không tự đổi cấu hình chạy nền.
+Đã đối chiếu count và mốc mới nhất theo nguồn cho 74 trạm; một bản ghi trạm
+750014 công bố trễ được refresh riêng trong cửa sổ 24 giờ cuối. Tổng DB tới cutoff
+là 3.464.307 quan trắc. Đây là kiểm tra coverage theo số lượng/thời gian, không
+khẳng định đã so từng giá trị của toàn bộ snapshot với API hiện hành.
+
+**Bật đồng bộ toàn bộ nước/mưa — 14/10/2026 [ĐÃ DUYỆT]:** sau kiểm chứng nhập
+lịch sử, đã đặt enabled=true cho 69 trạm mới, tổng 19 nước + 55 mưa. Worker đọc
+danh sách enabled ở mỗi lượt nên tự nhận 74 trạm mà không sửa numerical pipeline
+hoặc restart API. API list và bản đồ đọc động cũng nhận toàn bộ danh sách sau khi
+tải lại. prediction_enabled chỉ có Dã Viên, không bật dự báo cho trạm mới. Worker
+vẫn thuộc vòng đời backend local, không bật service chạy nền cùng máy. Mô tả trạm
+chưa bật ở task 1/2 phía trên ghi lại giai đoạn trước activation; mặc định của
+importer cho trạm xuất hiện sau này vẫn là enabled=false.
+
+**Schema/API và lịch sử gió — task 4, 14/10/2026:** migration `0006` thêm
+`hydrology.wind_observations`, lưu riêng bốn số đo gốc `ws`, `wd`, `wsg`, `wdg`
+với timestamp UTC, nguồn, ID bản ghi, chất lượng, received_at và updated_at.
+Không đưa gió vào cột depth của nước/mưa. Bốn trạm: Cảng Thuận An (759002),
+Cảng Tư Hiền (759001), Cảng Chân Mây (228005), VPTTPCTTHUE (228006).
+ID nội bộ là `wind:<code>` vì hai mã 228005/228006 cũng xuất hiện trong danh mục
+mưa; source_station_id giữ UUID và truy vấn nguồn gió dùng `sid`, không dùng code.
+Importer `wind_import` chỉ chạy chủ động, mặc định dry-run; SQLite mở chỉ đọc,
+batch cũ chỉ INSERT hàng chưa có, API bổ sung trước/sau snapshot và refresh tail
+24 giờ, giữ received_at khi sửa. Đã nhập 95.974 bản ghi SQLite và thêm 8.914 từ
+API: 104.888 quan trắc tới cutoff `2026-10-14T12:45:53.096679Z` (19:45:53 VN).
+Lượt worker mới kiểm chứng thành công 78 trạm, thêm 6 quan trắc gió, tổng
+104.894 hàng. Đối soát lại tới cutoff có 104.890 hàng (bổ sung 2 hàng chưa có ở
+lượt import); count/mốc cuối khớp API cả bốn trạm. Toàn bộ 95.974 bản ghi SQLite
+đã đối chiếu đúng timestamp và bốn giá trị với DB. Các report chỉ ở reports/,
+không đưa lên Git. Test API/parser/worker/importer và DB rollback tập trung đã qua.
+
+`sync_enabled=true` cho phép worker đồng bộ gió độc lập với `enabled=false`;
+trạm gió tạm chưa xuất hiện trong list/bản đồ, không có quyền dự báo. Các trạm
+nước/mưa enabled vẫn đồng bộ như trước. Worker code mới đọc 78 trạm mỗi lượt;
+process đã chạy trước thay đổi cần restart backend để nạp code mới. Không bật
+service ngoài phiên dự án. Detail/latest/history đọc được trạm gió theo ID;
+latest/history thêm `measurements` gồm value/unit/unit_confirmed cho bốn trường,
+value chính là ws. API bảng giờ hỗ trợ loại wind và lấy ws đúng mốc giờ; không
+tổng hợp, không biến đổi hướng gió và không cấp tính năng dự báo cho gió.
+
+**Kiểm chứng đơn vị/thang đo gió — chưa đủ bằng chứng cho DCU:** ý nghĩa quy ước
+là tốc độ, hướng, tốc độ giật và hướng giật; thời gian lấy trung bình chưa rõ.
+Metadata `/fields/iot_wind_speed` không ghi đơn vị. [Thông số trạm WATEC](https://watec.vn/products/tram-do-gio-tu-dong)
+mô tả cảm biến YOUNG đo 0–100 m/s, hướng 0–360°, đầu ra hướng là chiết áp/DC.
+Điều này hỗ trợ khả năng có giá trị điện/raw cần hiệu chuẩn, nhưng chưa xác nhận
+model/cấu hình logger của từng trạm hoặc cách DCU mã hóa bốn trường. [Tài liệu
+YOUNG](https://www.youngusa.com/product/wind-monitor/) và [Campbell](https://help.campbellsci.com/wind-monitors/shared/wind-direction-meas-theory.htm)
+cho thấy phép đổi phụ thuộc loại cảm biến và mạch đo; không áp trực tiếp cho 961.
+
+Trong 95.974 hàng SQLite, wd tối đa 1295, wdg tối đa 1292; không phù hợp giả
+định giá trị ADC 10-bit 0–1023. Cả 9.628 wdg >360 khớp tập số làm tròn
+`integer_degree * 3.6`; đây chỉ là dấu hiệu cần điều tra phép scale/phần mềm,
+không chứng minh phải chia 3.6 và không được coi 961 chắc chắn là mã lỗi.
+Giữ nguyên số gốc, `measurement_units` của cả bốn trường là NULL và API trả
+`unit_confirmed=false`. Chưa gán m/s/độ, modulo 360, chia 3.6 hoặc quy đổi ADC.
+Muốn chuẩn hóa cần hợp đồng nguồn/logger hoặc đối chiếu cùng timestamp với số
+đo đã hiệu chuẩn; có thể cần quy tắc riêng theo trạm/giai đoạn.
+
+**Hiển thị gió và đơn vị nước — 14/10/2026 [ĐÃ DUYỆT]:** migration `0007` bật
+enabled cho bốn trạm gió, tổng list 78 trạm. Frontend hiển thị marker/icon gió,
+bộ lọc, sidebar, hover và detail với bốn nhãn tiếng Việt; số thiếu hiện “—”,
+số 0 giữ nguyên, ghi rõ đơn vị/thang đo chưa xác minh, không tự đổi hướng sang độ.
+Bảng giờ gió là ws, ghi rõ tốc độ gió/số gốc. Gió không có báo động mực nước hay
+quyền dự báo. Chủ dự án xác nhận đơn vị toàn bộ trạm nước là mm: migration cập
+nhật metadata NULL của 18 trạm nước mới, importer nước sau này mặc định mm.
+Frontend đọc đơn vị từ API cho sidebar/detail/hover/bảng giờ; không hardcode đổi
+số đo hoặc sửa observations. Mô tả ẩn gió/đơn vị nước chưa biết ở các task trước
+là trạng thái trước quyết định này. Downgrade `0007` giữ các quyết định metadata.
+
+**Hồ/đập và báo cáo vận hành — task 5, 14/10/2026:** migration `0008` thêm
+facilities và facility_operations, tách SOHOA khỏi quan trắc DCU/model. Nguồn
+có 19 công trình: 15 hồ/đập/thủy điện và 4 điểm sông liên kết đúng trạm đã có:
+SOHOA 16 → 0074647403 (Dã Viên), 17 → 0074647404 (Tứ Phú),
+19 → 0074647402 (Cảng cá Thuận An), 20 → 0074648201 (Cảng Tư Hiền).
+Mapping theo ID/metadata đã kiểm chứng; không ghép mờ theo tên hoặc tạo thêm
+bốn trạm nước. Trạm/model/chuỗi DCU, đơn vị mm và ngưỡng đã cấu hình giữ nguyên.
+
+Metadata giữ nguyên văn mndbt/mnc, ngưỡng tràn/xả đáy, số cửa/âu/khẩu độ và
+ba mức báo động; không tự áp ngưỡng của nguồn mới lên Station. Báo cáo giữ
+htl/hhl, qden/qdi, mucnuocsong, luuluongdieutiet dưới dạng số gốc hữu hạn; số
+0/âm/thiếu được phân biệt. socuamo giữ chuỗi vì có dạng 0/15 hoặc văn bản.
+Đơn vị/thang đo các trường vận hành chưa đủ hợp đồng nguồn để chuẩn hóa: unit
+NULL, không chuyển sang mm hoặc trộn mực nước SOHOA vào observations DCU.
+Thông số metadata có đơn vị viết ngay trong chuỗi (ví dụ +58 m) được giữ nguyên.
+Không lưu username/họ tên người nhập, ghi chú tự do hoặc URL tệp đính kèm.
+
+Khóa báo cáo là ID nguồn, không phải thời gian: nhiều báo cáo cùng mốc vẫn
+được giữ. trangthai=2 là Đã xóa, 1 là Hiển thị; trạng thái 0/rỗng/khác không được
+coi là hiển thị. Xóa mềm vẫn lưu để đối soát, không DELETE hàng hay dự báo.
+ngaylaysolieu DD/MM/YYYY + gio H:M hợp lệ được hiểu theo giờ Việt Nam rồi chuyển
+UTC; ngaycapnhat M/D/YYYY h:mm:ss AM/PM là thời điểm sửa riêng. Không thay giờ đo
+bằng ngày cập nhật/received_at. Giờ thiếu/nhập sai giữ văn bản, observed_at=NULL,
+time_status=invalid; khoảng vận hành thiếu giờ giữ text, không đoán 00:00.
+
+Importer facility_import mặc định dry-run, --apply đọc SQLite read-only, giữ
+hàng DB hiện có rồi UPSERT toàn bộ API theo ID kể cả xóa; chạy lại không tạo
+trùng và giữ received_at. SOHOA dùng POST đọc /data/danhsach, chucnang=0,
+trangthai=0, ngày Việt Nam tính cả hai đầu; đối chiếu totalrow/ID toàn bộ trang,
+từ chối snapshot đổi count, ID trùng hoặc trang rỗng sớm. Không suy ra trạng thái
+xóa khi bản ghi vắng ở API. Token chỉ ở environment/RAM; local có thể đọc file
+Postman environment private, deployment cần SOHOA_API_TOKEN, không gửi frontend.
+
+Worker vẫn theo vòng đời API/chu kỳ 11 phút: DCU và SOHOA commit riêng,
+lỗi SOHOA ghi report riêng và không làm mất DCU đã commit. SOHOA đọc lại ít nhất
+24 giờ theo ngày đo mỗi lượt; quét toàn bộ mỗi 24 giờ để bắt sửa/xóa cũ hơn.
+last_full_sync_at chỉ tiến sau commit thành công. Nếu chưa có metadata công trình
+thì skip, không tự gọi nguồn. Các batch dùng writer lock chung.
+
+API đọc DB: GET /facilities mặc định bỏ 4 river linked để tránh marker trùng;
+include_linked=true lấy 19, hoặc station_id lấy liên kết của một trạm. Detail,
+/latest và /operations riêng cho facility_id=sohoa:<id>. Latest chỉ lấy trạng
+thái 1, giờ hợp lệ không tương lai và có số đo; freshness dựa observed_at. History
+phân trang before_id giảm dần, [start,end) có timezone; mặc định không hiện hàng
+xóa/giờ lỗi. include_inactive=true và include_invalid_time=true (không lọc thời
+gian) cho phép đối soát. Chưa thêm marker/panel hồ-đập trên frontend ở task này.
+
+Đã nhập 39.894 báo cáo SQLite, thêm 719 và cập nhật 2 từ API, tổng 40.613 hàng.
+API có 40.612 hàng tới ngày 14/10/2026; một hàng SQLite ngoài phạm vi nguồn hiện
+tại được giữ lại, không tự đánh dấu xóa. Nguồn có 447 Đã xóa, 2 trạng thái rỗng,
+1 trạng thái 0; giữ 30 hàng giờ lỗi. Dry-run/API source đối chiếu totalrow thành
+công. Report counts trong reports/facility_import.json, không có credentials.
+Kiểm chứng DB/API thật: toàn bộ 39.894 ID SQLite ghép đúng công trình; metadata
+vẫn 19/4 liên kết, Station vẫn 78 và quyền dự báo chỉ Dã Viên. 17 công trình có
+latest hợp lệ; hai cảng liên kết chưa có báo cáo SOHOA trả 404 riêng. Lượt đồng
+bộ gần nhất đọc 102 báo cáo, tất cả unchanged. 32 test tập trung đã qua, gồm
+API, parser, DB rollback, phân trang/cursor và cô lập lỗi worker SOHOA. Report
+đối soát ở reports/facility_verification.json/facility_sync_verification.json.
+
+**Hiển thị công trình trên frontend — 14/10/2026 [ĐÃ DUYỆT]:** kết hợp danh mục
+78 trạm với 15 công trình độc lập (11 thủy điện, 1 hồ chứa, 3 đập), tổng 93 điểm.
+API /facilities mặc định bỏ river linked, frontend vẫn kiểm tra để không tạo
+marker trùng nếu nguồn trả lại liên kết. Giữ namespace sohoa:<id>; adapter metadata
+chỉ dùng chung cách hiển thị với station, không biến thành trạm DCU hoặc cho dự báo.
+Hai danh mục đọc song song, lỗi một nhóm không làm mất nhóm còn lại. Công trình
+có màu/icon/bộ lọc riêng; nước 40 px vẫn nổi bật, công trình 32 px.
+
+Sidebar/hover đọc báo cáo mới nhất: thượng/hạ lưu, lưu lượng đến/ra và số cửa mở
+nếu có. Box chi tiết thêm đủ sáu chỉ tiêu, thông số metadata và thời gian vận hành
+nguyên văn, phân biệt giờ đo và cập nhật. Giữ số gốc, 0/âm/NULL, ghi rõ đơn vị/thang
+đo chưa xác minh; chỉ hiện đơn vị số đo khi backend unit_confirmed=true. Không
+gán m/mm theo tên field hoặc theo cao trình metadata. Không đoán địa chỉ thiếu.
+Danh sách/detail/latest công trình dùng các API facilities; read latest chung
+tối đa 4 request, refresh mỗi 10 phút. Không thêm lịch sử/dự báo công trình trong
+task này: bỏ công trình khỏi metadata lọc HistoryDialog và nút lịch sử từng item.
+Kiểm chứng browser thật đủ 15 marker, 93 điểm, bộ lọc ba loại, box/scroll trên
+desktop/mobile và bảng lịch sử cũ không nhận loại công trình. Build/test đã qua.
+
 ### 5.1. Frontend Components (đề xuất, có thể gộp/tách vừa đủ)
 ```text
 

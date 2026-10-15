@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchStations, fetchStationReadings } from '../api/stations.js';
+import { fetchMapStations, fetchStationReadings } from '../api/stations.js';
 
 /**
  * Tải metadata một lần, làm mới số đo mỗi 10 phút khi tab đang hiển thị.
@@ -39,8 +39,9 @@ export function useStations() {
 
     async function load() {
       try {
-        const loadedStations = await fetchStations(controller.signal);
+        const { stations: loadedStations, warnings } = await fetchMapStations(controller.signal);
         if (controller.signal.aborted) return;
+        setErrorMessage(warnings.join(' '));
         setStations(loadedStations);
         setReadings({});
         setIsLoading(false);

@@ -60,7 +60,48 @@ Worker dùng `DATABASE_URL`, `HYDROLOGY_API_BASE_URL`, `HYDROLOGY_API_EMAIL` và
 `ingestion/README.md` để cấu hình chu kỳ, report và systemd service. Mật khẩu,
 báo cáo runtime và các công cụ nhập lịch sử local không đưa vào code chính.
 
+## API hồ/đập và vận hành
+
+Migration `0008` tạo facilities/facility_operations cho SOHOA. 19 công trình gồm
+15 hồ/đập/thủy điện và 4 điểm sông liên kết đúng trạm DCU đã có; không tăng số
+trạm nước hay thay nguồn dữ liệu dự báo.
+
+- GET `/api/v1/facilities`: mặc định 15 công trình, `include_linked=true` gồm cả
+  4 điểm sông; `station_id=0074647403` lấy nguồn liên kết của Dã Viên.
+- GET `/api/v1/facilities/{facility_id}`: thông số gốc, tọa độ và trạm liên kết.
+- GET `/api/v1/facilities/{facility_id}/latest`: báo cáo hiển thị có giờ đo hợp lệ,
+  số đo raw, đơn vị nullable và freshness theo giờ đo.
+- GET `/api/v1/facilities/{facility_id}/operations`: giới hạn 1–1000, cursor
+  `before_id`, khoảng UTC `[start,end)`; mặc định bỏ hàng xóa/trạng thái không rõ
+  và giờ lỗi. `include_inactive=true&include_invalid_time=true` không lọc thời
+  gian để xem đối soát. ID công trình có dạng `sohoa:1`.
+
+Các trường htl/hhl/qden/qdi/mucnuocsong/luuluongdieutiet giữ số gốc, chưa đủ
+bằng chứng chuẩn hóa đơn vị/thang đo. Không tự chuyển sang mm, không ghi vào
+observations DCU. Xóa mềm được giữ theo ID, không hard-delete. Không lưu/trả
+thông tin cá nhân người nhập hoặc URL tệp đính kèm. Worker SOHOA commit độc lập,
+quét toàn bộ hằng ngày để bắt sửa/xóa cũ, cùng vòng đời backend local. Xem
+[README ingestion](ingestion/README.md) về import và cấu hình token private.
+
 ## API danh sách trạm
+
+Danh mục PostgreSQL đã mở rộng thành 19 trạm nước và 55 trạm mưa (14/10/2026).
+Đã bật thêm 69 trạm, nên API list trả toàn bộ 74 trạm; worker đọc danh sách enabled
+từ DB ở mỗi lượt và đồng bộ tất cả. Quyền dự báo vẫn chỉ có Dã Viên. Migration `0005` và importer metadata riêng
+được mô tả trong [README ingestion](ingestion/README.md). List/detail có thêm
+`station_subtype` và `station_subtype_label` nullable, giữ phân loại nguồn.
+
+Migration `0006` bổ sung bốn trạm gió và bảng quan trắc riêng, ID `wind:<code>`
+không trùng mã trạm mưa. Các trạm gió được đồng bộ (`sync_enabled=true`) và
+đã hiện trên list/bản đồ sau migration `0007` (`enabled=true`). Frontend ghi rõ
+đơn vị/thang đo chưa xác minh và giữ số đo nguồn. Migration này cũng đặt mm cho
+metadata còn trống của các trạm nước mới theo quyết định chủ dự án.
+Sau thay đổi code này cần khởi động lại backend để worker nạp hỗ trợ gió.
+Detail/latest/observations đọc được theo ID; latest/history thêm `measurements`
+cho ws/wd/wsg/wdg, số đo nguyên gốc, unit=null và unit_confirmed=false.
+Giá trị chính `value` là ws (có thể null dù các trường khác có dữ liệu).
+Không diễn giải wd=961 thành độ hoặc tự quy đổi. Xem bằng chứng và phần còn
+chưa xác minh tại [ARCHITECTURE.md](../ARCHITECTURE.md).
 
 ```bash
 curl 'http://127.0.0.1:8000/api/v1/stations'

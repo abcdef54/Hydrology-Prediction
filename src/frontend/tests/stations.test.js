@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { setTimeout } from 'node:timers/promises';
 import test from 'node:test';
-import { fetchStationReadings } from '../src/api/stations.js';
+import { fetchLatestObservation, fetchStationReadings } from '../src/api/stations.js';
 import { formatObservationTime, getLatestDataTime } from '../src/stations.js';
 
 test('header ưu tiên nước và chỉ fallback mưa khi nước chưa có quan trắc', () => {
@@ -66,4 +66,27 @@ test('hủy đợt tải không tiếp tục gọi API cho trạm trong hàng đ
   controller.abort();
   await assert.rejects(loading, { name: 'AbortError' });
   assert.equal(fetchMock.mock.callCount(), 4);
+});
+
+test('gió giữ số raw, 0 và ws thiếu khi các trường khác vẫn có dữ liệu', async (context) => {
+  const measurements = {
+    ws: { value: null, unit: null, unit_confirmed: false },
+    wd: { value: 961, unit: null, unit_confirmed: false },
+    wsg: { value: 0, unit: null, unit_confirmed: false },
+    wdg: { value: 1292, unit: null, unit_confirmed: false },
+  };
+  const payload = {
+    station_id: 'wind:228005', station_type: 'wind', value: null, unit: null,
+    observed_at: '2026-10-14T12:40:00Z', measurements,
+  };
+  context.mock.method(globalThis, 'fetch', async () => Response.json(payload));
+  const reading = await fetchLatestObservation('wind:228005');
+  assert.equal(reading.value, null);
+  assert.equal(reading.measurements.wd.value, 961);
+  assert.equal(reading.measurements.wsg.value, 0);
+  measurements.wd.value = '961';
+  await assert.rejects(fetchLatestObservation('wind:228005'), /không hợp lệ/);
+  measurements.wd.value = 961;
+  delete measurements.wdg;
+  await assert.rejects(fetchLatestObservation('wind:228005'), /không hợp lệ/);
 });

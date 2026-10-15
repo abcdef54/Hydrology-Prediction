@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { fetchLatestObservation, fetchStationDetail } from '../api/stations.js';
-import { getStationAppearance, getStationCoordinates } from '../stations.js';
+import { getStationAppearance, getStationCoordinates, formatObservationTime } from '../stations.js';
+import { fetchFacilityDetail, fetchLatestFacilityObservation } from '../api/facilities.js';
+import FacilitySpecifications from './FacilitySpecifications.jsx';
 import StationIcon from './StationIcon.jsx';
 import StationReading from './StationReading.jsx';
 
@@ -29,8 +31,10 @@ export default function StationDetail({ station, onClose }) {
 
     async function load() {
       const [metadataResult, readingResult] = await Promise.allSettled([
-        fetchStationDetail(station.station_id, controller.signal),
-        fetchLatestObservation(station.station_id, controller.signal),
+        station.facility_id ? fetchFacilityDetail(station.facility_id, controller.signal)
+          : fetchStationDetail(station.station_id, controller.signal),
+        station.facility_id ? fetchLatestFacilityObservation(station.facility_id, controller.signal)
+          : fetchLatestObservation(station.station_id, controller.signal),
       ]);
       if (controller.signal.aborted) return;
       if (metadataResult.status === 'fulfilled') setDetail(metadataResult.value);
@@ -76,9 +80,23 @@ export default function StationDetail({ station, onClose }) {
           </div>
         </dl>
         <div className="station-detail-measurement" aria-live="polite">
-          <h3>{metadata.station_type === 'water_level' ? 'Mực nước mới nhất' : 'Số đo mới nhất'}</h3>
-          <div className="station-reading"><StationReading reading={reading} /></div>
+          <h3>{metadata.facility_id ? 'Vận hành mới nhất' : metadata.station_type === 'water_level' ? 'Mực nước mới nhất' : 'Số đo mới nhất'}</h3>
+          <div className="station-reading"><StationReading reading={reading} detailed={Boolean(metadata.facility_id)} /></div>
         </div>
+        {metadata.facility_id && <>
+          {reading?.status === 'ready' && <dl className="station-detail-location">
+            {Number.isFinite(Date.parse(reading.observation.source_updated_at)) && <div>
+              <dt>Cập nhật báo cáo</dt><dd>{formatObservationTime(reading.observation.source_updated_at)}</dd>
+            </div>}
+            {reading.observation.operation_start_text && <div>
+              <dt>Bắt đầu vận hành · theo nguồn</dt><dd>{reading.observation.operation_start_text}</dd>
+            </div>}
+            {reading.observation.operation_end_text && <div>
+              <dt>Kết thúc vận hành · theo nguồn</dt><dd>{reading.observation.operation_end_text}</dd>
+            </div>}
+          </dl>}
+          <FacilitySpecifications specifications={detail?.specifications} isLoading={isLoading} error={detailError} />
+        </>}
         {metadata.station_type === 'water_level' && (
           <div className="station-detail-alarms">
             <h3>Mức nước báo động</h3>

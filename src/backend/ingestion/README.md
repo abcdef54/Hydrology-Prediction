@@ -1,5 +1,151 @@
 # Pipeline cập nhật dữ liệu quan trắc
 
+## Hồ/đập SOHOA và báo cáo vận hành
+
+Cần migration `0008`. Chạy từ thư mục gốc:
+
+```bash
+.venv/bin/python -m src.backend.ingestion.facility_import
+.venv/bin/python -m src.backend.ingestion.facility_import --apply
+```
+
+Dry-run đọc/validate toàn bộ SQLite + API, chỉ ghi report local. Apply nhập 19
+công trình, liên kết 4 điểm sông với trạm DCU đã có thay vì tạo trạm trùng.
+Các hồ/đập/thủy điện còn lại nằm trong bảng facilities riêng, chưa thêm marker
+trong frontend. Không sửa Station/quan trắc DCU, model/scaler hay dữ liệu training.
+SQLite mở mode=ro/query_only, chỉ INSERT chưa có; API UPSERT theo ID nguồn,
+kể cả trangthai=2 (Đã xóa). Giữ received_at; chạy lại idempotent, không skip bằng
+checkpoint. Không hard-delete hàng mất khỏi API. Token không đưa vào report/log.
+
+Số vận hành giữ nguyên, đơn vị chưa đủ bằng chứng để chuẩn hóa để NULL. Thông
+số metadata giữ nguyên văn có đơn vị; không tự gán ngưỡng nước từ nguồn mới.
+Giữ chuỗi số cửa mở (0/15, văn bản) và khoảng vận hành chưa đầy đủ thời gian.
+Ngày đo + giờ H:M rõ ràng là giờ Việt Nam, chuyển UTC; ngày cập nhật và received_at
+lưu riêng. Giờ sai/thiếu giữ nguyên văn, observed_at=NULL/time_status=invalid,
+không dùng thời điểm cập nhật hoặc tự suy ra phút 00. Không lưu người nhập,
+ghi chú tự do hoặc link tệp đính kèm. Các bản ghi xóa/giờ lỗi không lên latest.
+
+Phân trang nguồn đối chiếu totalrow và ID mọi trang, không giả định trang ngắn
+là hết. Nếu nguồn đổi totalrow/trùng ID trong lượt đọc thì dừng, chạy lại lượt;
+không ghi snapshot API chưa đầy đủ. Đọc mọi chức năng/trạng thái với chucnang=0,
+trangthai=0, khoảng ngày nguồn tính cả hai đầu.
+
+Worker sau restart backend gọi SOHOA riêng sau khi DCU commit: đọc chồng ngày
+đo ít nhất 24 giờ mỗi 11 phút; quét toàn bộ mỗi 24 giờ để bắt xóa/sửa lịch sử cũ.
+last_full_sync_at tiến sau commit, dry-run/lỗi giữ nguyên. Lỗi SOHOA được báo trong
+facilities.status, không làm mất dữ liệu DCU đã lưu; --once trả lỗi khi SOHOA lỗi.
+Đặt sync_enabled=false để tạm dừng một công trình. Chưa có metadata thì không
+gọi nguồn. Vẫn chỉ chạy trong phiên backend local, không bật service nền.
+
+Cấu hình server: SOHOA_API_BASE_URL và SOHOA_API_TOKEN. Local chưa có token env
+thì đọc sohoa_token từ file Postman environment private hiện có trong data/;
+khi deploy cần cung cấp token env. Không copy token vào code/.env.example hay
+gửi frontend. Token hết hạn: cập nhật config private rồi chạy lại/restart.
+Report counts ở reports/facility_import.json, Git-ignore, không có payload gốc.
+Đã nhập 39.894 hàng SQLite, thêm 719/cập nhật 2 từ API, tổng DB 40.613. Nguồn
+API có 40.612 hàng, gồm 447 Đã xóa và 30 giờ lỗi; một hàng SQLite ngoài phạm vi
+API hiện tại được giữ lại. Lượt đồng bộ code mới đọc lại 102 báo cáo gần nhất,
+không tạo trùng/cập nhật không cần thiết. Metadata vẫn 19 công trình, 4 liên kết
+sông; Station vẫn 78 trạm, quyền dự báo chỉ Dã Viên.
+
+## Nhập toàn bộ lịch sử nước/mưa
+
+Module `history_import` đọc SQLite `mode=ro` + `query_only`, không sửa file nguồn,
+training data hay artifacts. Mặc định dry-run; dùng report riêng cho dry-run.
+
+```bash
+# Kiểm tra một trạm bằng report riêng, không ghi DB
+.venv/bin/python -m src.backend.ingestion.history_import \
+  --station 0074647404 --report reports/history_validation.json
+# Nhập SQLite (mặc định); chạy lại cùng report để tiếp phần đã ngắt
+.venv/bin/python -u -m src.backend.ingestion.history_import --apply --stage sqlite
+# Bổ sung phần trước/sau snapshot SQLite từ API, cùng checkpoint
+.venv/bin/python -u -m src.backend.ingestion.history_import --apply --stage api
+# Refresh riêng 24 giờ cuối nếu đối chiếu phát hiện nguồn công bố trễ
+.venv/bin/python -u -m src.backend.ingestion.history_import \
+  --apply --stage api --station 750014 --refresh-api
+```
+
+Chỉ xử lý metadata nước/mưa đã có trong PostgreSQL, kể cả trạm chưa enabled.
+SQLite chỉ INSERT hàng chưa có; mọi giá trị DB hiện có được giữ nguyên. Dữ liệu
+API trực tiếp mới có quyền UPSERT sửa giá trị nguồn; `received_at` không đổi.
+COPY staging + batch 5.000 hàng giới hạn RAM/transaction; mỗi batch dùng cùng
+advisory lock writer với worker rồi invalidate cache sau commit. Worker có thể
+tiếp tục giữa các batch, không bị dừng hoặc đổi cấu hình. Checkpoint chỉ tiến sau
+commit; nguồn SQLite đổi fingerprint thì yêu cầu report mới. Không overwrite
+report đã có bằng dry-run. Không tự bật trạm hoặc thêm quyền dự báo.
+
+API lấy từ earliest tới snapshot nếu nguồn có lịch sử cũ hơn, và từ cuối snapshot
+trừ 24 giờ tới cutoff cố định; trạm mới không có SQLite lấy toàn bộ khoảng nguồn.
+Đọc từng cửa sổ 7 ngày, phân trang ID, làm mới token khi 401. Không khẳng định đã
+kiểm tra mọi sửa đổi cũ trong nội bộ snapshot: chỉ tail 24 giờ được refresh.
+Giữ số 0/âm/NULL, không tổng hợp theo giờ hoặc đổi đơn vị. Mã SQLite chưa có
+metadata (hiện `750031`) chỉ ghi report `unmapped_sqlite_stations`, không tạo trạm
+giả. Gió/hồ không thuộc importer này. Report/checkpoint nằm ở
+`reports/full_history_import.json` (Git-ignore), không có credentials/payload gốc.
+
+
+## Nhập và đồng bộ gió
+
+Cần migration `0006`. Importer riêng tránh trộn gió với depth của nước/mưa:
+
+```bash
+.venv/bin/python -m src.backend.ingestion.wind_import
+.venv/bin/python -m src.backend.ingestion.wind_import --apply
+```
+
+Lệnh mặc định chỉ đối chiếu metadata (không ghi DB); `--apply` nhập bốn trạm,
+đọc SQLite ở chế độ read-only và bổ sung lịch sử API tới cutoff cố định. Giữ raw
+ws/wd/wsg/wdg, 0 và NULL; đơn vị chưa xác minh để NULL. SQLite không ghi đè số đo
+DB, API có thể cập nhật revision nhưng giữ received_at. Dùng writer lock chung;
+chạy lại không tạo trùng, các batch đã commit không mất khi bị ngắt. Report ở
+`reports/wind_import.json` (Git-ignore); chạy lại đọc lại nguồn, không skip bằng
+checkpoint như importer nước/mưa. Không sửa nguồn SQLite/model/training/MLflow.
+
+ID `wind:<code>` tránh trùng mã trạm mưa; source_station_id là UUID, query dùng
+`sid`. Bốn trạm gió có sync_enabled=true nhưng enabled=false để chưa hiện trên
+bản đồ khi nhập mới; bốn trạm hiện có đã được bật hiển thị bởi migration `0007`
+sau khi frontend hỗ trợ. Không cho dự báo. Worker nhận enabled **hoặc** sync_enabled, đọc
+watermark và ghi vào bảng đúng loại. Khởi động lại backend đang chạy để nạp
+code mới; chu kỳ vẫn 11 phút, chỉ hoạt động cùng phiên backend local.
+
+Đã nhập 95.974 hàng SQLite + 8.914 hàng API = 104.888 quan trắc tới 19:45:53 VN
+ngày 14/10/2026. Đơn vị/thang đo DCU chưa được xác nhận; chi tiết nghiên cứu
+WATEC/YOUNG và giả thuyết ADC nằm trong [ARCHITECTURE.md](../../ARCHITECTURE.md).
+Đã so đúng 95.974 bản ghi SQLite (timestamp và bốn giá trị) với PostgreSQL;
+count/mốc cuối khớp API cả bốn trạm sau lượt worker kiểm chứng 78 trạm. Lượt đó
+thêm 6 hàng gió, tổng 104.894. Report `wind_verification.json` và
+`wind_sync_verification.json` chỉ lưu local, không có credentials.
+
+## Bổ sung danh mục trạm nước/mưa
+
+Importer riêng chỉ đọc metadata nguồn và ghi bảng `hydrology.stations`:
+
+```bash
+# Đối chiếu kế hoạch, không ghi database
+.venv/bin/python -m src.backend.ingestion.station_catalog
+# Ghi metadata trong một transaction
+.venv/bin/python -m src.backend.ingestion.station_catalog --apply
+```
+
+Cần migration `0005` trước khi chạy. API nguồn hiện có 19 trạm nước và 55 trạm mưa
+(khảo sát 14/10/2026); phân trang tới trang rỗng, kiểm tra mã/tọa độ/loại và từ chối
+mã trùng. Import lại không UPDATE hàng không đổi. Chỉ cập nhật địa chỉ/tọa độ và
+subtype có dữ liệu nguồn; giữ tên đã cấu hình, đơn vị, tên sông, ngưỡng báo động và
+quyền enabled/prediction_enabled của trạm hiện có. Không tự xóa trạm vắng ở nguồn.
+
+**Importer tạo trạm mới chưa bật (`enabled=false`) và không được dự báo.** Sau
+task nhập lịch sử, ngày 14/10/2026 đã bật 69 trạm mới theo yêu cầu chủ dự án:
+worker hiện đồng bộ 19 trạm nước và 55 trạm mưa. Danh sách enabled được đọc lại
+mỗi lượt nên không cần sửa worker hoặc khởi động lại backend. Chỉ Dã Viên có
+prediction_enabled; thêm metadata sau này vẫn không tự bật trạm. Trạm mưa mới dùng mm
+theo quyết định dự án; đơn vị nước mới cũng dùng mm theo xác nhận 14/10/2026.
+Migration `0007` đã bổ sung mm cho metadata nước còn NULL. Importer
+không ghi observations/forecasts, không đọc hay sửa model/scaler/training data.
+Report chỉ chứa ID/count, lưu ở `reports/station_catalog_import.json`, không có
+credentials hoặc payload gốc. Mật khẩu/token chỉ nằm trong môi trường/RAM.
+
+
 Chạy các lệnh dưới đây từ thư mục gốc dự án. Worker là code chính của backend,
 được quản lý cùng mã nguồn và chạy riêng với API. Import package không tự gọi
 nguồn hoặc kết nối database.
@@ -73,8 +219,8 @@ lấy lại mỗi lượt; nếu GET gặp 401 thì đăng nhập lại một l�
 
 ### Quy tắc đồng bộ
 
-- Đọc các trạm đang enabled có source `hue_dcu` và collection nước/mưa hỗ trợ từ
-  PostgreSQL; hiện có Dã Viên và bốn trạm mưa của model.
+- Đọc trạm enabled hoặc sync_enabled có source `hue_dcu` và collection nước/mưa/gió
+  được hỗ trợ: 19 trạm nước, 55 trạm mưa và 4 trạm gió; chỉ Dã Viên được dự báo.
 - Bắt đầu ở timestamp mới nhất **riêng từng trạm** trừ 24 giờ, đến lúc lượt chạy
   bắt đầu. Lần đầu sau dữ liệu cũ sẽ tự bắt kịp khoảng còn thiếu, không chỉ lấy
   bản ghi cuối. Nếu một trạm chưa có dữ liệu thì chỉ lấy 24 giờ gần nhất; lịch sử

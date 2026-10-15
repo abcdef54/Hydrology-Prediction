@@ -22,13 +22,13 @@ import requests
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import insert
 
-from src.backend.db.models import Observation, Station
+from src.backend.db.models import Observation, Station, WindObservation
 from src.backend.db.session import build_engine
 from src.backend.cache.latest import LatestObservationCache
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
-SOURCE_COLLECTIONS = {"water_level_depth", "rain_water_depth"}
+SOURCE_COLLECTIONS = {"water_level_depth", "rain_water_depth", "iot_wind_speed"}
 VALUE_COLUMNS = ("depth", "source_name", "source_collection", "source_record_id", "quality_status")
 # Match the SQLite importer's lock so neither observation writer runs over the other.
 LOCK_KEYS = (20261012, 2)
@@ -114,6 +114,10 @@ def parse_source_row(record: dict, station: dict, start: datetime, end: datetime
     Raises:
         SourceError: If schema, source identity, time bounds or numeric values fail.
     """
+    if station["observation_collection"] == "iot_wind_speed":
+        from src.backend.ingestion.wind import parse_wind_row
+
+        return parse_wind_row(record, station, start, end)
     try:
         if not {"id", "station_id", "time_point", "depth"}.issubset(record):
             raise ValueError()
@@ -268,9 +272,12 @@ class HueSourceClient:
         cursor = 0
         records = []
         timestamps = set()
+        source_station_field = (
+            "sid" if station["observation_collection"] == "iot_wind_speed" else "station_id"
+        )
         for _ in range(1000):
             params = {
-                "filter[station_id][_in]": station["source_station_id"],
+                f"filter[{source_station_field}][_in]": station["source_station_id"],
                 "filter[time_point][_gte]": start.isoformat(),
                 "filter[time_point][_lte]": end.isoformat(),
                 "filter[id][_gt]": cursor,
@@ -415,7 +422,7 @@ def sync_once(
                     connection.execute(
                         sa.select(Station.__table__)
                         .where(
-                            Station.enabled.is_(True),
+                            sa.or_(Station.enabled.is_(True), Station.sync_enabled.is_(True)),
                             Station.source_name == "hue_dcu",
                             Station.observation_collection.in_(SOURCE_COLLECTIONS),
                         )
@@ -431,6 +438,18 @@ def sync_once(
                         .group_by(Observation.station_id)
                     ).all()
                 )
+                if any(
+                    station["observation_collection"] == "iot_wind_speed" for station in stations
+                ):
+                    watermarks.update(
+                        connection.execute(
+                            sa.select(
+                                WindObservation.station_id, sa.func.max(WindObservation.observed_at)
+                            )
+                            .where(WindObservation.station_id.in_([s["id"] for s in stations]))
+                            .group_by(WindObservation.station_id)
+                        ).all()
+                    )
             if not stations:
                 raise SourceError("No enabled source stations are configured in PostgreSQL.")
             client.login()
@@ -451,15 +470,22 @@ def sync_once(
                             if rows
                             else None
                         ),
-                        "missing": sum(row["depth"] is None for row in rows),
+                        "missing": sum(row["quality_status"] == "missing" for row in rows),
                     }
                 )
             if client.stop.is_set():
                 raise SyncCancelled()
             if not dry_run:
                 with connection.begin():
-                    for rows, summary in zip(downloaded, report["stations"], strict=True):
-                        summary.update(upsert_observations(connection, rows))
+                    for station, rows, summary in zip(
+                        stations, downloaded, report["stations"], strict=True
+                    ):
+                        if station["observation_collection"] == "iot_wind_speed":
+                            from src.backend.ingestion.wind import upsert_wind_observations
+
+                            summary.update(upsert_wind_observations(connection, rows))
+                        else:
+                            summary.update(upsert_observations(connection, rows))
                 # Invalidate only after commit; older readers cannot publish across
                 # this cache version change. Redis remains optional for successful sync.
                 if latest_cache is not None:
@@ -574,6 +600,19 @@ def main() -> int:
             try:
                 report = sync_once(engine, client, arguments.dry_run, latest_cache)
                 last_failed = False
+                if report["status"] in ("committed", "validated"):
+                    from src.backend.ingestion.facility_import import sync_facilities
+
+                    try:
+                        report["facilities"] = sync_facilities(
+                            engine, stop, dry_run=arguments.dry_run
+                        )
+                    except (SourceError, sa.exc.SQLAlchemyError) as error:
+                        last_failed = True
+                        report["facilities"] = {
+                            "status": "failed",
+                            "error_type": type(error).__name__,
+                        }
             except SyncCancelled:
                 break
             except (SourceError, sa.exc.SQLAlchemyError) as error:

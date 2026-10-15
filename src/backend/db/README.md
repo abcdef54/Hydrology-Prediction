@@ -2,9 +2,12 @@
 
 ## Cấu trúc
 
-- `models.py`: ORM model `Station`, `Observation`, `Forecast`, `ForecastPoint`,
+- `models.py`: ORM model `Station`, `Observation`, `WindObservation`, `Forecast`, `ForecastPoint`,
   gồm khóa và ràng buộc dữ liệu.
 - `session.py`: tạo engine và session SQLAlchemy; lấy kết nối từ `DATABASE_URL`.
+- `Facility`, `FacilityOperation`: metadata SOHOA và báo cáo vận hành, khóa ID
+  nguồn để giữ báo cáo trùng thời điểm. Migration `0008` tạo bảng/trigger, FK về
+  Station chỉ cho các điểm sông đã ghép; không đổi observations hoặc forecast.
 - `alembic/versions/`: migration Python tạo bảng và thêm metadata 5 trạm.
 - `tests/test_schema.py`: kiểm tra trực tiếp trên PostgreSQL; rollback dữ liệu thử.
 
@@ -47,6 +50,25 @@ Python. Không tự `stamp head` lên một database SQL cũ: Alembic chưa xác
 đó. Task này chưa triển khai database thường trực cho ứng dụng.
 
 ## Dữ liệu được lưu
+
+Migration `0005` thêm `station_subtype` và `station_subtype_label` nullable để giữ
+phân loại nguồn như trạm đo mực nước, tháp báo lũ/tháp báo ngập. API list/detail
+trả hai trường này. Migration `0006` mở rộng station_type thêm `wind`, thêm
+`sync_enabled` (đồng bộ độc lập với hiển thị) và `measurement_units` JSONB.
+`WindObservation` giữ bốn giá trị raw ws/wd/wsg/wdg nullable, kiểm tra hữu hạn,
+khóa (station_id, observed_at), unique source record và FK đúng nguồn/collection.
+Không chuyển đổi số đo gió khi migrate/import. Đơn vị NULL nghĩa là chưa xác minh.
+Migration `0007` chỉ cập nhật metadata: bật hiển thị bốn trạm gió và đặt mm cho
+đơn vị còn trống của các trạm nước Huế theo xác nhận chủ dự án. Không đổi số đo,
+ngưỡng báo động hoặc quyền dự báo; downgrade giữ quyết định metadata này.
+Importer `src.backend.ingestion.station_catalog` mở rộng metadata từ API; trạm
+mới mặc định chưa bật để không tự mở rộng worker. Xem README ingestion.
+
+Importer `src.backend.ingestion.history_import` đã nhập lịch sử cho 74 trạm:
+3.464.307 quan trắc tới 16:26:55 giờ Việt Nam ngày 14/10/2026. SQLite chỉ thêm
+hàng chưa có; API bổ sung phần thiếu. Có checkpoint từng batch, không bật trạm
+mới hoặc chạy dự báo. Mã mưa 750031 chưa có metadata được giữ ở nguồn SQLite,
+chưa đưa vào PostgreSQL. Chi tiết vận hành nằm trong README ingestion.
 
 | Model | Nội dung | Khóa chính |
 |---|---|---|
