@@ -1,4 +1,4 @@
-"""Station/day paging, exact clock-hour semantics and safe API failures."""
+"""Station/day paging, hourly mean water semantics and safe API failures."""
 
 from datetime import datetime, timedelta, timezone
 from unittest import TestCase, main
@@ -45,7 +45,20 @@ class HourlyHistoryTests(TestCase):
         station_result.mappings.return_value.all.return_value = self.stations
         record_result = MagicMock()
         record_result.mappings.return_value.all.return_value = self.records
-        self.connection.execute.side_effect = [station_result, record_result]
+        means = {}
+        for record in self.records:
+            at = record["observed_at"]
+            hour = at.replace(minute=0, second=0, microsecond=0)
+            if at != hour:
+                hour += timedelta(hours=1)
+            if record["depth"] is not None:
+                means.setdefault((record["station_id"], hour), []).append(record["depth"])
+        mean_result = MagicMock()
+        mean_result.mappings.return_value.all.return_value = [
+            {"station_id": sid, "at": at, "depth": sum(values) if sid == "750062" else sum(values) / len(values)}
+            for (sid, at), values in means.items()
+        ]
+        self.connection.execute.side_effect = [station_result, mean_result, record_result]
         return self.client.get(self.url, params=parameters or {})
 
     def record(self, at, value, station_id="0074647403", quality_status="observed"):
@@ -77,20 +90,24 @@ class HourlyHistoryTests(TestCase):
             water["cells"][0],
             {"hour": 0, "at": "2026-10-13T17:00:00Z", "value": -25.5, "status": "observed"},
         )
-        self.assertEqual(water["cells"][1]["value"], 0)
+        self.assertEqual(water["cells"][1]["value"], 499.5)
         self.assertEqual(water["cells"][2]["status"], "future")
         self.assertIsNone(water["cells"][2]["value"])
         self.assertEqual(rain["cells"][0]["status"], "missing")
         self.assertIsNone(rain["cells"][0]["value"])
         self.assertEqual(rain["unit"], "mm")
         self.assertEqual(self.application.state.prediction_services, {})
-        # Only the 2 elapsed hours of 2 stations were requested, using exact keys.
+        mean_query = str(self.connection.execute.call_args_list[1].args[0])
+        self.assertIn("avg(", mean_query)
+        self.assertIn("observed_at >", mean_query)
+        self.assertIn("observed_at <=", mean_query)
+        # Raw rain/wind queries retain exact keys.
         observation_query = self.connection.execute.call_args_list[-1].args[0]
         keys = list(observation_query.compile().params.values())[0]
         self.assertEqual(len(keys), 4)
         self.assertTrue(all(at.minute == at.second == at.microsecond == 0 for _, at in keys))
 
-    def test_single_date_and_explicit_missing_do_not_use_a_neighbouring_record(self):
+    def test_mean_uses_non_clock_readings_without_filling_empty_bins(self):
         midnight = datetime(2026, 10, 12, 17, tzinfo=timezone.utc)
         self.records = [
             self.record(midnight, None, quality_status="missing"),
@@ -101,8 +118,30 @@ class HourlyHistoryTests(TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         payload = response.json()
         self.assertEqual(payload["end_date"], "2026-10-13")
-        self.assertTrue(all(cell["status"] == "missing" for cell in payload["rows"][0]["cells"]))
+        cells = payload["rows"][0]["cells"]
+        self.assertEqual(cells[0]["status"], "missing")
+        self.assertEqual(cells[1]["value"], 123)
+        self.assertEqual(cells[2]["value"], 456)
+        self.assertTrue(all(cell["status"] == "missing" for cell in cells[3:]))
         self.assertEqual(payload["rows"][0]["cells"][-1]["at"], "2026-10-13T16:00:00Z")
+
+    def test_rain_sums_preceding_hour_preserves_zero_and_missing(self):
+        midnight = datetime(2026, 10, 12, 17, tzinfo=timezone.utc)
+        self.records = [
+            self.record(midnight - timedelta(hours=1), 99, "750062"),
+            self.record(midnight - timedelta(minutes=50), 0.2, "750062"),
+            self.record(midnight, 0.3, "750062"),
+            self.record(midnight + timedelta(minutes=10), 0, "750062"),
+        ]
+        response = self.get_history({"start_date": "2026-10-13"})
+        self.assertEqual(response.status_code, 200, response.text)
+        cells = response.json()["rows"][1]["cells"]
+        self.assertAlmostEqual(cells[0]["value"], 0.5)
+        self.assertEqual(cells[1]["value"], 0)
+        self.assertEqual(cells[1]["status"], "observed")
+        self.assertEqual(cells[2]["status"], "missing")
+        self.assertIsNone(cells[2]["value"])
+        self.assertIn("sum(", str(self.connection.execute.call_args_list[1].args[0]))
 
     def test_cursor_pages_all_station_days_once_including_empty_days(self):
         parameters = {"start_date": "2026-10-13", "end_date": "2026-10-14", "limit": 1}

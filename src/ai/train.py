@@ -22,6 +22,7 @@ import torch
 from torch import nn
 from torch import optim
 
+from src.ai.losses import HorizonWeightedMSE
 from src.ai.metrics import evaluate_all
 from src.ai.models import (
     LightGBM, LightGBMSettings, LSTM, MeanEmbeddingForecastLSTMWithAdapter,
@@ -76,7 +77,14 @@ parser.add_argument("--lstm-num-layers", type=int, default=2)
 parser.add_argument("--lstm-drop-out", type=float, default=0.2)
 parser.add_argument("--lstm-input-dropout", type=float, default=0.0)
 parser.add_argument("--lstm-head-dropout", type=float, default=0.0)
-parser.add_argument("--lstm-correction-penalty", type=float, default=0.0)
+parser.add_argument(
+    "--lstm-correction-penalty", type=float, default=0.0,
+    help="Residual squared penalty; negative values reward corrections (bounded MSE only)",
+)
+parser.add_argument(
+    "--lstm-horizon-weights", type=float, nargs="+",
+    help="Positive MSE weights in dataset target-column order; default equal weights",
+)
 parser.add_argument(
     "--feature-set", "--lstm-feature-set", dest="feature_set",
     type=normalize_feature_set, choices=FEATURE_SETS, default="all",
@@ -135,8 +143,13 @@ def validate_args(args: argparse.Namespace) -> None:
             parser.error("Both training stages require at least one epoch")
         if not (0 < args.mef_backbone_lr < float("inf") and 0 < args.mef_adapter_lr < float("inf")):
             parser.error("MEF fine-tuning learning rates must be finite and positive")
-    if args.lstm_correction_penalty < 0:
-        parser.error("--lstm-correction-penalty must be non-negative")
+    if args.lstm_horizon_weights is not None:
+        if args.train_method in {"xgb", "lgbm"}:
+            parser.error("--lstm-horizon-weights requires a sequence model")
+        if not all(math.isfinite(w) and w > 0 for w in args.lstm_horizon_weights):
+            parser.error("--lstm-horizon-weights must be finite and positive")
+    if not math.isfinite(args.lstm_correction_penalty) or args.lstm_correction_penalty <= -1:
+        parser.error("--lstm-correction-penalty must be finite and > -1; weighted MSE may require a stricter bound")
     if args.lstm_correction_penalty and args.train_method != "residual_lstm":
         parser.error("--lstm-correction-penalty requires --train-method residual_lstm")
     if args.train_method == "residual_lstm":
@@ -323,6 +336,11 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
     )
     input_size = train_loader.dataset.num_features
     output_size = train_loader.dataset.num_targets
+    if args.lstm_horizon_weights is not None and len(args.lstm_horizon_weights) != output_size:
+        raise ValueError(
+            f"Expected {output_size} horizon weights for targets "
+            f"{train_loader.dataset.target_cols}; got {len(args.lstm_horizon_weights)}"
+        )
 
     if args.train_method == "lstm_adapter":
         model = MeanEmbeddingForecastLSTMWithAdapter(
@@ -373,7 +391,10 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         train_dataloader=train_loader,
         eval_dataloader=eval_loader,
         test_dataloader=test_loader,
-        loss_func=nn.MSELoss(),
+        loss_func=(
+            HorizonWeightedMSE(args.lstm_horizon_weights)
+            if args.lstm_horizon_weights is not None else nn.MSELoss()
+        ),
         optimizer=optimizer,
         scheduler=scheduler,
         early_stopping=args.early_stopping,
@@ -431,6 +452,9 @@ def main() -> None:
                     "learning_rate": trainer.optimizer.defaults["lr"],
                     "weight_decay": trainer.optimizer.defaults["weight_decay"],
                     "device": str(trainer.device),
+                    "loss_function": type(trainer.loss_func).__name__,
+                    "horizon_weights": args.lstm_horizon_weights or [1.0] * dataset.num_targets,
+                    "target_columns": dataset.target_cols,
                     **trainer.model_settings()
                 }
             )

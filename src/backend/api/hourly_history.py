@@ -1,4 +1,4 @@
-"""Read exact clock-hour observations for a paged station/day history table."""
+"""Read hourly mean water levels, summed rain readings and clock-hour wind."""
 
 from datetime import date, datetime, time, timedelta, timezone
 from typing import Annotated
@@ -76,7 +76,7 @@ def clock_hours(day: date) -> list[datetime]:
 def get_hourly_history(
     request: Request, query: Annotated[HourlyHistoryQuery, Query()]
 ) -> HourlyHistoryResponse:
-    """Read a station/day table using exact clock-hour lookups, without aggregation.
+    """Read hourly mean water levels; rain sums readings in the hour; wind retains clock-hour readings.
 
     Args:
         request: Request providing the database engine; this endpoint only reads.
@@ -85,10 +85,10 @@ def get_hourly_history(
 
     Returns:
         Rows sorted by descending date, ascending station ID; each has 24 cells.
-        A missing raw reading or explicit missing value is null/missing. Future
+        Water cells average valid readings in (t - 1h, t]; empty bins are missing. Future
         hours are null/future. Zero and negative water levels remain unchanged.
         next_cursor is exclusive and must be reused with the same date/filter set.
-        Values retain station units; rain cells are not hourly accumulated rainfall.
+        Values retain station units; rain cells sum source readings in (t - 1h, t].
 
     Raises:
         HTTPException: 422 for future dates or a cursor outside the date range.
@@ -128,11 +128,45 @@ def get_hourly_history(
         stations = connection.execute(statement.order_by(Station.id.collate("C"))).mappings().all()
         candidates = select_station_days(stations, start, end, query)
         page = candidates[: query.limit]
-        # Composite primary-key lookups fetch only the page's scheduled instants.
-        # 10/20/30/40/50-minute records are never fetched or rounded to a clock hour.
         keys = [
             (station["id"], at) for day, station in page for at in clock_hours(day) if at <= now
         ]
+        aggregate_ids = {station["id"] for _, station in page if station["station_type"] in {"water_level", "rainfall"}}
+        aggregate_keys = [(sid, at) for sid, at in keys if sid in aggregate_ids]
+        hourly_readings = {}
+        if aggregate_keys:
+            # Range joins use the station/time index and include the preceding day
+            # for the midnight bin, matching prediction resampling exactly.
+            bins = sa.values(
+                sa.column("station_id", sa.Text),
+                sa.column("at", sa.DateTime(timezone=True)),
+                name="bins",
+            ).data(aggregate_keys).alias("bins")
+            aggregates = connection.execute(
+                sa.select(
+                    bins.c.station_id,
+                    bins.c.at,
+                    sa.case(
+                        (
+                            bins.c.station_id.in_([
+                                station["id"] for _, station in page
+                                if station["station_type"] == "rainfall"
+                            ]),
+                            sa.func.sum(Observation.depth),
+                        ),
+                        else_=sa.func.avg(Observation.depth),
+                    ).label("depth"),
+                )
+                .select_from(bins.join(Observation, sa.and_(
+                    Observation.station_id == bins.c.station_id,
+                    Observation.observed_at > bins.c.at - timedelta(hours=1),
+                    Observation.observed_at <= bins.c.at,
+                )))
+                .group_by(bins.c.station_id, bins.c.at)
+            ).mappings().all()
+            hourly_readings = {
+                (row["station_id"], row["at"]): row["depth"] for row in aggregates
+            }
         observations = []
         if keys:
             observations = (
@@ -177,6 +211,9 @@ def get_hourly_history(
             status = "missing"
             if at > now:
                 status = "future"
+            elif station["station_type"] in {"water_level", "rainfall"}:
+                value = hourly_readings.get((station["id"], at))
+                status = "observed" if value is not None else "missing"
             elif (
                 observation
                 and observation["quality_status"] == "observed"

@@ -16,7 +16,7 @@ export default function HourlyHistoryTable({ data, eligibleStations = [], select
   return (
     <div className="history-table-scroll" tabIndex={0} role="region" aria-label="Bảng lịch sử, cuộn ngang để xem các giờ">
       <table className="history-table">
-        <caption className="sr-only">Số đo đúng mốc giờ Việt Nam. Thiếu dữ liệu hiển thị dấu gạch ngang.</caption>
+        <caption className="sr-only">Mực nước trung bình giờ kết thúc tại mốc giờ Việt Nam; mưa là tổng các số đo trong giờ; gió là số đo đúng giờ. Thiếu dữ liệu hiển thị dấu gạch ngang.</caption>
         <thead>
           <tr>
             <th scope="col" className="history-date-column">Ngày</th>
@@ -44,8 +44,8 @@ export default function HourlyHistoryTable({ data, eligibleStations = [], select
                   && selection.referenceTime === cell.at;
                 const content = cell.status === 'observed' ? valueFormatter.format(cell.value) : '—';
                 const description = cell.status === 'future' ? 'Chưa tới giờ'
-                  : cell.status === 'missing' ? 'Không có số đo đúng mốc giờ'
-                    : `Đo lúc ${formatObservationTime(cell.at)}`;
+                  : cell.status === 'missing' ? (row.station_type !== 'wind' ? 'Không có dữ liệu trong giờ kết thúc tại mốc này' : 'Không có số đo đúng mốc giờ')
+                    : row.station_type === 'water_level' ? `Mực nước trung bình trong 1 giờ kết thúc lúc ${formatObservationTime(cell.at)}` : row.station_type === 'rainfall' ? `Tổng các số đo mưa trong 1 giờ kết thúc lúc ${formatObservationTime(cell.at)}` : `Đo lúc ${formatObservationTime(cell.at)}`;
                 return (
                   <td key={hour} className={`history-cell history-cell--${cell.status}`} title={description}>
                     {canSelect ? <button type="button" className="history-input-cell"

@@ -15,6 +15,7 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from src.ai.losses import HorizonWeightedMSE, validate_correction_penalty
 from src.ai.metrics import evaluate_all
 from src.ai.models import LSTM, MeanEmbeddingForecastLSTMWithAdapter, ResidualLSTM
 
@@ -326,8 +327,7 @@ class ResidualLSTMTrainer(LSTMTrainer):
     def __init__(self, model: ResidualLSTM, correction_penalty: float = 0.0, **kwargs) -> None:
         if not isinstance(model, ResidualLSTM):
             raise TypeError("ResidualLSTMTrainer requires a ResidualLSTM model")
-        if correction_penalty < 0:
-            raise ValueError("Correction penalty must be non-negative")
+        validate_correction_penalty(correction_penalty, kwargs["loss_func"], model.output_size)
         super().__init__(model=model, **kwargs)
         self.correction_penalty = correction_penalty
 
@@ -353,10 +353,14 @@ class ResidualLSTMTrainer(LSTMTrainer):
         if row_count == 0:
             raise ValueError("Validation dataset has no eligible persistence samples")
         baseline_mse = squared_error / row_count
-        print(f"Validation persistence MSE: {baseline_mse.mean():.4f}")
+        baseline_loss = (
+            self.loss_func.reduce_per_horizon(baseline_mse).item()
+            if isinstance(self.loss_func, HorizonWeightedMSE) else baseline_mse.mean().item()
+        )
+        print(f"Validation persistence loss ({type(self.loss_func).__name__}): {baseline_loss:.4f}")
         for name, mse in zip(self.eval_dataloader.dataset.target_cols, baseline_mse):
             print(f"  {name}: {mse:.4f}")
-        self.best_val_loss = baseline_mse.mean().item()
+        self.best_val_loss = baseline_loss
         self.best_checkpoint_epoch = 0
         torch.save(self.model.state_dict(), self.checkpoint_path)
         print(f"Saved initial persistence checkpoint to {self.checkpoint_path}")

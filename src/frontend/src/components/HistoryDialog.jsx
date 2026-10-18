@@ -107,7 +107,7 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
           <p className="station-sidebar-eyebrow">DỮ LIỆU QUAN TRẮC</p>
           <h2 id="history-title">{showResult ? 'Dự báo mực nước' : 'Lịch sử quan trắc'}</h2>
           <p className="history-description">{showResult ? 'Dự báo và thực tế · Giờ Việt Nam · Đơn vị mm'
-            : 'Số đo đúng mốc giờ · Giờ Việt Nam · “—”: thiếu · Ô nhạt: chưa tới giờ'}</p>
+            : 'Mực nước trung bình giờ · Mưa cộng theo giờ · Giờ Việt Nam · “—”: thiếu · Ô nhạt: chưa tới giờ'}</p>
         </div>
         <button type="button" className="station-detail-close" onClick={onClose} aria-label="Đóng bảng lịch sử" autoFocus>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
@@ -168,7 +168,7 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
 
       <footer className="history-footer" hidden={showResult}>
         <div><strong>Trang {cursors.length}</strong>{data && ` · ${data.rows.length} dòng trạm/ngày`}</div>
-        <p>Số đo mưa tại mốc giờ, không phải tổng mưa trong giờ.</p>
+        <p>Mực nước: trung bình trong (mốc giờ − 1 giờ, mốc giờ], gồm cả số đo tại mốc giờ. Mưa: tổng các số đo trong cùng khoảng giờ; chưa xác định khoảng tích lũy của từng số đo nguồn. Gió: số đo tại mốc giờ.</p>
         <nav aria-label="Phân trang lịch sử">
           <button type="button" disabled={isLoading || cursors.length === 1}
             onClick={() => setCursors((previous) => previous.slice(0, -1))}>Trang trước</button>

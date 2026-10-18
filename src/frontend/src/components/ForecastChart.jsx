@@ -73,7 +73,7 @@ export default function ForecastChart({ prediction, actuals = [] }) {
       <ChartTooltip control={tooltip} svgRef={svgRef} getX={x} />
       <figcaption><span className="forecast-mobile-hint">Cuộn ngang biểu đồ để xem đủ các mốc. </span>
         Giờ Việt Nam · Các đoạn nối giữa mốc dự báo chỉ thể hiện xu hướng, không phải dự báo bổ sung.
-        Thực tế là trung bình từng giờ, khác số đo đúng mốc giờ trong bảng lịch sử.</figcaption>
+        Thực tế là trung bình từng giờ, cùng cách tính mực nước trong bảng lịch sử.</figcaption>
     </figure>
   );
 }

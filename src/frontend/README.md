@@ -111,10 +111,10 @@ Marker nhấc nhẹ 4 px và có quầng sáng khi hover/focus; reduced motion b
 - Lọc theo loại, tên trạm và một ngày hoặc khoảng ngày tính cả hai đầu. Chọn tên
   gửi mã trạm chính xác, giữ số 0 đầu. Nhấn “Áp dụng” để tải; bộ lọc này độc lập
   với bộ lọc bản đồ. Không tự chuyển về ngày cuối có dữ liệu.
-- Đọc `GET /api/v1/observations/hourly`, mỗi dòng là một trạm/ngày, số đo đúng
-  00:00, 01:00… Thiếu hiện “—”; giữ số 0/âm và đơn vị metadata (hiện tại mm).
+- Đọc `GET /api/v1/observations/hourly`, mỗi dòng là một trạm/ngày, mực nước trung bình trong (t−1h, t] tại các mốc
+  00:00, 01:00… Mưa cộng các số đo trong cùng khoảng giờ; gió giữ số đo đúng mốc giờ. Thiếu hiện “—”; giữ số 0/âm và đơn vị metadata (hiện tại mm).
   Ngày hôm nay đơn lẻ chỉ hiện đến giờ tại `as_of`; ngày cũ/khoảng ngày có 24 cột,
-  giờ chưa tới có nền nhạt. Số đo mưa không được coi là tổng mưa trong giờ.
+  giờ chưa tới có nền nhạt. Mưa là tổng các bản ghi có giá trị trong giờ; khoảng tích lũy của số đo nguồn chưa được xác minh.
 - Dòng trạm gió trong bảng giờ hiển thị ws, ghi rõ “Tốc độ gió · Số đo gốc”;
   chưa có biểu đồ hướng gió hoặc dự báo gió.
 - Mỗi trang tối đa 50 dòng, nút trước/sau dùng cursor; áp dụng lọc trở về trang 1.
@@ -166,7 +166,7 @@ Marker nhấc nhẹ 4 px và có quầng sáng khi hover/focus; reduced motion b
   Biểu đồ SVG có điểm/tooltip, hỗ trợ focus và cuộn ngang trên màn hình nhỏ.
 - Với input gốc, đọc `/api/v1/forecasts/{forecast_id}` để lấy thực tế của đúng bản dự báo,
   xác thực trạm/model/pipeline/anchor/horizon. Thực tế là trung bình từng giờ
-  sau anchor, tối đa 24 mốc với model hiện tại, khác số đo đúng giờ của bảng lịch sử.
+  sau anchor, tối đa 24 mốc với model hiện tại, cùng cách tính mực nước trong bảng lịch sử.
   Null không nối đường hoặc thay bằng 0; chưa có thực tế chỉ vẽ dự báo.
 - Bảng so sánh ghép theo timestamp chính xác tại các horizon, hiển thị dự báo,
   thực tế, sai lệch (dự báo − thực tế), sai số tuyệt đối và trung bình sai số tuyệt

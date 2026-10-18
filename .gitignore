@@ -3,10 +3,8 @@ data/
 __pycache__/
 
 mlartifacts/
-*.docx
 *.db
 .env
-.agents/
 
 # Archived GIS data is retained locally, outside version control.
 archive/
@@ -18,3 +16,10 @@ scripts/local/
 reports/
 
 pretrained/
+
+.*
+
+# Local PostgreSQL dataset snapshots and experimental checkpoints.
+# Existing tracked datasets and serving artifacts remain versioned.
+/train_data/1h_top4_pg_*/
+/model/1h_top4_pg_*/
