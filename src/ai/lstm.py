@@ -66,6 +66,10 @@ class ResidualLSTM(LSTM):
         level_feature_index: int,
         persistence_scale: list[float],
         persistence_offset: list[float],
+        forecast_history_policy: str = 'all_timesteps',
+        weather_feature_indices: list[int] | None = None,
+        weather_mask_indices: list[int] | None = None,
+        weather_mask_values: list[float] | None = None,
         **kwargs,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -76,6 +80,26 @@ class ResidualLSTM(LSTM):
         self.level_feature_index = level_feature_index
         self.register_buffer("persistence_scale", torch.tensor(persistence_scale, dtype=torch.float32))
         self.register_buffer("persistence_offset", torch.tensor(persistence_offset, dtype=torch.float32))
+        if forecast_history_policy not in ('all_timesteps', 'anchor_only'):
+            raise ValueError('Unknown forecast history policy')
+        self.forecast_history_policy = forecast_history_policy
+        weather = list(weather_feature_indices or [])
+        masks = list(weather_mask_indices or [])
+        values = list(weather_mask_values or [])
+        if (len(set(weather)) != len(weather) or len(set(masks)) != len(masks)
+                or any(i < 0 or i >= self.input_size for i in weather + masks)
+                or not set(masks).issubset(weather) or len(masks) != len(values)
+                or self.level_feature_index in weather):
+            raise ValueError('Invalid weather policy feature mapping')
+        if forecast_history_policy == 'anchor_only' and (not weather or not masks):
+            raise ValueError('Anchor-only policy requires weather features and explicit masks')
+        if not torch.isfinite(torch.tensor(values)).all():
+            raise ValueError('Weather mask values must be finite')
+        # Derived from saved feature order/scaler; no learned weights or legacy
+        # state_dict keys are added. Reload requires the preprocessing policy.
+        self.register_buffer('_weather_indices', torch.tensor(weather, dtype=torch.long), persistent=False)
+        self.register_buffer('_weather_mask_indices', torch.tensor(masks, dtype=torch.long), persistent=False)
+        self.register_buffer('_weather_mask_values', torch.tensor(values, dtype=torch.float32), persistent=False)
         # The untrained model is exactly the persistence forecast.
         nn.init.zeros_(self.linear.weight)
         nn.init.zeros_(self.linear.bias)
@@ -87,6 +111,21 @@ class ResidualLSTM(LSTM):
         return current_level * self.persistence_scale + self.persistence_offset
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.prepare_inputs(x)
         return self.persistence(x) + super().forward(x)
+
+    def prepare_inputs(self, x: torch.Tensor) -> torch.Tensor:
+        """Withhold past weather per sequence, preserving current weather and observations."""
+        if getattr(self, 'forecast_history_policy', 'all_timesteps') == 'all_timesteps':
+            return x
+        if x.dim() not in (2, 3):
+            raise ValueError('Expected [time,features] or [batch,time,features]')
+        two_dimensional = x.dim() == 2
+        result = (x.unsqueeze(0) if two_dimensional else x).clone()
+        # Zero here is a neutral standardized placeholder, never raw zero rain:
+        # the existing forecast masks explicitly mark these inputs unavailable.
+        result[:, :-1, self._weather_indices] = 0.
+        result[:, :-1, self._weather_mask_indices] = self._weather_mask_values.to(result)
+        return result.squeeze(0) if two_dimensional else result
 
 

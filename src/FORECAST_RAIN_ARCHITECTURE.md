@@ -1,12 +1,16 @@
 # Bổ sung dự báo mưa vào mô hình dự báo mực nước
 
-**Architecture & Implementation Plan — v0.1**
+**Architecture & Implementation Plan — v0.2**
 **Ngày lập:** 18/10/2026
-**Trạng thái:** Kế hoạch triển khai; chưa tích hợp nguồn dự báo mưa vào training hoặc backend.
+**Cập nhật:** 19/10/2026
+**Trạng thái:** Đã thu thập/lưu archive, tạo dataset forecast mask/-1 và train các
+model nghiên cứu có feature thời tiết. Chưa thay model production trong app.
 
 **Thứ tự thí nghiệm đã thống nhất, cập nhật 18/10/2026:** chọn số trạm mưa đầu
 vào trước → thử feature dự báo thời tiết → cuối cùng so sánh 5 và 24 output.
 Tài liệu bao gồm các bước đối chứng này để không trộn tác động của nhiều thay đổi.
+Sau khi có model B, ưu tiên ba việc ở mục 1.6: loss hướng/biên độ → fine-tune
+tail penalty → kiểm tra và ablation lịch sử dự báo mưa. Thử 24 output vẫn ở cuối.
 
 Tài liệu mở rộng [ARCHITECTURE.md](ARCHITECTURE.md), tập trung vào dự báo mưa
 ECMWF qua Open-Meteo cho trạm Dã Viên trước, sau đó có thể cấu hình cho trạm khác.
@@ -46,6 +50,8 @@ Tín hiệu mưa lớn không tự xác nhận có bão hoặc lũ tại Dã Vi�
 - **Bước 1:** thử 4 trạm mưa hiện tại so với 1 và 2 trạm có correlation cao nhất;
   chưa thêm feature thời tiết mới.
 - **Bước 2:** cố định cấu hình trạm đã chọn, thử thêm lượng mưa dự báo mới nhất đã có tại thời điểm dự báo nước.
+- **Trước bước 3:** thực hiện ba thử nghiệm cải thiện model B theo mục 1.6,
+  bắt đầu bằng custom loss hướng/biên độ; chưa đổi số output đồng thời.
 - **Bước 3, cuối cùng:** cố định nguồn/feature, thử 24 output cho +1 đến +24 giờ
   so với 5 output hiện tại.
 - Tách thử nghiệm feature khỏi thay đổi số output, loss, correction penalty,
@@ -96,6 +102,42 @@ tiên cấu hình đơn giản khi đáp ứng tiêu chí đã chốt; không tu
 cặp trạm bổ sung thông tin thay vì top-2 correlation, đó là nhánh bổ sung chọn
 trên train/val, có tên riêng. Chưa thay nguồn phía nam hoặc tăng số trạm trong
 thí nghiệm đầu tiên.
+
+#### Kết quả khảo sát correlation ngày 18/10/2026
+
+Dataset đang dùng có tên `train_data/da_vien_1h_2026-10-15`; tên dài trước đây
+được giữ làm symlink local để các MLflow run/lệnh cũ vẫn đọc được cùng dữ liệu.
+Đổi tên không cập nhật snapshot sau 15/10 và không thay đổi CSV, split hoặc
+manifest gốc. `dataset_identity.json` lưu tên cũ và checksum trước khi đổi tên.
+
+Đã tính Pearson giữa mưa 6 giờ quá khứ và thay đổi nước 12 giờ tiếp theo;
+trên cùng các mốc hợp lệ của cả bốn trạm: 6.161 cặp ở train, 7.988 cặp toàn bộ.
+
+| Trạm | r train | Hạng train | r toàn bộ | Hạng toàn bộ |
+|---|---:|---:|---:|---:|
+| Nhâm | 0,405102 | 1 | 0,277667 | 2 |
+| Hồng Thái | 0,394088 | 2 | 0,297903 | 1 |
+| Thị trấn A Lưới | 0,374857 | 3 | 0,265868 | 3 |
+| Hồ A Lá | 0,370765 | 4 | 0,260278 | 4 |
+
+Đề xuất ablation theo train: S1 = Nhâm; S2 = Nhâm + Hồng Thái; S4 = cả bốn.
+Toàn bộ dữ liệu làm đổi thứ hạng hai trạm đầu nhưng không đổi cặp top 2.
+Đây là cơ sở đề xuất thí nghiệm, chưa phải bằng chứng dùng một/hai trạm đủ.
+Cặp mưa 6h/nước 12h được kế thừa từ khảo sát toàn thời gian trước đây, nên
+chưa thể coi toàn bộ quá trình chọn tiêu chí là hoàn toàn độc lập với test.
+
+Script: `research/rank_rain_stations.py`. Có bảng đầy đủ 25 cặp cửa sổ/horizon,
+correlation riêng từng trạm theo độ phủ và ma trận tương quan giữa các trạm.
+[Báo cáo local](../reports/rain_station_correlation_2026-10-18/phan_tich.md).
+RS-01 đã có kết quả khảo sát này. Code chọn/loại feature từng trạm đã có qua
+`--num-rain-station 1–4`, tự xếp hạng correlation chỉ trên train và lấy top N;
+mỗi nhóm checkpoint được lưu riêng. Xem
+[lệnh train S1/S2/S4](../research/RAIN_STATION_ABLATION.md).
+**Cập nhật 19/10:** đã chạy các ablation số trạm; cấu hình bước 1 được chọn là
+hai trạm, correction penalty 0.1, horizon weights `1 1 1.5 1.5 2`. Bản lưu đúng
+model có trong báo cáo run `83e9c3fa81ea432d9d960965e72d18e1`. Kết quả strict
+test: 55 lỗi >200 mm, RMSE gộp 78.28 mm. Phân tích toàn bộ có tại
+[báo cáo bước 1](../reports/step1_full_dataset_20261019/REPORT.md).
 
 ### 1.4. Bước 2 — bổ sung feature dự báo thời tiết
 
@@ -179,6 +221,243 @@ kết luận có cải thiện +24 giờ và có đáng đổi model serving hay
 
 Thử 24 output không bảo đảm cải thiện +24 giờ. Mục tiêu là đo hiệu quả của
 giám sát thêm các giờ trung gian, tách khỏi các thay đổi nguồn mưa trước đó.
+
+#### O5/O24 — code và dataset đã chuẩn bị ngày 19/10
+
+Đã tạo `train_data/da_vien_1h_2026-10-15_forecast_mask_o24` từ snapshot B:
+26 feature giữ nguyên, 24 nhãn quan trắc giờ thật, các nhãn năm mốc cũ khớp
+nguồn. Cả O5 và O24 có 6095/985/592 sequence; không mất thêm mẫu, giữ purge
+24 giờ và NaN cuối snapshot. Builder kiểm tra hai quần thể nhãn đầy đủ khớp
+nhau trước khi xuất; snapshot khác có lỗ nhãn gây lệch sẽ dừng rõ.
+
+Entry point nghiên cứu riêng: `research.output_horizon_experiment --outputs
+5|24`, train từ đầu, không nạp trọng số B. Scaler chỉ fit trên train. Các
+thống kê scaler feature và năm target chung đã đối chiếu khớp B hiện tại.
+Checkpoint mặc định dùng N200/hòa RMSE trên năm horizon chung cho cả hai nhóm.
+
+Chốt loss lượt đầu: `B_loss(common5) + 0.25 * B_loss(extra19)`; correction
+regularization cũng dùng cùng cách tách nhóm. Giữ nguyên hệ số riêng của năm
+mốc cũ thay vì normalize đều toàn bộ 24 output. Đây là supervision phụ có
+trọng số công bố, không mặc định +24 giờ sẽ được cải thiện. Lưu checkpoint
+combined val_loss thấp nhất riêng, không so trực tiếp loss tổng O5 và O24.
+
+Pipeline sau train tự ghi đủ metric 24 horizon và so năm mốc chung với B
+(hoặc checkpoint O5 được chỉ định) và production trên cùng test anchor. Có
+RMSE, >200/>400 mm, fixed/new, chuỗi lỗi, ghép đỉnh/đáy và figure. Model/scaler/
+history/settings nằm trong thư mục mới, không đổi backend/frontend/registry.
+
+**Chưa chạy training O5/O24.** Chỉ build dataset, chạy test và check-only
+forward/backward không optimizer step. Chủ dự án sẽ tự train và xét kết quả.
+[Hướng dẫn và command đầy đủ](../research/OUTPUT_HORIZON_ABLATION.md).
+
+### 1.6. Ba việc tiếp theo sau model B — cập nhật 19/10/2026
+
+**[ĐÃ THỐNG NHẤT]** Ưu tiên hiện tại là giảm lỗi lớn còn lại của B, đặc biệt
+dự báo tăng chưa đủ và dự báo giảm chưa kịp. Thứ tự thực hiện:
+
+1. **BL-01 — custom loss hướng thay đổi, biên độ và lỗi >200 mm. Làm đầu tiên.**
+2. **BL-02 — fine-tune B với tail penalty mạnh hơn**, làm đối chứng riêng cho
+   tác dụng tăng phạt sai số lớn, không trộn với thay đổi BL-01.
+3. **BL-03 — kiểm tra và thử nghiệm cách đưa lịch sử dự báo mưa vào input**,
+   phân biệt phần đã có với thông tin quá khứ thực sự mới.
+
+BL-01 đã có lượt thử đầu tiên trên cả fine-tune và train từ đầu, BL-02 đã thử
+fine-tune ba mức tail penalty, BL-03 đã train ablation forecast cả chuỗi so với
+chỉ tại anchor (kết quả bên dưới). Sau khi chốt loss/input mới quay lại
+O5/O24, không bỏ kế hoạch 24 output.
+
+#### Mốc đối chứng và điều đã quan sát
+
+Model B được train lại đúng cấu hình, lưu riêng tại
+`model/experiments/model_b_retrain_20261019/`. Strict test: 48/2.960 dự báo lỗi
+>200 mm (1,62%), RMSE gộp 75.78 mm. Dataset mask, 26 input, sequence 96, 5 output,
+2 trạm mưa, correction penalty 0.1, horizon weights `1 1 1 1 1`, tail penalty
+0.5, threshold 200 mm, transition 20 mm, chọn checkpoint `large_error_rate`.
+
+Trên 39.550 dự báo toàn bộ dataset, production có 260 lỗi >200 mm, B có 209;
+nhưng lỗi >400 mm tăng từ 14 lên 19. B còn 112 dự báo thiếu và 97 dự báo thừa;
+197/209 lỗi thuộc chuỗi liên tiếp. Đây là động lực kiểm tra phản ứng tăng/giảm,
+không phải bằng chứng đã đo được độ trễ cố định hoặc xác định nguyên nhân.
+[Phân tích B](../reports/model_b_full_dataset_20261019_complete/REPORT.md).
+
+#### BL-01: khuyến khích đúng hướng, phạt sai biên độ và phạt mạnh lỗi lớn
+
+**Hành vi mong muốn:** dự báo đúng hướng tăng/giảm được thưởng có giới hạn,
+nhưng đúng hướng chưa đủ. Nếu tăng/giảm quá yếu hoặc quá mạnh thì vẫn bị phạt;
+phần phạt phải chiếm ưu thế khi sai số mực nước vượt 200 mm. Không khuyến khích
+model luôn dự báo thay đổi mạnh hoặc luôn đi xa persistence.
+
+Với từng horizon h, dùng đơn vị mm:
+
+```text
+delta_true = H(t+h) - H(t)
+delta_pred = H_pred(t+h) - H(t)
+error = H_pred(t+h) - H(t+h) = delta_pred - delta_true
+```
+
+Hướng đúng xét theo dấu của hai delta. Biên độ quá yếu/quá mạnh xét mức thay đổi
+dự báo so với thay đổi thật, không chỉ so dấu. Khi nước gần như không đổi,
+dùng vùng trung tính ±epsilon mm để tránh thưởng/phạt dấu của biến động rất nhỏ;
+epsilon phải chốt trên train, không chọn từ các lỗi test đã xem.
+
+**[ĐỀ XUẤT]** Giữ loss dự báo hiện tại và correction regularization, thêm các
+thành phần có thể bật/tắt riêng:
+
+```text
+L = L_base + lambda_dir * (1 - R) + lambda_amp * L_amp
+    + lambda_tail * L_excess + L_correction
+
+R = R_direction * amplitude_gate,  0 <= R <= 1
+amplitude_gate = exp(-(error / amplitude_scale_mm)^2)
+z = max((abs(error) - 200 mm) / tail_scale_mm, 0)
+L_excess = z^2 + gamma * z^4, gamma >= 0
+```
+
+- `R_direction` là hàm trơn, bị chặn, cao khi hướng đúng; không dùng phép so
+  dấu rời rạc làm thành phần duy nhất để truyền gradient. Thưởng chỉ giảm một
+  phần loss hữu hạn. Gate làm thưởng giảm khi sai biên độ lớn, nên không thể
+  bù phần phạt cực lớn chỉ bằng việc đúng hướng. Công thức chính xác cần chốt
+  và kiểm tra gradient khi triển khai; vùng trung tính tắt phần xét hướng.
+- `L_amp` ưu tiên các mẫu biến động mạnh hoặc sai hình dạng giữa các horizon.
+  Chỉ dùng MSE của `delta_pred - delta_true` thì bằng MSE mực nước hiện tại,
+  không tạo mục tiêu mới. Nếu giữ dạng đó, phải ghi rõ đây chỉ là tăng trọng số
+  MSE và kiểm chứng trong ablation, không mô tả là loss hướng mới.
+- `L_excess` tăng rất nhanh theo mức vượt 200 mm; thử bình phương trước, rồi
+  bậc bốn nếu cần. Không mặc định dùng exponential tăng không giới hạn. Hàm
+  phạt liên tục tại ngưỡng, không dùng bước nhảy làm mất ổn định gradient.
+  Ngưỡng 200 mm là sai số so thực tế, không phải độ thay đổi nước so đầu vào.
+- Tính `error` theo mm từ target scaler đã lưu trước khi xét ngưỡng. Chuẩn hóa
+  từng thành phần về thang rõ ràng, log riêng các hệ số và độ lớn thành phần.
+  Không chia cho `abs(delta_true)` gần 0. Mọi phép tính phải hữu hạn; dùng
+  gradient clipping như biện pháp ổn định, không thay thế kiểm tra công thức.
+- Đây là loss tăng phạt rủi ro, không đảm bảo model không bao giờ vượt 200 mm.
+  Phạt mạnh không tự cung cấp dấu hiệu tương lai mà input chưa có.
+
+**Cách kiểm chứng:** fine-tune từ đúng B và scaler của B với learning rate nhỏ,
+optimizer mới; giữ nguyên dataset, input, 5 output, split, seed và correction
+penalty. Đánh giá B trước cập nhật như checkpoint epoch 0. Tách các ablation
+base → hướng/biên độ → phần vượt ngưỡng; không tăng đồng thời mọi hệ số.
+Nếu cần train từ đầu, ghi thành thí nghiệm riêng. Không trộn loss hướng với
+thêm feature hoặc 24 output trong lượt đầu.
+
+**Đầu ra:** công thức/CLI rõ; test đúng hướng nhưng quá yếu/quá mạnh, sai hướng,
+vùng ổn định, sát 200 mm và lỗi cực lớn; kiểm tra gradient, đơn vị/scaler và
+save/load; log từng thành phần; bảng thiếu/thừa, lỗi >200/>300/>400 mm, RMSE,
+chuỗi lỗi, biên độ và thời điểm đỉnh/đáy. Đo lệch thời điểm trước khi kết luận
+đã sửa “phản ứng trễ”; quy tắc ghép đỉnh/đáy và vùng tìm kiếm phải cố định.
+
+##### BL-01 — lượt thử đầu tiên đã thực hiện ngày 19/10
+
+Đã triển khai `DirectionAmplitudeLoss`, kiểm tra gradient và chạy GPU RTX 4050:
+
+- Fine-tune từ B: lr 0.0001, tối đa 30 epoch/patience 10; có arm loss B đối
+  chứng. Loss mới chưa có checkpoint cập nhật vượt B theo điều kiện validation
+  không tăng cả N200 và N400; checkpoint chính giữ epoch 0, tức B gốc.
+- Train từ đầu: cấu hình B, lr 0.0009, tối đa 50 epoch/patience 25; loss B đối
+  chứng tái lập B (48 lỗi test, RMSE 75.78 mm). Loss mới chọn epoch 20:
+  test 59 lỗi >200 mm (1,99%), RMSE 78.04 mm. Trên toàn dataset, lỗi >400 mm
+  giảm 19 → 12 nhưng >200 mm tăng 209 → 238; RMSE 53.97 → 54.91 mm.
+- Có lưu checkpoint val_loss thấp nhất riêng để chẩn đoán. Không dùng test
+  chọn lại model; chưa thay B hoặc model production. Chưa có bằng chứng giảm
+  độ trễ đỉnh/đáy; chỉ thử một seed và một bộ hệ số loss mới.
+
+Các số trên dùng CUDA thống nhất với training. Một điểm sát ngưỡng ở bản
+train từ đầu đổi nhóm khi chấm CPU (59 → 60 lỗi test); xem ghi chú báo cáo,
+không trộn hai device để kết luận thay đổi model.
+
+[Công thức và command](../research/BL01_DIRECTION_LOSS.md) ·
+[Kết quả và figure](../reports/experiments/bl01_both_20261019/analysis_cuda/REPORT.md).
+Mã chạy riêng: `research/finetune_direction_experiment.py`; chưa đưa loss mới
+vào CLI `src.ai.train`. BL-01 mới là kết quả lượt đầu, chưa chốt loss cuối cùng.
+
+#### BL-02: đối chứng fine-tune bằng tail penalty mạnh hơn
+
+Giữ loss gốc của B, chỉ tăng tail penalty hoặc đổi riêng dạng phạt phần vượt
+ngưỡng; không thêm thưởng hướng hay đổi input cùng lượt. Giữ checkpoint/scaler
+B gốc, optimizer mới và learning rate nhỏ; lưu riêng từng thử nghiệm. So cả
+tần suất >200 mm và độ nặng >400 mm, tránh giảm số lỗi vừa vượt ngưỡng bằng
+cách làm vài lỗi còn lại lớn hơn. Không mặc định hệ số càng cao càng tốt.
+
+**Đã thực hiện lượt đầu ngày 19/10:** ba arm `0.5` (đối chứng), `0.75`, `1.0`
+fine-tune độc lập từ B với lr 0.0001, tối đa 30 epoch/patience 10, seed 42;
+giữ loss Softplus gốc, threshold 200 mm, transition 20 mm. Không dùng loss hướng.
+Quy tắc checkpoint validation giữ như BL-01: không tăng N200/N400 so B, rồi
+tối thiểu (N200,N400,RMSE). Cả ba chọn epoch 1, dừng sau epoch 11.
+
+| Model | RMSE test (mm) | Lỗi >200 mm test | Lỗi >200 / >400 mm toàn bộ |
+|---|---:|---:|---:|
+| B gốc | 75.78 | 48 (1.62%) | 209 / 19 |
+| Fine-tune tail 0.5 | 76.80 | 56 (1.89%) | 213 / 18 |
+| Fine-tune tail 0.75 | 76.87 | 53 (1.79%) | 209 / 18 |
+| Fine-tune tail 1.0 | 76.94 | 53 (1.79%) | 209 / 18 |
+
+Tail 0.75/1.0 có ít lỗi test hơn lượt fine-tune đối chứng, nhưng chưa vượt B
+gốc. Trên toàn bộ, mỗi mức sửa 14 lỗi B và tạo 14 lỗi mới, không giảm ròng số
+lỗi >200 mm; >400 mm giảm một điểm. Checkpoint val_loss thấp nhất của cả ba
+vẫn là B epoch 0. Chưa thay B/production; chưa chọn hệ số mới từ test.
+
+[Báo cáo BL-02](../reports/experiments/bl02_tail_strength_20261019/analysis_cuda/REPORT.md).
+Chạy lại bằng `research.finetune_direction_experiment` với
+`--mode finetune --tail-strengths 0.5 0.75 1.0` và thư mục output mới.
+
+#### BL-03: lịch sử dự báo mưa — xác minh trước khi thêm feature
+
+**[ĐÃ KIỂM TRA CODE]** B hiện đã nhận feature dự báo mưa ở **cả 96 hàng**:
+`research/weather_forecast/build_datasets.py` gắn dự báo vào mỗi timestep;
+`src/ai/dataset.py::__getitem__` lấy toàn bộ feature trong chuỗi, không chỉ
+mực nước hoặc forecast ở hàng cuối. Do đó chưa thử ablation lịch sử forecast
+riêng, nhưng không được ghi rằng B chưa từng nhận lịch sử forecast.
+
+Phân biệt hai loại thông tin:
+
+1. **Bản dự báo đã có tại giờ quá khứ:** hàng t−k chứa tổng mưa tương lai so
+   với t−k; đây là cách đang có, một số giờ dự báo ấy đã trôi qua khi đến t.
+2. **Dự báo cho các khoảng mưa quá khứ cố định so với anchor t:** chẳng hạn
+   t−6 đến t−3 và t−3 đến t, được trích từ các bản đã có trước các khoảng đó.
+   Đây là cách biểu diễn khác; phải chốt issue time, valid time và tuổi bản
+   dự báo, không nhầm với dữ liệu mưa đo thật hoặc thay bằng bản phát hành sau.
+
+Các việc cần làm: audit tensor/feature tại vài anchor và run được chọn;
+đối chiếu B hiện tại với cách chỉ đưa forecast tại anchor (cần mask/nhánh rõ,
+không lấy 0 giả làm thiếu); sau đó mới thử biểu diễn các khoảng quá khứ cố định
+nếu có lý do. Nếu thêm input/nhánh làm đổi kích thước, không nạp nguyên
+checkpoint B như thể kiến trúc không đổi. So cùng anchor và giữ loss/config
+đối chứng. **Không thêm feature revision/tăng giảm giữa các bản dự báo.**
+
+**Lượt đầu đã thực hiện ngày 19/10:** train từ đầu hai nhóm cùng 26 input và
+cấu hình B, chỉ đổi policy cung cấp forecast. Trong `anchor_only`, chín cột
+weather của 95 giờ trước đặt về placeholder 0 chuẩn hóa, bốn mask hiện có bật
+lên; forecast tại anchor và 17 cột quan trắc/mùa giữ nguyên. Policy theo từng
+window, lưu trong preprocessing, không sửa CSV hoặc thêm mask input mới.
+Giữ loss B và quy tắc checkpoint B (N200, hòa thì RMSE), không dùng loss mới.
+
+| Chỉ số | Forecast cả 96 giờ — control B | Forecast chỉ tại anchor |
+|---|---:|---:|
+| RMSE test (mm) | 75.78 | 76.15 |
+| Lỗi >200 mm test | 48 (1.62%) | 55 (1.86%) |
+| Lỗi >200 mm toàn bộ | 209 (0.528%) | 276 (0.698%) |
+| Lỗi >400 mm toàn bộ | 19 | 16 |
+| RMSE toàn bộ (mm) | 53.97 | 55.34 |
+
+Control tái lập đúng B; cả hai chọn epoch 24. Nhóm anchor_only sửa 20 lỗi B
+nhưng tạo 87 lỗi mới trên toàn bộ, tăng ròng 67 lỗi >200 mm; validation cũng
+có N200 cao hơn (97 so với 92). Giữ cách cung cấp lịch sử forecast hiện tại
+của B; không kết luận mọi kiến trúc nhận forecast anchor đều kém hơn từ một
+seed/cách biểu diễn mask. Mô hình nghiên cứu lưu riêng, không sửa production.
+
+[Thiết kế và command BL-03](../research/BL03_FORECAST_HISTORY.md) ·
+[Báo cáo/figure](../reports/experiments/bl03_forecast_history_20261019/analysis_cuda/REPORT.md).
+`ResidualLSTM` và loader comparison đã hỗ trợ policy; backend serving chưa
+có parity cho anchor_only, không đăng ký model này vào app ở lượt nghiên cứu.
+
+#### Tiêu chí chọn cho cả ba việc
+
+Chọn trên validation, theo dõi cùng lúc lỗi >200 mm, >400 mm, RMSE, hướng,
+biên độ và các chuỗi lỗi; lưu các checkpoint có đánh đổi khác nhau. Không so
+trực tiếp val_loss của hai công thức khác nhau. Tách ngưỡng phạt khỏi ngưỡng
+đánh giá nếu cần; vẫn báo lỗi lớn tại 200 mm. Test hiện tại đã xem nhiều lần,
+chỉ là đánh giá khám phá; xác nhận cuối trên khoảng dữ liệu mới chưa dùng chọn
+model. Mỗi thử nghiệm lưu model/scaler/settings riêng một thư mục, không ghi đè.
 
 ## 2. Hiện trạng và bằng chứng đã có
 
@@ -412,7 +691,7 @@ Giữ kiến trúc cơ bản, loss, correction penalty, số output và ngân s�
 giống nhau trong A/B; chạy nhiều seed sau smoke test. Model cũ có thể khác
 train/split nên không thay thế nhóm A trong việc quy cải thiện cho feature mới.
 
-Sau khi chốt A/B và các nhánh tùy chọn, mới chạy O5/O24 theo mục 1.5.
+Sau khi chốt A/B và ba việc BL-01/02/03 ở mục 1.6, mới chạy O5/O24 theo mục 1.5.
 Việc chọn số output không được trộn vào việc kết luận dự báo mưa có ích.
 
 Các tập test đã xem nhiều lần chỉ dùng phân tích khám phá. Cần giữ một khoảng
@@ -479,7 +758,9 @@ là mưa thực tế tương lai với khoảng tích lũy đã xác minh.
 
 ## 11. Danh sách task và đầu ra nghiệm thu
 
-Tất cả task sau là việc cần làm; khảo sát nhỏ đã có không đánh dấu hoàn thành cả task.
+Bảng giữ danh sách công việc tổng thể; trạng thái lịch sử cần đọc cùng cập nhật
+19/10 ở mục 1.3 và 1.6. Thu thập/dataset/training nghiên cứu đã có, không có
+nghĩa đã hoàn tất parity với backend hoặc triển khai production.
 
 | ID | Công việc | Đầu ra để kiểm tra |
 |---|---|---|
@@ -495,6 +776,9 @@ Tất cả task sau là việc cần làm; khảo sát nhỏ đã có không đ�
 | FR-07 | Dataset mới và audit leakage | Train/val/test, feature schema, scalers, manifest, audit |
 | FR-08 | Cập nhật mã AI và artifact | Loader chọn đúng feature; train/reload với checkpoint riêng |
 | FR-09 | Ablation A/B và báo cáo | Bảng theo horizon/đợt, persistence, chuỗi lỗi, figures |
+| BL-01 | **Ưu tiên đầu tiên:** loss hướng/biên độ + phạt mạnh lỗi >200 mm | Thưởng hướng có giới hạn, phạt quá yếu/quá mạnh, penalty tăng nhanh theo phần vượt ngưỡng; công thức, gradient tests, fine-tune và ablation riêng |
+| BL-02 | Fine-tune B bằng tail penalty mạnh hơn, không thêm hướng | Đối chứng riêng, đánh giá cả >200 và >400 mm, model/scaler lưu thư mục riêng |
+| BL-03 | Audit và ablation lịch sử forecast trong input | Xác nhận 96 hàng đã có forecast; phân biệt forecast tại giờ quá khứ với forecast cho khoảng quá khứ; không thêm revision |
 | OH-01 | Tạo target +1 đến +24 giờ | Dataset và audit nhãn/độ phủ/split/anchor chung |
 | OH-02 | Train và so sánh O5/O24 | Loss có trọng số rõ, artifact riêng, metric tại năm horizon chung và đủ 24 |
 | OH-03 | Chốt số output và hợp đồng serving | Kết luận +24 giờ, schema/horizon list mới nếu được chọn |
@@ -502,12 +786,12 @@ Tất cả task sau là việc cần làm; khảo sát nhỏ đã có không đ�
 | FR-11 | Chạy thử song song, đánh giá khoảng mới | So sánh model cũ/mới trước khi đổi registry phục vụ |
 | FR-12 | Hiệu chỉnh mưa riêng nếu cần | Baseline và dự đoán ngoài mẫu cho model nước |
 
-Thứ tự thí nghiệm: **RS-01/02/03 → FR-01…09 → OH-01/02/03**.
+Thứ tự thí nghiệm cập nhật: **RS-01/02/03 → FR-01…09 → BL-01 → BL-02 → BL-03 → OH-01/02/03**.
 Sau khi chốt model cuối mới làm FR-10/11 để đưa vào app. Nếu cần triển khai bản
 5 output trước, đó là mốc triển khai riêng, không thay đổi thứ tự nghiên cứu.
 FR-12 là nhánh tùy chọn sau khi đánh giá nguồn thời tiết; chưa nằm trong ba bước
-bắt buộc. Tải/lưu archive sớm không đồng nghĩa đã bắt đầu train feature thời tiết;
-ưu tiên hiện tại là hoàn thành RS-01…03 trước khi mở rộng feature/model.
+bắt buộc. Hiện đã có B và lượt thử BL-01 đầu tiên. Xem kết quả tại mục 1.6;
+chưa thay model phục vụ, chưa coi loss hướng/biên độ là đã cải thiện B.
 
 ### 11.1. Kiểm thử bắt buộc khi triển khai
 
@@ -548,14 +832,117 @@ artifact và cách chạy lại. Không ghi “đã tích hợp” chỉ vì t�
 3. Dự báo tương lai hợp lệ khác với quan trắc tương lai bị lọt vào feature.
 4. Không coi mọi archive là bản dự báo đã công bố thực tế; giữ provenance và giới hạn.
 5. Giữ mưa quan trắc và mưa dự báo tách biệt; giữ model/scaler/dataset cũ để đối chứng.
-6. Thứ tự: số trạm trước, dự báo mưa sau, 24 output cuối. Không đổi loss
-   hoặc correction penalty đồng thời với chọn trạm hay thêm feature; khi thử
+6. Thứ tự: số trạm trước, dự báo mưa sau, ba việc BL-01/02/03 ở mục 1.6, rồi
+   24 output cuối. Không đổi loss hoặc correction penalty đồng thời với chọn trạm hay thêm feature; khi thử
    24 output phải công bố rõ phân bổ loss và giới hạn so sánh.
 7. Mưa, hồ và triều có thể cùng liên quan; thêm forecast không tự giải hết lỗi.
 8. Các số đã phân tích đến 15/10 không mặc nhiên bao gồm dữ liệu mới đến 18/10.
    Muốn cập nhật phải tạo cutoff/snapshot mới và ghi lại phạm vi đánh giá.
 
-## 13. Tài liệu tham chiếu
+## 13. Sau các thử nghiệm B: khảo sát tín hiệu báo trước (19/10/2026)
+
+Giữ B làm model tham chiếu, chưa thay model trong app. Thử tăng trọng số mẫu
+biến động mạnh tối đa 2 lần đã chạy đối chứng từ đầu: full N200 giảm 209→160
+nhưng strict test tăng 48→49, RMSE tăng 75.78→79.47 mm. Ba chuỗi nghiêm trọng
+chưa được sửa; không coi giảm lỗi trên train là cải thiện tổng quát hóa.
+Chi tiết: [báo cáo](../reports/experiments/change_weight_20261019/analysis/REPORT.md).
+
+Thứ tự tiếp theo đã thống nhất:
+
+1. **WL-01 — ưu tiên hiện tại: khảo sát trạm nước khác có tín hiệu dẫn trước Dã Viên.**
+   Đọc metadata và quan trắc PostgreSQL trong đúng khoảng dataset hiện tại;
+   chuẩn hóa trung bình giờ cùng quy tắc B, kiểm tra đơn vị/độ phủ. Chọn ứng viên
+   theo kết nối sông, hồ và vị trí; không coi gần tọa độ/correlation cao là chứng
+   minh ở thượng nguồn. Kiểm tra biến thiên nước và lead/lag, không chỉ mức nước
+   tuyệt đối. Chỉ dùng dữ liệu đến anchor làm đầu vào; fit/chọn lag trên train,
+   kiểm chứng nguyên cấu hình bằng validation. So với tín hiệu quá khứ Dã Viên
+   để phát hiện tương quan do chu kỳ chung mà không thêm giá trị báo trước.
+   Báo cả khả năng +1/+3/+6/+12/+24h, độ phủ và các đợt nước tăng/giảm. Nếu
+   tín hiệu chỉ dẫn vài giờ, không suy diễn giúp được +24h. Hoàn tất khảo sát
+   rồi mới quyết định thêm một trạm và train đối chứng B; chưa tạo dataset mới
+   hoặc train lại trong bước khảo sát.
+2. **RA-01 — sau WL-01: khảo sát lại độ phủ không gian mưa.** Hai trạm mưa hiện
+   tại và forecast cùng ô lưới có thể trùng thông tin. Xem xét một vùng mưa khác
+   có liên hệ thủy văn, xét giá trị báo trước đối với phần nước thay đổi còn thiếu.
+   Chọn nguồn/cửa sổ trên train, xác nhận validation, thêm từng nguồn riêng.
+3. **TR-01 — sau đó: biểu diễn riêng mức nền và dao động nước.** Thử feature
+   trung bình trượt quá khứ, chênh lệch các cửa sổ và chênh 24h; mọi phép tính
+   phải một phía, không dùng centered smoothing hoặc quan trắc tương lai.
+   Đây là giả thuyết về biểu diễn, không khẳng định B đã bị chứng minh thiếu
+   thành phần triều hay cần kiến trúc phức tạp hơn.
+
+Tiêu chí chung: kiểm tra N200, RMSE và độ dài chuỗi dự báo thiếu/thừa; giữ các
+giai đoạn ổn định làm đối chứng. Test đã xem nhiều lần chỉ mô tả, không dùng
+chọn trạm/lag/hyperparameter. Kết nối DB chỉ đọc, không đổi dữ liệu quan trắc.
+
+### 13.1. WL-01 — kết quả khảo sát đầu tiên
+
+Đã đọc catalog 19 trạm và 130.016 station-hour trong đúng khoảng snapshot.
+Dã Viên DB khớp toàn bộ 8.029 giá trị giờ snapshot (sai khác số học <1e-9 mm).
+Kết quả: [báo cáo](../reports/water_station_leads_20261019/REPORT.md). Script khảo sát dùng một lần đã được dọn sau khi xuất báo cáo.
+
+- Năm ứng viên đủ coverage/topology sơ bộ: Thuận An, Tứ Phú, Ngã Ba Sình,
+  Tư Hiền, An Cựu. Không coi tháp báo ngập hay trạm khác hệ sông là nguồn lũ
+  thượng lưu. Chưa xác nhận trạm thượng lưu trực tiếp nhánh Hương trước Dã Viên.
+- Δ3h Ngã Ba Sình dẫn thống kê 1h (r_train0.885, r_val0.923), ổn định hai nửa
+  train; nhưng Δ24h chọn lead0. Đường correlation có nhiều đỉnh chu kỳ nên
+  không suy diễn thành thời gian truyền lũ hay dấu hiệu báo trước 24h.
+- Tứ Phú: Δ3h và Δ24h đều chọn lead0. Probe bổ sung input tại anchor cải thiện
+  RMSE validation ngắn hạn; ở +24h chưa giảm số lỗi >200mm. Ngã Ba Sình cũng
+  chưa cho thấy lợi ích +24h trong probe.
+- Chưa tạo dataset/model mới. Nếu thử thêm LSTM thì thêm từng trạm với B làm
+  đối chứng; không hứa sửa chuỗi +24h từ correlation ngắn hạn. Trước đó cần
+  kiểm chứng latency/nhãn thời gian và vị trí thực của cảm biến.
+
+### 13.2. RA-01 — khảo sát mưa theo vùng cho +12/+24h
+
+Đã đọc 55 trạm mưa, 431.690 station-hour đúng thời gian snapshot. Kết quả:
+[báo cáo](../reports/rain_regions_h12_h24_20261019/REPORT.md). Script khảo sát dùng một lần đã được dọn.
+Không khảo sát +1/+3/+6h trong bước này. Chọn trạm/cửa sổ trên train, giữ
+nguyên để kiểm chứng validation. Probe Ridge là kiểm tra thống kê; chưa train
+LSTM mới hay tạo dataset/model phục vụ.
+
+- Phân vùng hình học và coverage train cố định; phía nam không đồng nghĩa
+  đồng bằng nội đô hay cùng lưu vực. Có cả trạm thượng lưu nhánh phía nam và
+  ven biển, cần xác minh lưu vực trước khi đưa vào model.
+- Mưa khác vùng đã có ở anchor và mưa chỉ xuất hiện sau anchor được tách riêng.
+  Quan trắc tương lai chỉ dùng giải thích, không trở thành input hợp lệ.
+- Đợt tháng 9 +24h: B đã biết mưa24h trước113.23mm và forecast24h114.56mm,
+  nhưng thực tế24h tới hai trạm B340.27mm; vẫn lỗi thiếu25/25giờ. Không thể
+  quy toàn bộ lỗi này cho thiếu mưa phía nam.
+- Đợt tháng 10 +24h: trung bình mưa nam24h trước anchor97.11mm, hai trạm B30.24mm;
+  tương lai24h nam181.21mm so với B29.55mm. Có tín hiệu không gian đáng khảo sát,
+  nhưng chưa có bằng chứng chỉ thêm vùng nam sẽ sửa được chuỗi lỗi lớn.
+- Probe trên validation không cho lợi ích nhất quán ở cả +12/+24h. Không chọn
+  trạm/cửa sổ chỉ bằng ví dụ tháng10 đã xem. Giữ B và không tự mở thêm thử nghiệm.
+
+### 13.3. Đối chứng tree trên dataset forecast (20/10/2026)
+
+Đã chuẩn bị `research.tree_horizon_experiment`, hướng dẫn tại
+[TREE_HORIZON_EXPERIMENT.md](../research/TREE_HORIZON_EXPERIMENT.md).
+XGBoost/LightGBM nhận toàn bộ26feature của96h, trải thành2496cột lag;
+giữ split/purge/warmup6095/985/592. Mặc định5horizon chung; hỗ trợ24booster độc lập.
+Mặc định học residual nước, squared error mm; không áp dụng loss tail/aux hoặc
+correction penalty LSTM. Chọn round riêng từng horizon trên validation theo
+(N200,RMSE), hoặc RMSE nếu chỉ định; giữ persistence nếu không round nào tốt hơn.
+Lưu nativeJSON/text, settings/metricsMLflow và báo cáo giao mẫu vớiB/production,
+kèm chuỗi thiếu/thừa+12/+24h. Chưa train tree trên dataset thật; chỉ kiểm thử nhỏ
+synthetic và kiểm tra population, reload, pipeline báo cáo. Không thay modelapp.
+
+### 13.4. Tìm hyperparameter trên validation
+
+Entry point: `src/ai/hyperparam_finding.py`; cách chạy và định nghĩa search space
+ở [research/README.md](../research/README.md). Grid Search dùng GridSampler;
+TPE dùng TPESampler và MedianPruner, báo tiến độ từng epoch hoặc vòng boosting.
+Mặc định chọn theo (N200, RMSE) gộp +12/+24h trên cùng số mẫu validation;
+không chọn tham số bằng test. Split cố định; sequence length có thể được tìm trong
+12–168 giờ. Các trial giữ cùng anchor sau warmup của sequence lớn nhất trong space,
+dùng chung scaler fit trên train; mỗi artifact lưu đúng sequence đã chọn.
+Checkpoint từng trial nằm riêng trong thư mục study, có SQLite local để resume;
+không dùng DB quan trắc. Chấm test là bước tùy chọn sau khi chọn trial.
+Đây là công cụ tìm cấu hình; chưa phải bằng chứng mô hình mới tốt hơn B.
+
+## 14. Tài liệu tham chiếu
 
 - [Kiến trúc ứng dụng](ARCHITECTURE.md)
 - [Hợp đồng đầu vào dự báo hiện tại](backend/prediction/README.md)

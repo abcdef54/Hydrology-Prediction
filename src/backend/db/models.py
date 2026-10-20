@@ -396,3 +396,6 @@ class ForecastPoint(Base):
     horizon_minutes: Mapped[int] = mapped_column(sa.Integer, primary_key=True)
     forecast_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True))
     water_level_mm: Mapped[float] = mapped_column(sa.Double)
+
+# Register separate forecast-weather tables for Alembic metadata discovery.
+from research.weather_forecast import schema as _weather  # noqa: E402,F401

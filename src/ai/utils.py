@@ -18,7 +18,7 @@ DATASET_PATH_30MIN = "./train_data/30min/"
 DATASET_PATH_1H = "./train_data/1h/"
 
 
-FEATURE_GROUPS = ("water_level", "rain", "wind", "reservoir", "flood_season")
+FEATURE_GROUPS = ("water_level", "rain", "wind", "reservoir", "flood_season", "weather_forecast")
 FEATURE_SETS = ["all"] + [
     "+".join(groups)
     for size in range(1, len(FEATURE_GROUPS) + 1)
@@ -53,6 +53,7 @@ def dataset_directory(horizon: str, dataset_dir: str | Path | None = None) -> Pa
 def load_dataset(horizon: str, dataset_dir: str | Path | None = None):
     base_path = dataset_directory(horizon, dataset_dir)
     manifest_path = base_path / "manifest.json"
+    manifest = {}
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         expected_minutes = {"10min": 10, "30min": 30, "1h": 60}[horizon]
@@ -62,6 +63,12 @@ def load_dataset(horizon: str, dataset_dir: str | Path | None = None):
     train = pd.read_csv(os.path.join(base_path, "train.csv"))
     eval = pd.read_csv(os.path.join(base_path, "val.csv"))
     test = pd.read_csv(os.path.join(base_path, "test.csv"))
+    if manifest.get("missing_encoding") == "sentinel_minus_one":
+        for frame in (train, eval, test):
+            columns = manifest["sentinel_columns"]
+            frame[columns] = frame[columns].replace(-1.0, np.nan)
+            frame.attrs["raw_missing_value"] = -1.0
+            frame.attrs["normalized_missing_value"] = -1.0
     return train, eval, test
 
 
@@ -75,20 +82,64 @@ def normalize_feature_set(feature_set: str) -> str:
     return "+".join(group for group in FEATURE_GROUPS if group in groups)
 
 
-def select_feature_columns(columns, feature_set: str) -> list[str] | None:
+def select_feature_columns(
+    columns, feature_set: str, rain_station_ids: list[str] | None = None,
+) -> list[str] | None:
     feature_set = normalize_feature_set(feature_set)
-    if feature_set == "all":
+    if feature_set == "all" and rain_station_ids is None:
         return None
 
-    groups = feature_set.split("+")
+    groups = FEATURE_GROUPS if feature_set == "all" else feature_set.split("+")
     selected = [
         column for column in columns
-        if any(column == group or column.startswith(f"{group}_") for group in groups)
+        if not column.startswith(("target_", "timestamp"))
+        and (feature_set == "all"
+             or any(column == group or column.startswith(f"{group}_") for group in groups))
     ]
-    for group in groups:
+    for group in (() if feature_set == "all" else groups):
         if not any(column == group or column.startswith(f"{group}_") for column in selected):
             raise ValueError(f"No {group} features found for {feature_set}")
+    if rain_station_ids is not None:
+        if feature_set != "all" and "rain" not in groups:
+            raise ValueError("Rain station selection requires rain in --feature-set")
+        if not rain_station_ids or len(set(rain_station_ids)) != len(rain_station_ids):
+            raise ValueError("Provide a non-empty list of distinct rain station IDs")
+        if any(not isinstance(sid, str) or not sid.isdecimal() for sid in rain_station_ids):
+            raise ValueError("Rain station IDs must be numeric strings, preserving leading zeros")
+        available = {
+            column.split("_", 2)[1] for column in selected
+            if column.startswith("rain_") and len(column.split("_", 2)) == 3
+        }
+        unknown = set(rain_station_ids) - available
+        if unknown:
+            raise ValueError(f"Rain station IDs not found in dataset: {sorted(unknown)}; available: {sorted(available)}")
+        # Keep the original CSV order. Remove each excluded station's entire
+        # feature block, including rolling sums and missingness flags.
+        prefixes = tuple(f"rain_{sid}_" for sid in rain_station_ids)
+        selected = [column for column in selected
+                    if not column.startswith("rain_") or column.startswith(prefixes)]
     return selected
+
+
+def rank_rain_stations(train_df: pd.DataFrame) -> list[dict]:
+    """Rank train-only Pearson correlations on common 6h-rain/12h-change rows."""
+    suffix = "_sum_6h"
+    columns = [c for c in train_df if c.startswith("rain_") and c.endswith(suffix)]
+    if not columns:
+        raise ValueError("No 6-hour rain features found for automatic station ranking")
+    target = "target_water_level_plus_720m"
+    if target not in train_df or "water_level_depth" not in train_df:
+        raise ValueError("Automatic station ranking requires water_level_depth and the +12h target")
+    paired = train_df[columns].copy()
+    paired["delta_water"] = train_df[target] - train_df.water_level_depth
+    paired = paired.replace([np.inf, -np.inf], np.nan).dropna()
+    if len(paired) < 3 or paired.delta_water.nunique() < 2:
+        raise ValueError("Insufficient varying train data for rain station correlation")
+    rows = [dict(station_id=column[len("rain_"):-len(suffix)],
+                 pearson_r=float(paired[column].corr(paired.delta_water)),
+                 sample_count=len(paired)) for column in columns]
+    return sorted((r for r in rows if np.isfinite(r["pearson_r"])),
+                  key=lambda r: (-r["pearson_r"], r["station_id"]))
 
 
 def load_mef_backbone(config_path: str, checkpoint_path: str) -> MeanEmbeddingForecastLSTM:
@@ -138,12 +189,24 @@ def get_dataloader(
     require_current_level: bool = False,
     feature_set: str = "all",
     dataset_dir: str | Path | None = None,
+    num_rain_station: int | None = None,
 ):
     train_df, eval_df, test_df = load_dataset(horizon, dataset_dir)
     feature_set = normalize_feature_set(feature_set)
     if feature_set not in FEATURE_SETS:
         raise ValueError(f"Unknown LSTM feature set: {feature_set}")
-    feature_cols = select_feature_columns(train_df.columns, feature_set)
+    rain_station_ids = None
+    ranking = []
+    if num_rain_station is not None:
+        if type(num_rain_station) is not int or num_rain_station not in (1, 2, 3, 4):
+            raise ValueError("num_rain_station must be an integer from 1 to 4")
+        if feature_set != "all" and "rain" not in feature_set.split("+"):
+            raise ValueError("--num-rain-station requires rain in --feature-set")
+        ranking = rank_rain_stations(train_df)
+        if len(ranking) < num_rain_station:
+            raise ValueError(f"Requested {num_rain_station} rain stations but only {len(ranking)} have valid train correlations")
+        rain_station_ids = [row["station_id"] for row in ranking[:num_rain_station]]
+    feature_cols = select_feature_columns(train_df.columns, feature_set, rain_station_ids)
     train_dataset = HydrologyDataset(
         train_df, feature_cols=feature_cols, fit_scalers=True, seq_len=seq_len,
         require_current_level=require_current_level,
@@ -169,6 +232,14 @@ def get_dataloader(
         seq_len=seq_len,
         require_current_level=require_current_level,
     )
+
+    selected_rain_ids = list(dict.fromkeys(
+        column.split("_", 2)[1] for column in train_dataset.feature_cols
+        if column.startswith("rain_") and len(column.split("_", 2)) == 3
+    ))
+    for dataset in (train_dataset, eval_dataset, test_dataset):
+        dataset.rain_station_ids = selected_rain_ids.copy()
+        dataset.rain_station_ranking = ranking
 
     use_persistent = persistent_workers if num_worker > 0 else False
     train_generator = torch.Generator().manual_seed(seed)

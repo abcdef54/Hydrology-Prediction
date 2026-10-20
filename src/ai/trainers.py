@@ -2,11 +2,9 @@
 
 import math
 from pathlib import Path
-from tempfile import TemporaryDirectory
 from typing import Protocol
 import joblib
 import mlflow
-import mlflow.pytorch
 import pandas as pd
 import torch
 from torch import nn
@@ -15,7 +13,7 @@ from torch.optim.lr_scheduler import LRScheduler
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from src.ai.losses import HorizonWeightedMSE, validate_correction_penalty
+from src.ai.losses import HorizonWeightedMSE, HorizonWeightedTailLoss, validate_correction_penalty
 from src.ai.metrics import evaluate_all
 from src.ai.models import LSTM, MeanEmbeddingForecastLSTMWithAdapter, ResidualLSTM
 
@@ -45,17 +43,28 @@ class LSTMTrainer:
         gradient_accumulation: int = 1,
         device: str | torch.device = "cpu",
         checkpoint_dir: str | Path = "model",
+        checkpoint_metric: str = "val_loss",
+        validation_threshold_mm: float = 200.0,
     ) -> None:
         if gradient_accumulation < 1:
             raise ValueError("gradient_accumulation must be at least 1")
 
+        if checkpoint_metric not in ("val_loss", "large_error_rate"):
+            raise ValueError("Unknown checkpoint metric")
+        if not math.isfinite(validation_threshold_mm) or validation_threshold_mm <= 0:
+            raise ValueError("Validation error threshold must be finite and positive")
+        self.checkpoint_metric = checkpoint_metric
+        self.validation_threshold_mm = float(validation_threshold_mm)
+        self.best_checkpoint_score = (float("inf"), float("inf"))
+        self.last_validation_metrics = {}
+        self.best_validation_metrics = {}
         self.model = model.to(device)
         self.horizon = horizon
         self.num_epochs = num_epochs
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
         self.test_dataloader = test_dataloader
-        self.loss_func = loss_func
+        self.loss_func = loss_func.to(device)
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.early_stopping = early_stopping
@@ -98,6 +107,7 @@ class LSTMTrainer:
 
         epoch = self.train_epochs()
         self.restore_best_checkpoint()
+        self.save_preprocessing()
         results = self.test()
         mlflow.log_metrics(
             {
@@ -107,6 +117,10 @@ class LSTMTrainer:
             }
         )
 
+        best_metrics = {key.replace("val/", "best_val/", 1): value
+                        for key, value in getattr(self, "best_validation_metrics", {}).items()}
+        if best_metrics:
+            mlflow.log_metrics(best_metrics)
         run_name = f"{self.checkpoint_name}_{self.horizon}_{self.feature_set}"
         metrics = {}
         for target_name, target_metrics in results.iterrows():
@@ -116,7 +130,6 @@ class LSTMTrainer:
                     metrics[f"test/{target_name}/{metric_name}"] = numeric_value
         mlflow.log_metrics(metrics)
         mlflow.log_table(results.reset_index(), f"{run_name}_test_results.json")
-        self.log_model()
         return self.model
 
     def train_epochs(self) -> int:
@@ -131,6 +144,12 @@ class LSTMTrainer:
             val_loss = self.evaluate_loss(self.eval_dataloader)
             print(f"Epoch {epoch}/{final_epoch} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f}")
             metrics = {"train_loss": train_loss, "val_loss": val_loss}
+            metrics.update(getattr(self, "last_validation_metrics", {}))
+            if self.last_validation_metrics:
+                print(f"Validation >{self.validation_threshold_mm:g} mm: "
+                      f"{self.last_validation_metrics['val/large_error_count']:.0f} "
+                      f"({self.last_validation_metrics['val/large_error_pct']:.2f}%); "
+                      f"RMSE: {self.last_validation_metrics['val/rmse_mm']:.2f} mm")
             if stage is not None:
                 metrics["training_stage"] = stage
             mlflow.log_metrics(metrics, step=epoch)
@@ -140,33 +159,26 @@ class LSTMTrainer:
                 break
         return epoch
 
-    def log_model(self) -> None:
-        """Save the selected model together with its fitted preprocessing."""
+    def save_preprocessing(self) -> Path:
+        """Keep preprocessing beside the local checkpoint; no model upload to MLflow."""
         dataset = self.train_dataloader.dataset
-        source_dir = Path(__file__).resolve().parent
-        input_example = dataset[0][0].unsqueeze(0).numpy()
-        with TemporaryDirectory(prefix="hydrology-model-") as directory:
-            preprocessing_path = Path(directory) / "preprocessing.joblib"
-            joblib.dump(
-                {
-                    "feature_scaler": dataset.feature_scaler,
-                    "target_scaler": dataset.target_scaler,
-                    "feature_columns": dataset.feature_cols,
-                    "target_columns": dataset.target_cols,
-                    "sequence_length": dataset.seq_len,
-                    "missing_scaled_value": 0.0,
-                },
-                preprocessing_path,
-            )
-            model_info = mlflow.pytorch.log_model(
-                self.model,
-                name="best_model",
-                serialization_format="pickle",
-                code_paths=[str(source_dir.parent)],
-                extra_files=[str(preprocessing_path), str(source_dir.parent / "requirements.txt")],
-                input_example=input_example,
-            )
-        mlflow.set_tag("model_uri/best_model", model_info.model_uri)
+        preprocessing_path = self.checkpoint_path.with_suffix(".preprocessing.joblib")
+        preprocessing_path.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(
+            {
+                "feature_scaler": dataset.feature_scaler,
+                "target_scaler": dataset.target_scaler,
+                "feature_columns": dataset.feature_cols,
+                "target_columns": dataset.target_cols,
+                "sequence_length": dataset.seq_len,
+                "missing_scaled_value": getattr(dataset.feature_scaler, "hydrology_normalized_missing_value_", 0.0),
+                "raw_missing_value": getattr(dataset.feature_scaler, "hydrology_raw_missing_value_", None),
+                "rain_station_ids": getattr(dataset, "rain_station_ids", []),
+            },
+            preprocessing_path,
+        )
+        print(f"Local preprocessing: {preprocessing_path}")
+        return preprocessing_path
 
     def print_settings(self) -> None:
         dataset = self.train_dataloader.dataset
@@ -181,6 +193,9 @@ class LSTMTrainer:
         print(f"Device: {self.device}")
         print(f"Epochs: {self.num_epochs}")
         print(f"Feature set: {self.feature_set} ({dataset.num_features} inputs)")
+        print(f"Rain station IDs: {getattr(dataset, 'rain_station_ids', [])}")
+        for row in getattr(dataset, "rain_station_ranking", []):
+            print(f"  Train correlation: {row['station_id']} r={row['pearson_r']:.6f} (n={row['sample_count']})")
         if dataset.num_features <= 12:
             print(f"Selected features: {dataset.feature_cols}")
         print(f"Output size: {dataset.num_targets}")
@@ -189,6 +204,10 @@ class LSTMTrainer:
         print(f"Learning rate: {self.optimizer.defaults['lr']}")
         print(f"Weight decay: {self.optimizer.defaults['weight_decay']}")
         print(f"Gradient accumulation: {self.gradient_accumulation}")
+        print(f"Loss: {type(self.loss_func).__name__}")
+        print(f"Checkpoint selection: {self.checkpoint_metric}; error threshold: {self.validation_threshold_mm:g} mm")
+        if isinstance(self.loss_func, HorizonWeightedTailLoss):
+            print(f"Tail penalty: {self.loss_func.strength}; transition: {self.loss_func.transition_mm:g} mm")
         split_sizes = (
             len(dataset),
             len(self.eval_dataloader.dataset),
@@ -225,31 +244,87 @@ class LSTMTrainer:
             self.scheduler.step()
         return sum(batch_losses) / max(1, len(batch_losses))
 
-    def evaluate_loss(self, dataloader: DataLoader) -> float:
+    def evaluate_loss(self, dataloader: DataLoader, predictor=None) -> float:
+        """Score the same validation objective for a learned model or persistence."""
         self.model.eval()
-        loss_sum = 0.0
-        element_count = 0
+        predictor = self.model if predictor is None else predictor
+        loss_sum, element_count, row_count = 0.0, 0, 0
+        squared = None
+        physical_squared = None
+        physical_bad = None
+        base_sum, tail_sum = 0.0, 0.0
+        scaler = getattr(dataloader.dataset, "target_scaler", None)
+        threshold = getattr(self, "validation_threshold_mm", 200.0)
         with torch.inference_mode():
             for inputs, targets in dataloader:
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
-                loss_sum += self.loss_func(self.model(inputs), targets).item() * targets.numel()
+                predictions = predictor(inputs)
+                loss = self.loss_func(predictions, targets)
+                if not torch.isfinite(loss):
+                    raise ValueError("Validation loss is non-finite")
+                loss_sum += loss.item() * targets.numel()
                 element_count += targets.numel()
+                row_count += len(targets)
+                errors = predictions.double() - targets.double()
+                batch_squared = errors.square().sum(dim=0).cpu()
+                squared = batch_squared if squared is None else squared + batch_squared
+                if isinstance(self.loss_func, HorizonWeightedTailLoss):
+                    base, tail = self.loss_func.components(predictions, targets)
+                    base_sum += base.item() * targets.numel()
+                    tail_sum += tail.item() * targets.numel()
+                if scaler is not None:
+                    scales = torch.as_tensor(scaler.scale_, device=self.device, dtype=torch.float64)
+                    error_mm = errors * scales
+                    sq = error_mm.square().sum(dim=0).cpu()
+                    bad = (error_mm.abs() > threshold).sum(dim=0).cpu()
+                    physical_squared = sq if physical_squared is None else physical_squared + sq
+                    physical_bad = bad if physical_bad is None else physical_bad + bad
         if element_count == 0:
             raise ValueError("Evaluation dataset has no eligible sequences")
+        self.last_validation_mse = squared / row_count
+        self.last_validation_metrics = {}
+        if physical_squared is not None:
+            self.last_validation_metrics = {
+                "val/large_error_count": int(physical_bad.sum()),
+                "val/large_error_pct": 100 * physical_bad.sum().item() / element_count,
+                "val/rmse_mm": math.sqrt(physical_squared.sum().item() / element_count),
+            }
+            for name, sq, bad in zip(dataloader.dataset.target_cols, physical_squared, physical_bad):
+                self.last_validation_metrics[f"val/{name}/rmse_mm"] = math.sqrt(sq.item() / row_count)
+                self.last_validation_metrics[f"val/{name}/large_error_pct"] = 100 * bad.item() / row_count
+        elif getattr(self, "checkpoint_metric", "val_loss") == "large_error_rate":
+            raise ValueError("Physical-unit checkpoint selection requires the train-fitted target scaler")
+        if isinstance(self.loss_func, HorizonWeightedTailLoss):
+            self.last_validation_metrics.update({"val/base_weighted_mse": base_sum / element_count,
+                                                  "val/tail_penalty": tail_sum / element_count})
         return loss_sum / element_count
 
-    def record_validation(self, epoch: int, val_loss: float) -> None:
-        if val_loss < self.best_training_val_loss:
-            self.best_training_val_loss = val_loss
-            self.epochs_without_improvement = 0
-        else:
-            self.epochs_without_improvement += 1
+    def validation_score(self, val_loss):
+        if getattr(self, "checkpoint_metric", "val_loss") == "large_error_rate":
+            metrics = self.last_validation_metrics
+            return (metrics["val/large_error_count"], metrics["val/rmse_mm"])
+        return (val_loss,)
 
-        if val_loss < self.best_val_loss:
+    def record_validation(self, epoch: int, val_loss: float) -> None:
+        score = self.validation_score(val_loss)
+        if getattr(self, "checkpoint_metric", "val_loss") == "large_error_rate":
+            improved = score < self.best_checkpoint_score
+            self.epochs_without_improvement = 0 if improved else self.epochs_without_improvement + 1
+            self.best_training_val_loss = min(self.best_training_val_loss, val_loss)
+        else:
+            if val_loss < self.best_training_val_loss:
+                self.best_training_val_loss = val_loss
+                self.epochs_without_improvement = 0
+            else:
+                self.epochs_without_improvement += 1
+            improved = val_loss < self.best_val_loss
+        if improved:
             self.best_val_loss = val_loss
+            self.best_checkpoint_score = score
+            self.best_validation_metrics = dict(getattr(self, "last_validation_metrics", {}))
             self.best_checkpoint_epoch = epoch
             torch.save(self.model.state_dict(), self.checkpoint_path)
-            print(f"New best val loss: {val_loss:.4f} (saving to {self.checkpoint_path})")
+            print(f"New best validation score: {score} (saving to {self.checkpoint_path})")
         elif self.best_checkpoint_epoch == 0 and self.epochs_without_improvement == 0:
             print("Validation improved, but persistence is still the best checkpoint.")
 
@@ -342,25 +417,13 @@ class ResidualLSTMTrainer(LSTMTrainer):
         }
 
     def prepare_checkpoint(self) -> None:
-        squared_error = torch.zeros(self.model.output_size, dtype=torch.float64)
-        row_count = 0
-        self.model.eval()
-        with torch.inference_mode():
-            for inputs, targets in self.eval_dataloader:
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-                squared_error += (self.model.persistence(inputs) - targets).square().sum(dim=0).cpu().double()
-                row_count += len(targets)
-        if row_count == 0:
-            raise ValueError("Validation dataset has no eligible persistence samples")
-        baseline_mse = squared_error / row_count
-        baseline_loss = (
-            self.loss_func.reduce_per_horizon(baseline_mse).item()
-            if isinstance(self.loss_func, HorizonWeightedMSE) else baseline_mse.mean().item()
-        )
+        baseline_loss = self.evaluate_loss(self.eval_dataloader, predictor=self.model.persistence)
         print(f"Validation persistence loss ({type(self.loss_func).__name__}): {baseline_loss:.4f}")
-        for name, mse in zip(self.eval_dataloader.dataset.target_cols, baseline_mse):
+        for name, mse in zip(self.eval_dataloader.dataset.target_cols, self.last_validation_mse):
             print(f"  {name}: {mse:.4f}")
         self.best_val_loss = baseline_loss
+        self.best_checkpoint_score = self.validation_score(baseline_loss)
+        self.best_validation_metrics = dict(self.last_validation_metrics)
         self.best_checkpoint_epoch = 0
         torch.save(self.model.state_dict(), self.checkpoint_path)
         print(f"Saved initial persistence checkpoint to {self.checkpoint_path}")

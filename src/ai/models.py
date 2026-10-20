@@ -121,6 +121,7 @@ class AttentionLSTM2(ResidualLSTM):
         self.attention_score = nn.Linear(self.hidden_size, 1)        
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.prepare_inputs(x)
         if x.dim() == 2:
             x = x.unsqueeze(1)
         persistence = self.persistence(x)
@@ -163,6 +164,7 @@ class AttentionLSTM3(AttentionLSTM2):
             nn.init.zeros_(output_layer.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.prepare_inputs(x)
         if x.dim() == 2:
             x = x.unsqueeze(1)
         persistence = self.persistence(x)

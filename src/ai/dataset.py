@@ -36,12 +36,20 @@ class HydrologyDataset(Dataset):
             and not column.startswith("timestamp")
         ]
 
-        X_raw = df[self.feature_cols].to_numpy(dtype=np.float32)
+        X_raw = df[self.feature_cols].to_numpy(dtype=np.float32).copy()
+        raw_missing = (df.attrs.get("raw_missing_value") if fit_scalers
+                       else getattr(feature_scaler, "hydrology_raw_missing_value_", None))
+        missing_scaled = (df.attrs.get("normalized_missing_value", 0.0) if fit_scalers
+                          else getattr(feature_scaler, "hydrology_normalized_missing_value_", 0.0))
+        if raw_missing is not None:
+            X_raw[X_raw == raw_missing] = np.nan
         y_raw = df[self.target_cols].to_numpy(dtype=np.float32)
 
         if fit_scalers:
             self.feature_scaler = StandardScaler()
             self.feature_scaler.fit(X_raw)
+            self.feature_scaler.hydrology_raw_missing_value_ = raw_missing
+            self.feature_scaler.hydrology_normalized_missing_value_ = missing_scaled
 
             valid_targets = np.isfinite(y_raw).all(axis=1)
 
@@ -63,10 +71,10 @@ class HydrologyDataset(Dataset):
 
         # StandardScaler preserves NaN.
         # LSTM cannot consume NaN, so replace missing normalized values
-        # with 0. Missing flags in the dataset tell the model they were absent.
+        # with the dataset policy (legacy 0 with flags, or sentinel -1).
         self.X = np.nan_to_num(
             X_scaled,
-            nan=0.0,
+            nan=missing_scaled,
         ).astype(np.float32)
 
         self.y = y_scaled.astype(np.float32)

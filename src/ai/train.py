@@ -22,7 +22,10 @@ import torch
 from torch import nn
 from torch import optim
 
-from src.ai.losses import HorizonWeightedMSE
+from src.ai.losses import HorizonWeightedMSE, HorizonWeightedTailLoss
+from src.ai.comparison import (
+    DEFAULT_REGISTRY, mlflow_comparison_metrics, run_post_training_comparison,
+)
 from src.ai.metrics import evaluate_all
 from src.ai.models import (
     LightGBM, LightGBMSettings, LSTM, MeanEmbeddingForecastLSTMWithAdapter,
@@ -48,6 +51,18 @@ parser.add_argument("--seed", type=int, default=42, help="Random seed for reprod
 parser.add_argument("--horizon", required=True, choices=["10min", "30min", "1h"])
 parser.add_argument("--dataset-dir", type=Path,
                     help="Directory containing train.csv, val.csv and test.csv; overrides the horizon default")
+parser.add_argument(
+    "--num-rain-station", type=int, choices=(1, 2, 3, 4),
+    help="Keep the top N rain stations ranked on train (6h rain / 12h water change); omitted keeps all",
+)
+parser.add_argument(
+    "--checkpoint-dir", type=Path,
+    help="Optional checkpoint root; explicit rain selections also get a station-specific subdirectory",
+)
+parser.add_argument("--comparison-station-id", default="0074647403",
+                    help="App registry station to compare after sequence training (default Da Vien)")
+parser.add_argument("--comparison-registry", type=Path, default=DEFAULT_REGISTRY,
+                    help="App model registry used for automatic post-training comparison")
 parser.add_argument("--train-method", required=True, choices=["xgb", "lgbm", "lstm", "residual_lstm", "lstm_adapter"])
 parser.add_argument("--batch-size", type=int, default=64)
 parser.add_argument("--num-worker", type=int, default=0)
@@ -85,6 +100,12 @@ parser.add_argument(
     "--lstm-horizon-weights", type=float, nargs="+",
     help="Positive MSE weights in dataset target-column order; default equal weights",
 )
+parser.add_argument("--lstm-tail-penalty", type=float, default=0.0,
+                    help="Strength of physical-unit softplus penalty near the error threshold; 0 disables")
+parser.add_argument("--lstm-tail-threshold-mm", type=float, default=200.0)
+parser.add_argument("--lstm-tail-transition-mm", type=float, default=20.0)
+parser.add_argument("--lstm-checkpoint-metric", choices=["val_loss", "large_error_rate"], default="val_loss",
+                    help="Select checkpoint/early stop by loss or large-error count then pooled RMSE on validation")
 parser.add_argument(
     "--feature-set", "--lstm-feature-set", dest="feature_set",
     type=normalize_feature_set, choices=FEATURE_SETS, default="all",
@@ -126,6 +147,13 @@ lgbm_args.add_argument("--lgbm-verbose", type=int, default=lgbm_defaults.verbose
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    if args.num_rain_station is not None:
+        if args.train_method in {"xgb", "lgbm"}:
+            parser.error("--num-rain-station currently supports sequence models only")
+        if args.feature_set != "all" and "rain" not in args.feature_set.split("+"):
+            parser.error("--num-rain-station requires rain in --feature-set")
+    if args.checkpoint_dir is not None and args.train_method in {"xgb", "lgbm"}:
+        parser.error("--checkpoint-dir currently supports sequence models only")
     if args.dataset_dir is not None:
         for split in ("train", "val", "test"):
             if not (args.dataset_dir / f"{split}.csv").is_file():
@@ -148,6 +176,12 @@ def validate_args(args: argparse.Namespace) -> None:
             parser.error("--lstm-horizon-weights requires a sequence model")
         if not all(math.isfinite(w) and w > 0 for w in args.lstm_horizon_weights):
             parser.error("--lstm-horizon-weights must be finite and positive")
+    if not math.isfinite(args.lstm_tail_penalty) or args.lstm_tail_penalty < 0:
+        parser.error("--lstm-tail-penalty must be finite and nonnegative")
+    if not all(math.isfinite(v) and v > 0 for v in (args.lstm_tail_threshold_mm, args.lstm_tail_transition_mm)):
+        parser.error("Tail threshold and transition must be finite and positive")
+    if args.train_method in {"xgb", "lgbm"} and (args.lstm_tail_penalty or args.lstm_checkpoint_metric != "val_loss"):
+        parser.error("Tail loss and checkpoint metric require a sequence model")
     if not math.isfinite(args.lstm_correction_penalty) or args.lstm_correction_penalty <= -1:
         parser.error("--lstm-correction-penalty must be finite and > -1; weighted MSE may require a stricter bound")
     if args.lstm_correction_penalty and args.train_method != "residual_lstm":
@@ -333,6 +367,7 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         require_current_level=includes_current_level,
         feature_set=args.feature_set,
         dataset_dir=args.dataset_dir,
+        num_rain_station=args.num_rain_station,
     )
     input_size = train_loader.dataset.num_features
     output_size = train_loader.dataset.num_targets
@@ -384,6 +419,13 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
 
     optimizer = optim.AdamW(parameters, lr=args.lstm_lr, weight_decay=args.lstm_weight_decay)
     scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
+    loss_func = (HorizonWeightedMSE(args.lstm_horizon_weights)
+                 if args.lstm_horizon_weights is not None else nn.MSELoss())
+    if args.lstm_tail_penalty > 0:
+        loss_func = HorizonWeightedTailLoss(
+            args.lstm_horizon_weights or [1.0] * output_size,
+            train_loader.dataset.target_scaler.scale_, strength=args.lstm_tail_penalty,
+            threshold_mm=args.lstm_tail_threshold_mm, transition_mm=args.lstm_tail_transition_mm)
     trainer_options = dict(
         model=model,
         horizon=args.horizon,
@@ -391,18 +433,25 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         train_dataloader=train_loader,
         eval_dataloader=eval_loader,
         test_dataloader=test_loader,
-        loss_func=(
-            HorizonWeightedMSE(args.lstm_horizon_weights)
-            if args.lstm_horizon_weights is not None else nn.MSELoss()
-        ),
+        loss_func=loss_func,
+        checkpoint_metric=args.lstm_checkpoint_metric,
+        validation_threshold_mm=args.lstm_tail_threshold_mm,
         optimizer=optimizer,
         scheduler=scheduler,
         early_stopping=args.early_stopping,
         gradient_accumulation=args.gradient_accumulation,
         device=args.device,
     )
-    if args.dataset_dir is not None:
-        trainer_options["checkpoint_dir"] = Path("model") / args.dataset_dir.resolve().name
+    checkpoint_root = args.checkpoint_dir
+    if checkpoint_root is None:
+        checkpoint_root = (Path("model") / args.dataset_dir.resolve().name
+                           if args.dataset_dir is not None else Path("model"))
+    if args.num_rain_station is not None:
+        checkpoint_root /= "rain_" + "-".join(sorted(train_loader.dataset.rain_station_ids))
+    if args.lstm_tail_penalty > 0 or args.lstm_checkpoint_metric != "val_loss":
+        checkpoint_root /= (f"tail_{args.lstm_tail_penalty:g}_threshold_{args.lstm_tail_threshold_mm:g}"
+                            f"_transition_{args.lstm_tail_transition_mm:g}_{args.lstm_checkpoint_metric}")
+    trainer_options["checkpoint_dir"] = checkpoint_root
     if trainer_class is ResidualLSTMTrainer:
         return ResidualLSTMTrainer(**trainer_options, correction_penalty=args.lstm_correction_penalty)
     if trainer_class is MEFLSTMAdapterTrainer:
@@ -428,19 +477,25 @@ def main() -> None:
         trainer = build_sequence_trainer(args)
         dataset = trainer.train_dataloader.dataset
         run_name = f"{args.train_method}_{args.horizon}_{args.feature_set}"
+        if args.num_rain_station is not None:
+            run_name += "_rain_" + "-".join(sorted(dataset.rain_station_ids))
         if args.train_method == "lstm_adapter":
             backbone_mode = "two_stage" if args.mef_two_stage else (
                 "unfrozen" if args.mef_unfreeze_backbone else "frozen"
             )
             run_name += f"_{backbone_mode}"
 
-        with mlflow.start_run(run_name=run_name):
+        with mlflow.start_run(run_name=run_name) as active_run:
             log_dataset_source(args)
             mlflow.log_params(
                 {
                     "train_method": args.train_method,
                     "horizon": args.horizon,
                     "feature_set": args.feature_set,
+                    "rain_station_ids": dataset.rain_station_ids,
+                    "num_rain_station": len(dataset.rain_station_ids),
+                    "rain_station_selection": "train_correlation_top_n" if args.num_rain_station is not None else "all_available",
+                    "checkpoint_path": str(trainer.checkpoint_path),
                     "seed": args.seed,
                     "batch_size": args.batch_size,
                     "num_epochs": args.num_epochs,
@@ -454,12 +509,29 @@ def main() -> None:
                     "device": str(trainer.device),
                     "loss_function": type(trainer.loss_func).__name__,
                     "horizon_weights": args.lstm_horizon_weights or [1.0] * dataset.num_targets,
+                    "tail_penalty": args.lstm_tail_penalty,
+                    "tail_threshold_mm": args.lstm_tail_threshold_mm,
+                    "tail_transition_mm": args.lstm_tail_transition_mm,
+                    "checkpoint_metric": args.lstm_checkpoint_metric,
                     "target_columns": dataset.target_cols,
                     **trainer.model_settings()
                 }
             )
             mlflow.log_dict({"feature_columns": dataset.feature_cols}, "features.json")
+            if dataset.rain_station_ranking:
+                mlflow.log_dict({"scope": "train", "rain_window_hours": 6,
+                                 "water_change_horizon_hours": 12,
+                                 "stations": dataset.rain_station_ranking}, "rain_station_ranking.json")
             trainer.train()
+            comparison = run_post_training_comparison(
+                trainer, dataset_directory(args.horizon, args.dataset_dir) / "test.csv",
+                active_run.info.run_id, station_id=args.comparison_station_id,
+                registry_path=args.comparison_registry,
+            )
+            mlflow.set_tags({"comparison/status": comparison["status"],
+                             "comparison/report_dir": str(comparison["output_dir"])})
+            if comparison["status"] == "completed":
+                mlflow.log_metrics(mlflow_comparison_metrics(comparison))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,112 @@
+{
+  "created_at_utc": "2026-10-19T07:02:51.556502+00:00",
+  "experiment": "O5_O24",
+  "parent_dataset": "/home/my_ubuntu/projects/hydrology/train_data/da_vien_1h_2026-10-15_forecast_mask",
+  "resolution_minutes": 60,
+  "variant": "mask",
+  "sequence_length": 96,
+  "feature_columns": [
+    "water_level_depth",
+    "water_level_lag_60m",
+    "water_level_lag_180m",
+    "water_level_missing",
+    "rain_750062_depth",
+    "rain_750062_sum_3h",
+    "rain_750062_sum_6h",
+    "rain_750062_sum_12h",
+    "rain_750062_sum_24h",
+    "rain_750062_missing",
+    "rain_750007_depth",
+    "rain_750007_sum_3h",
+    "rain_750007_sum_6h",
+    "rain_750007_sum_12h",
+    "rain_750007_sum_24h",
+    "rain_750007_missing",
+    "flood_season",
+    "weather_forecast_rain_0_3h",
+    "weather_forecast_rain_3_6h",
+    "weather_forecast_rain_6_12h",
+    "weather_forecast_rain_12_24h",
+    "weather_forecast_rain_0_3h_missing",
+    "weather_forecast_rain_3_6h_missing",
+    "weather_forecast_rain_6_12h_missing",
+    "weather_forecast_rain_12_24h_missing",
+    "weather_forecast_age_hours"
+  ],
+  "target_columns": [
+    "target_water_level_plus_60m",
+    "target_water_level_plus_120m",
+    "target_water_level_plus_180m",
+    "target_water_level_plus_240m",
+    "target_water_level_plus_300m",
+    "target_water_level_plus_360m",
+    "target_water_level_plus_420m",
+    "target_water_level_plus_480m",
+    "target_water_level_plus_540m",
+    "target_water_level_plus_600m",
+    "target_water_level_plus_660m",
+    "target_water_level_plus_720m",
+    "target_water_level_plus_780m",
+    "target_water_level_plus_840m",
+    "target_water_level_plus_900m",
+    "target_water_level_plus_960m",
+    "target_water_level_plus_1020m",
+    "target_water_level_plus_1080m",
+    "target_water_level_plus_1140m",
+    "target_water_level_plus_1200m",
+    "target_water_level_plus_1260m",
+    "target_water_level_plus_1320m",
+    "target_water_level_plus_1380m",
+    "target_water_level_plus_1440m"
+  ],
+  "common_target_columns": [
+    "target_water_level_plus_60m",
+    "target_water_level_plus_180m",
+    "target_water_level_plus_360m",
+    "target_water_level_plus_720m",
+    "target_water_level_plus_1440m"
+  ],
+  "input_size": 26,
+  "output_size": 24,
+  "target_definition": "Observed hourly mean H(t+h), hours 1..24, exact timestamp lookup; no interpolation",
+  "matching_policy": "O5 and O24 require identical complete-label rows; fail if extra target holes change eligibility",
+  "splits": {
+    "train": {
+      "rows": 6190,
+      "complete_24h": 6190,
+      "sequences_96": 6095,
+      "start_utc": "2025-11-14 19:00:00+00:00",
+      "end_utc": "2026-07-30 16:00:00+00:00"
+    },
+    "val": {
+      "rows": 1080,
+      "complete_24h": 1080,
+      "sequences_96": 985,
+      "start_utc": "2026-07-31 17:00:00+00:00",
+      "end_utc": "2026-09-14 16:00:00+00:00"
+    },
+    "test": {
+      "rows": 711,
+      "complete_24h": 687,
+      "sequences_96": 592,
+      "start_utc": "2026-09-15 17:00:00+00:00",
+      "end_utc": "2026-10-15 07:00:00+00:00"
+    }
+  },
+  "purge_hours": 24,
+  "feature_set": "water_level+rain+flood_season+weather_forecast",
+  "availability_policy": "run init + assumed 6h <= anchor; use older complete run max age24h",
+  "rain_station_ids": [
+    "750062",
+    "750007"
+  ],
+  "observation_cutoff_utc": "2026-10-15 07:00:00+00:00",
+  "caveats": [
+    "Historical forecast publication time is assumed, not independently verified.",
+    "Archive includes provider-labelled hindcasts and a model-cycle transition.",
+    "Missing targets remain NaN; never encode labels as -1.",
+    "Test has already been used for exploratory model comparisons.",
+    "Minus one in scaled space can overlap legitimate standardized values; experimental encoding.",
+    "Test reused for exploratory comparisons; 24 labels do not imply 24x independent observations."
+  ]
+}

@@ -235,3 +235,72 @@ def evaluate_all(
         "flood_threshold": flood["flood_threshold"],
     }
 
+
+
+def paired_error_stats(g):
+    b = g.candidate_error_mm.abs().gt(200)
+    p = g.serving_error_mm.abs().gt(200)
+    fixed, new, both = int((p & ~b).sum()), int((b & ~p).sum()), int((b & p).sum())
+    assert int(p.sum()) == fixed + both
+    assert int(b.sum()) == new + both
+    return dict(n=len(g), production_bad=int(p.sum()), b_bad=int(b.sum()),
+                production_pct=100*p.mean(), b_pct=100*b.mean(), fixed=fixed,
+                new=new, both=both, net_reduction=fixed-new,
+                fixed_pct_of_production=100*fixed/p.sum() if p.sum() else np.nan,
+                production_rmse=np.sqrt(np.mean(g.serving_error_mm**2)),
+                b_rmse=np.sqrt(np.mean(g.candidate_error_mm**2)))
+
+
+def markdown_table(df, columns):
+    # Avoid an optional tabulate dependency.
+    lines = ['| ' + ' | '.join(columns) + ' |', '|' + '|'.join(['---']*len(columns)) + '|']
+    for row in df[columns].itertuples(index=False, name=None):
+        lines.append('| ' + ' | '.join(f'{x:.2f}' if isinstance(x, (float, np.floating)) else str(x) for x in row) + ' |')
+    return '\n'.join(lines)
+
+
+def extrema_timing(points):
+    """Match peaks/troughs one-to-one within 6h in continuous hourly segments.
+
+    Positive lag means a late prediction. Unmatched actual extrema remain in
+    the result, so timing averages cannot hide missed peaks.
+    """
+    from scipy.signal import find_peaks
+
+    columns = ['horizon_hours', 'kind', 'model', 'actual_at', 'matched',
+               'lag_hours', 'amplitude_error_mm']
+    details = []
+    for horizon, group in points.groupby('horizon_minutes'):
+        group = group.sort_values('target_utc').copy()
+        group['time'] = pd.to_datetime(group.target_utc, utc=True)
+        segments = group.time.diff().ne(pd.Timedelta(hours=1)).cumsum()
+        for _, segment in group.groupby(segments):
+            for kind, sign in [('peak', 1), ('trough', -1)]:
+                actual, _ = find_peaks(sign * segment.actual_mm.to_numpy(), prominence=50, distance=6)
+                for name, column in [('B', 'serving_mm'), ('candidate', 'candidate_mm')]:
+                    predicted, _ = find_peaks(sign * segment[column].to_numpy(), prominence=50, distance=6)
+                    available = set(predicted.tolist())
+                    for anchor in actual:
+                        eligible = [p for p in available if abs(p - anchor) <= 6]
+                        match = min(eligible, key=lambda p: (abs(p - anchor), p)) if eligible else None
+                        if match is not None:
+                            available.remove(match)
+                        details.append(dict(
+                            horizon_hours=horizon // 60, kind=kind, model=name,
+                            actual_at=str(segment.time.iloc[anchor]), matched=match is not None,
+                            lag_hours=float(match - anchor) if match is not None else np.nan,
+                            amplitude_error_mm=float(segment[column].iloc[match] - segment.actual_mm.iloc[anchor])
+                            if match is not None else np.nan))
+    detail = pd.DataFrame(details, columns=columns)
+    summaries = []
+    for (horizon, kind, model), group in detail.groupby(['horizon_hours', 'kind', 'model']):
+        matched = group.loc[group.matched]
+        summaries.append(dict(
+            horizon_hours=horizon, kind=kind, model=model, n_actual=len(group),
+            n_matched=len(matched), n_missed=len(group) - len(matched),
+            mean_lag_hours=matched.lag_hours.mean(), median_lag_hours=matched.lag_hours.median(),
+            mean_absolute_lag_hours=matched.lag_hours.abs().mean(),
+            mean_absolute_amplitude_mm=matched.amplitude_error_mm.abs().mean()))
+    return detail, pd.DataFrame(summaries, columns=[
+        'horizon_hours', 'kind', 'model', 'n_actual', 'n_matched', 'n_missed',
+        'mean_lag_hours', 'median_lag_hours', 'mean_absolute_lag_hours', 'mean_absolute_amplitude_mm'])
