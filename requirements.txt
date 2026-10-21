@@ -15,4 +15,5 @@ ruamel.yaml
 tqdm
 more_itertools
 mlflow
+optuna>=4.5,<5
 https://github.com/google-research/flood-forecasting.git

@@ -12,7 +12,9 @@ import pandas as pd
 import torch
 from sklearn.preprocessing import StandardScaler
 
-from src.ai.comparison import paired_metrics, run_post_training_comparison, write_report
+from src.ai.comparison import (
+    comparison_observations_source, paired_metrics, run_post_training_comparison, write_report,
+)
 
 
 class LastLevel(torch.nn.Module):
@@ -49,6 +51,57 @@ def example():
 
 
 class ComparisonTests(TestCase):
+    def test_mixed_cadences_compare_timestamps_using_each_models_own_history(self):
+        frame, new, app = example()
+        hourly = pd.concat([frame] * 12, ignore_index=True)
+        hourly["timestamp_utc"] = pd.date_range("2026-01-01", periods=96, freq="h", tz="UTC")
+        hourly[new["target_columns"]] = hourly[["water_level_depth", "water_level_depth"]].to_numpy()
+        coarse = hourly.iloc[::12].reset_index(drop=True)
+        new["sequence_length"] = 2
+        metrics, _, points, coverage = paired_metrics(
+            coarse, LastLevel(new, [0., 0.]), new,
+            LastLevel(app, [0., 0.]), app, serving_frame=hourly,
+        )
+        self.assertEqual(coverage["common_anchors"], 7)
+        self.assertEqual(coverage["candidate_step_hours"], 12)
+        self.assertEqual(coverage["serving_step_hours"], 1)
+        self.assertTrue(metrics.n.eq(7).all())
+        self.assertTrue(metrics.above_200.eq(0).all())
+        self.assertEqual(pd.to_datetime(points.anchor_utc, utc=True).min(), hourly.timestamp_utc.iloc[12])
+
+    def test_derived_dataset_resolves_original_observations_through_parents(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for name in ("pool", "o24", "forecast", "observations"):
+                (root / name).mkdir()
+            (root / "pool/manifest.json").write_text(json.dumps({"parent_dataset": "../o24"}))
+            (root / "o24/manifest.json").write_text(json.dumps({"parent_dataset": str(root / "forecast")}))
+            (root / "forecast/manifest.json").write_text(json.dumps({
+                "comparison_observations_dir": "../observations",
+                "source_split_sha256": {"test.csv": "expected-source"},
+            }))
+            path, expected = comparison_observations_source(root / "pool/test.csv")
+            self.assertEqual(path, root / "observations/test.csv")
+            self.assertEqual(expected, "expected-source")
+            (root / "forecast/manifest.json").write_text(json.dumps({"parent_dataset": "../pool"}))
+            with self.assertRaisesRegex(ValueError, "Cycle"):
+                comparison_observations_source(root / "pool/test.csv")
+
+    def test_reference_frame_supplies_missing_inputs_without_changing_candidate(self):
+        frame, new, app = example()
+        candidate_frame = frame.drop(columns="rain_750007_depth")
+        metrics, _, _, coverage = paired_metrics(
+            candidate_frame, LastLevel(new, [0., 0.]), new,
+            LastLevel(app, [0., 0.]), app, serving_frame=frame,
+        )
+        self.assertTrue(metrics.above_200.eq(0).all())
+        self.assertEqual(coverage["common_anchors"], 3)
+        changed = frame.copy()
+        changed.loc[0, new["target_columns"][0]] += 1
+        with self.assertRaisesRegex(ValueError, "different target"):
+            paired_metrics(candidate_frame, LastLevel(new, [0., 0.]), new,
+                           LastLevel(app, [0., 0.]), app, serving_frame=changed)
+
     def test_common_rows_own_scalers_target_order_and_strict_200_threshold(self):
         frame, new, app = example()
         metrics, summary, points, coverage = paired_metrics(

@@ -171,9 +171,11 @@ class LSTMTrainer:
                 "feature_columns": dataset.feature_cols,
                 "target_columns": dataset.target_cols,
                 "sequence_length": dataset.seq_len,
+                "resolution_minutes": getattr(dataset, "resolution_minutes", 60),
                 "missing_scaled_value": getattr(dataset.feature_scaler, "hydrology_normalized_missing_value_", 0.0),
                 "raw_missing_value": getattr(dataset.feature_scaler, "hydrology_raw_missing_value_", None),
                 "rain_station_ids": getattr(dataset, "rain_station_ids", []),
+                "rain_station_combination": getattr(dataset, "rain_station_combination", ""),
             },
             preprocessing_path,
         )

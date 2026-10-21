@@ -36,6 +36,33 @@ def evaluation_dataset(frame, saved):
     )
 
 
+def comparison_observations_source(test_csv):
+    """Follow dataset ancestry to the explicit serving-observation source.
+
+    Derived datasets can add/remove predictors without carrying the original
+    observation columns. Never fill absent serving inputs with zero or refit
+    its scalers; use its original snapshot and validate timestamps/labels.
+    """
+    test_csv = Path(test_csv)
+    directory = test_csv.parent.resolve()
+    visited = set()
+    while (directory / "manifest.json").is_file():
+        if directory in visited:
+            raise ValueError("Cycle in dataset parent metadata")
+        visited.add(directory)
+        spec = json.loads((directory / "manifest.json").read_text())
+        observations_dir = spec.get("comparison_observations_dir")
+        if observations_dir:
+            path = (directory / observations_dir / test_csv.name).resolve()
+            expected = spec.get("source_split_sha256", {}).get(test_csv.name)
+            return path, expected
+        parent = spec.get("parent_dataset")
+        if not parent:
+            break
+        directory = (directory / parent).resolve()
+    return None, None
+
+
 def predict(model, dataset, indices, device, batch_size):
     positions = np.searchsorted(dataset.end_indices, indices)
     loader = DataLoader(Subset(dataset, positions.tolist()), batch_size=batch_size,
@@ -55,9 +82,11 @@ def paired_metrics(frame, candidate, candidate_saved, serving, serving_saved,
                    device="cpu", batch_size=128, serving_frame=None):
     """Return per-horizon metrics, aggregate summaries, paired predictions and coverage."""
     timestamps = pd.to_datetime(frame.timestamp_utc, utc=True)
+    steps = timestamps.diff().dropna()
     if (not timestamps.is_unique or not timestamps.is_monotonic_increasing
-            or not timestamps.diff().dropna().eq(pd.Timedelta(hours=1)).all()):
-        raise ValueError("Comparison requires an ordered, unique, complete hourly grid")
+            or steps.empty or steps.nunique() != 1
+            or steps.iloc[0] not in [pd.Timedelta(hours=h) for h in (1, 12, 24)]):
+        raise ValueError("Comparison requires an ordered, unique, complete hourly grid or regular 12h/24h grid")
     common_targets = [c for c in serving_saved["target_columns"] if c in candidate_saved["target_columns"]]
     if not common_targets:
         raise ValueError("Candidate and serving model have no shared horizons")
@@ -65,17 +94,27 @@ def paired_metrics(frame, candidate, candidate_saved, serving, serving_saved,
         raise ValueError("Unsupported target naming; expected water-level horizons in minutes")
     new_ds = evaluation_dataset(frame, candidate_saved)
     serving_frame = frame if serving_frame is None else serving_frame
-    if not pd.to_datetime(serving_frame.timestamp_utc, utc=True).equals(timestamps):
-        raise ValueError("Serving observations must have exactly the same test timestamps")
+    serving_times = pd.DatetimeIndex(pd.to_datetime(serving_frame.timestamp_utc, utc=True))
+    serving_steps = serving_times.to_series().diff().dropna()
+    if (not serving_times.is_unique or not serving_times.is_monotonic_increasing
+            or serving_steps.empty or serving_steps.nunique() != 1):
+        raise ValueError("Serving observations need a regular ordered time grid")
+    source_positions = serving_times.get_indexer(timestamps)
+    if (source_positions < 0).any():
+        raise ValueError("Serving observations must contain all candidate test timestamps")
     for target in common_targets:
-        if not np.allclose(frame[target].to_numpy(), serving_frame[target].to_numpy(), rtol=0, atol=1e-9, equal_nan=True):
+        if not np.allclose(frame[target].to_numpy(), serving_frame[target].iloc[source_positions].to_numpy(),
+                           rtol=0, atol=1e-9, equal_nan=True):
             raise ValueError("Candidate and serving observations have different target values")
     app_ds = evaluation_dataset(serving_frame, serving_saved)
-    indices = np.intersect1d(new_ds.end_indices, app_ds.end_indices)
+    candidate_times = pd.DatetimeIndex(timestamps)
+    shared_times = candidate_times[new_ds.end_indices].intersection(serving_times[app_ds.end_indices]).sort_values()
+    indices = candidate_times.get_indexer(shared_times)
+    serving_indices = serving_times.get_indexer(shared_times)
     if not len(indices):
         raise ValueError("No common eligible test anchors after sequence warmup/target filtering")
     new_values = predict(candidate, new_ds, indices, device, batch_size)
-    app_values = predict(serving, app_ds, indices, device, batch_size)
+    app_values = predict(serving, app_ds, serving_indices, device, batch_size)
     frames, rows = [], []
     for target in common_targets:
         minutes = int(target.rsplit("_", 1)[-1][:-1])
@@ -125,6 +164,8 @@ def paired_metrics(frame, candidate, candidate_saved, serving, serving_saved,
                      assessment=assessment, automatic_promotion=False)
     coverage = dict(total_test_rows=len(frame), candidate_eligible=len(new_ds),
                     serving_eligible=len(app_ds), common_anchors=len(indices),
+                    candidate_step_hours=steps.iloc[0].total_seconds() / 3600,
+                    serving_step_hours=serving_steps.iloc[0].total_seconds() / 3600,
                     first_anchor_vietnam=str(timestamps.iloc[indices[0]].tz_convert("Asia/Ho_Chi_Minh")),
                     last_anchor_vietnam=str(timestamps.iloc[indices[-1]].tz_convert("Asia/Ho_Chi_Minh")),
                     common_targets=common_targets,
@@ -237,18 +278,13 @@ def compare_checkpoint(checkpoint, test_csv, out, station_id="0074647403",
             raise ValueError("Local checkpoint differs from just-trained model; refusing misleading provenance")
     serving_frame = None
     observations_sha = None
-    dataset_manifest = test_csv.parent / "manifest.json"
-    if dataset_manifest.exists():
-        spec = json.loads(dataset_manifest.read_text())
-        observations_dir = spec.get("comparison_observations_dir")
-        if observations_dir:
-            observations_file = (test_csv.parent / observations_dir / test_csv.name).resolve()
-            observations_bytes = observations_file.read_bytes()
-            observations_sha = sha256(observations_bytes).hexdigest()
-            expected = spec.get("source_split_sha256", {}).get(test_csv.name)
-            if expected and observations_sha != expected:
-                raise ValueError("Original serving observations changed since dataset construction")
-            serving_frame = pd.read_csv(BytesIO(observations_bytes))
+    observations_file, expected = comparison_observations_source(test_csv)
+    if observations_file is not None:
+        observations_bytes = observations_file.read_bytes()
+        observations_sha = sha256(observations_bytes).hexdigest()
+        if expected and observations_sha != expected:
+            raise ValueError("Original serving observations changed since dataset construction")
+        serving_frame = pd.read_csv(BytesIO(observations_bytes))
     metrics, summary, points, coverage = paired_metrics(
         frame, candidate, saved, runtime.model, serving_saved, device, batch_size,
         serving_frame=serving_frame)

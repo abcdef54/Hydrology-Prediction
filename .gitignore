@@ -23,7 +23,10 @@ pretrained/
 # Existing tracked datasets and serving artifacts remain versioned.
 /train_data/1h_top4_pg_*
 /train_data/da_vien_1h_*/
+/train_data/da_vien_12h_*/
+/train_data/da_vien_24h_*/
 !/train_data/da_vien_1h_2026-10-15_forecast_mask_o24/
 !/train_data/da_vien_1h_2026-10-15_forecast_mask_o24/**
 /model/1h_top4_pg_*/
 /model/da_vien_1h_*/
+/model/experiments/

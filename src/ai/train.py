@@ -48,12 +48,20 @@ parser.add_argument(
     help="MLflow experiment name, for example 30min or 1h",
 )
 parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible training")
-parser.add_argument("--horizon", required=True, choices=["10min", "30min", "1h"])
+parser.add_argument("--horizon", required=True, choices=["10min", "30min", "1h", "12h", "24h"])
 parser.add_argument("--dataset-dir", type=Path,
                     help="Directory containing train.csv, val.csv and test.csv; overrides the horizon default")
+parser.add_argument("--outputs", type=int, choices=(5, 24),
+                    help="Sequence targets: 5 common horizons or all 24 hourly targets; omitted keeps dataset targets")
+parser.add_argument("--target-horizons", type=int, nargs="+",
+                    help="Exact forecast horizons in physical hours, e.g. 12 24 or 24")
 parser.add_argument(
-    "--num-rain-station", type=int, choices=(1, 2, 3, 4),
+    "--num-rain-station", type=int,
     help="Keep the top N rain stations ranked on train (6h rain / 12h water change); omitted keeps all",
+)
+parser.add_argument(
+    "--rain-stations",
+    help="Exact named combination, e.g. hong_thai+vp+bach_ma+phu_bai; no fixed count limit",
 )
 parser.add_argument(
     "--checkpoint-dir", type=Path,
@@ -147,7 +155,25 @@ lgbm_args.add_argument("--lgbm-verbose", type=int, default=lgbm_defaults.verbose
 
 
 def validate_args(args: argparse.Namespace) -> None:
+    if args.target_horizons is not None:
+        if args.outputs is not None:
+            parser.error("Use --target-horizons or --outputs, not both")
+        if args.train_method in {"xgb", "lgbm"}:
+            parser.error("--target-horizons currently supports sequence models only")
+        if len(set(args.target_horizons)) != len(args.target_horizons) or min(args.target_horizons) < 1:
+            parser.error("--target-horizons requires distinct positive hours")
+    if args.outputs is not None and args.train_method in {"xgb", "lgbm"}:
+        parser.error("--outputs currently supports sequence models only")
+    if args.rain_stations is not None:
+        if args.num_rain_station is not None:
+            parser.error("Use --rain-stations or --num-rain-station, not both")
+        if args.train_method in {"xgb", "lgbm"}:
+            parser.error("--rain-stations currently supports sequence models only")
+        if args.feature_set != "all" and "rain" not in args.feature_set.split("+"):
+            parser.error("--rain-stations requires rain in --feature-set")
     if args.num_rain_station is not None:
+        if args.num_rain_station < 1:
+            parser.error("--num-rain-station must be positive")
         if args.train_method in {"xgb", "lgbm"}:
             parser.error("--num-rain-station currently supports sequence models only")
         if args.feature_set != "all" and "rain" not in args.feature_set.split("+"):
@@ -342,7 +368,7 @@ def train_tabular(args: argparse.Namespace) -> None:
 
 
 def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
-    default_sequence_lengths = {"10min": 144, "30min": 48, "1h": 24}
+    default_sequence_lengths = {"10min": 144, "30min": 48, "1h": 24, "12h": 9, "24h": 5}
     sequence_length = (
         default_sequence_lengths[args.horizon]
         if args.lstm_seq_len is None
@@ -368,6 +394,9 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         feature_set=args.feature_set,
         dataset_dir=args.dataset_dir,
         num_rain_station=args.num_rain_station,
+        rain_stations=args.rain_stations,
+        outputs=args.outputs,
+        target_horizons=args.target_horizons,
     )
     input_size = train_loader.dataset.num_features
     output_size = train_loader.dataset.num_targets
@@ -446,8 +475,12 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
     if checkpoint_root is None:
         checkpoint_root = (Path("model") / args.dataset_dir.resolve().name
                            if args.dataset_dir is not None else Path("model"))
-    if args.num_rain_station is not None:
+    if args.num_rain_station is not None or args.rain_stations is not None:
         checkpoint_root /= "rain_" + "-".join(sorted(train_loader.dataset.rain_station_ids))
+    if args.outputs is not None:
+        checkpoint_root /= f"o{args.outputs}"
+    if args.target_horizons is not None:
+        checkpoint_root /= "targets_" + "-".join(str(h) for h in sorted(args.target_horizons)) + "h"
     if args.lstm_tail_penalty > 0 or args.lstm_checkpoint_metric != "val_loss":
         checkpoint_root /= (f"tail_{args.lstm_tail_penalty:g}_threshold_{args.lstm_tail_threshold_mm:g}"
                             f"_transition_{args.lstm_tail_transition_mm:g}_{args.lstm_checkpoint_metric}")
@@ -477,8 +510,10 @@ def main() -> None:
         trainer = build_sequence_trainer(args)
         dataset = trainer.train_dataloader.dataset
         run_name = f"{args.train_method}_{args.horizon}_{args.feature_set}"
-        if args.num_rain_station is not None:
+        if args.num_rain_station is not None or args.rain_stations is not None:
             run_name += "_rain_" + "-".join(sorted(dataset.rain_station_ids))
+        if args.target_horizons is not None:
+            run_name += "_targets_" + "-".join(str(h) for h in sorted(args.target_horizons)) + "h"
         if args.train_method == "lstm_adapter":
             backbone_mode = "two_stage" if args.mef_two_stage else (
                 "unfrozen" if args.mef_unfreeze_backbone else "frozen"
@@ -494,7 +529,11 @@ def main() -> None:
                     "feature_set": args.feature_set,
                     "rain_station_ids": dataset.rain_station_ids,
                     "num_rain_station": len(dataset.rain_station_ids),
-                    "rain_station_selection": "train_correlation_top_n" if args.num_rain_station is not None else "all_available",
+                    "rain_station_selection": ("explicit_combination" if args.rain_stations is not None
+                                               else "train_correlation_top_n" if args.num_rain_station is not None
+                                               else "all_available"),
+                    "rain_station_combination": args.rain_stations or "",
+                    "target_horizons_hours": args.target_horizons or "dataset",
                     "checkpoint_path": str(trainer.checkpoint_path),
                     "seed": args.seed,
                     "batch_size": args.batch_size,

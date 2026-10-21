@@ -1,6 +1,6 @@
 """Summarize saved forecast absolute errors over a Vietnam-local date range.
 
-Use the read-only snapshot from export_rain_regime_snapshot.py. Water truth is
+Use the existing read-only forecast/observation snapshot. Water truth is
 mean of six valid readings in (t-1h,t]. Saved forecasts may be retrospective.
 """
 import argparse

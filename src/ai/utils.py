@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from pathlib import Path
 from itertools import combinations
 from src.ai.dataset import HydrologyDataset
+from src.ai.rain_stations import available_rain_ids, combination_name, resolve_rain_stations
 from googlehydrology.datautils.scaler import LEGACY_SCALER_FILE_NAME, SCALER_FILE_NAME
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import MeanEmbeddingForecastLSTM
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import Config
@@ -44,7 +45,8 @@ def seed_worker(_worker_id: int) -> None:
 
 
 def dataset_directory(horizon: str, dataset_dir: str | Path | None = None) -> Path:
-    paths = {"10min": DATASET_PATH_10MIN, "30min": DATASET_PATH_30MIN, "1h": DATASET_PATH_1H}
+    paths = {"10min": DATASET_PATH_10MIN, "30min": DATASET_PATH_30MIN, "1h": DATASET_PATH_1H,
+             "12h": "./train_data/12h/", "24h": "./train_data/24h/"}
     if horizon not in paths:
         raise ValueError(f"Unknown temporal resolution: {horizon}")
     return Path(dataset_dir) if dataset_dir is not None else Path(paths[horizon])
@@ -56,7 +58,7 @@ def load_dataset(horizon: str, dataset_dir: str | Path | None = None):
     manifest = {}
     if manifest_path.is_file():
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        expected_minutes = {"10min": 10, "30min": 30, "1h": 60}[horizon]
+        expected_minutes = {"10min": 10, "30min": 30, "1h": 60, "12h": 720, "24h": 1440}[horizon]
         resolution = manifest.get("resolution_minutes")
         if resolution is not None and resolution != expected_minutes:
             raise ValueError(f"Dataset resolution is {resolution} minutes, but --horizon is {horizon}")
@@ -190,6 +192,9 @@ def get_dataloader(
     feature_set: str = "all",
     dataset_dir: str | Path | None = None,
     num_rain_station: int | None = None,
+    rain_stations: str | None = None,
+    outputs: int | None = None,
+    target_horizons: list[int] | None = None,
 ):
     train_df, eval_df, test_df = load_dataset(horizon, dataset_dir)
     feature_set = normalize_feature_set(feature_set)
@@ -197,9 +202,17 @@ def get_dataloader(
         raise ValueError(f"Unknown LSTM feature set: {feature_set}")
     rain_station_ids = None
     ranking = []
+    if rain_stations is not None:
+        if num_rain_station is not None:
+            raise ValueError("Use rain_stations or num_rain_station, not both")
+        manifest_path = dataset_directory(horizon, dataset_dir) / "manifest.json"
+        spec = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
+        rain_station_ids = resolve_rain_stations(
+            rain_stations, available_rain_ids(train_df.columns), spec.get("rain_station_aliases"),
+        )
     if num_rain_station is not None:
-        if type(num_rain_station) is not int or num_rain_station not in (1, 2, 3, 4):
-            raise ValueError("num_rain_station must be an integer from 1 to 4")
+        if type(num_rain_station) is not int or num_rain_station < 1:
+            raise ValueError("num_rain_station must be a positive integer")
         if feature_set != "all" and "rain" not in feature_set.split("+"):
             raise ValueError("--num-rain-station requires rain in --feature-set")
         ranking = rank_rain_stations(train_df)
@@ -207,8 +220,30 @@ def get_dataloader(
             raise ValueError(f"Requested {num_rain_station} rain stations but only {len(ranking)} have valid train correlations")
         rain_station_ids = [row["station_id"] for row in ranking[:num_rain_station]]
     feature_cols = select_feature_columns(train_df.columns, feature_set, rain_station_ids)
+    target_cols = None
+    if target_horizons is not None:
+        if outputs is not None:
+            raise ValueError("Use outputs or target_horizons, not both")
+        if (not target_horizons or len(set(target_horizons)) != len(target_horizons)
+                or any(type(h) is not int or h < 1 for h in target_horizons)):
+            raise ValueError("Provide distinct positive target horizons in hours")
+        target_cols = [f"target_water_level_plus_{h * 60}m" for h in sorted(target_horizons)]
+    if outputs is not None:
+        if outputs not in (5, 24):
+            raise ValueError("outputs must be 5 or 24")
+        hours = (1, 3, 6, 12, 24) if outputs == 5 else range(1, 25)
+        target_cols = [f"target_water_level_plus_{hour * 60}m" for hour in hours]
+    if target_cols is not None:
+        for frame in (train_df, eval_df, test_df):
+            if not set(target_cols).issubset(frame):
+                raise ValueError("Requested output horizons are absent from dataset")
+        if feature_cols is None:
+            # Unselected hourly labels must never become predictors when O5
+            # is requested from an O24 table with feature_set='all'.
+            feature_cols = [column for column in train_df
+                            if not column.startswith(("target_", "timestamp"))]
     train_dataset = HydrologyDataset(
-        train_df, feature_cols=feature_cols, fit_scalers=True, seq_len=seq_len,
+        train_df, feature_cols=feature_cols, target_cols=target_cols, fit_scalers=True, seq_len=seq_len,
         require_current_level=require_current_level,
     )
     train_dataset.feature_set = feature_set
@@ -239,7 +274,9 @@ def get_dataloader(
     ))
     for dataset in (train_dataset, eval_dataset, test_dataset):
         dataset.rain_station_ids = selected_rain_ids.copy()
+        dataset.rain_station_combination = combination_name(selected_rain_ids)
         dataset.rain_station_ranking = ranking
+        dataset.resolution_minutes = {"10min": 10, "30min": 30, "1h": 60, "12h": 720, "24h": 1440}[horizon]
 
     use_persistent = persistent_workers if num_worker > 0 else False
     train_generator = torch.Generator().manual_seed(seed)
