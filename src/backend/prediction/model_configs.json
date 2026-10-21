@@ -43,6 +43,176 @@
       "dropout": 0.5,
       "input_dropout": 0.2,
       "head_dropout": 0.2
-    }
+    },
+    "model_id": "legacy",
+    "name": "Production cũ · 4 trạm mưa",
+    "is_default": true
+  },
+  {
+    "station_id": "0074647403",
+    "model_type": "residual_lstm",
+    "model_version": "model-b-20261019-seed42",
+    "model_path": "model/da_vien_0074647403_model_b_seed42.pt",
+    "preprocessing_path": "model/da_vien_0074647403_model_b_seed42_preprocessing.joblib",
+    "sequence_length": 96,
+    "rain_station_ids": [
+      "750062",
+      "750007"
+    ],
+    "forecast_horizons_minutes": [
+      60,
+      180,
+      360,
+      720,
+      1440
+    ],
+    "feature_schema_version": "water-rain-season-forecast-hourly-v1",
+    "rain_windows_hours": [
+      3,
+      6,
+      12,
+      24
+    ],
+    "water_lags_hours": [
+      1,
+      3
+    ],
+    "flood_season_months": [
+      9,
+      10,
+      11,
+      12
+    ],
+    "calendar_timezone": "Asia/Ho_Chi_Minh",
+    "model_parameters": {
+      "hidden_size": 32,
+      "num_layers": 3,
+      "dropout": 0.7,
+      "input_dropout": 0.2,
+      "head_dropout": 0.2
+    },
+    "model_id": "model_b",
+    "name": "Model B · Hồng Thái + Nhâm",
+    "is_default": false,
+    "sequence_policy": "hourly_grid",
+    "weather_location_id": "dcu:750007:16.221111:107.179444",
+    "weather_forecast_model": "ecmwf_ifs",
+    "weather_release_lag_hours": 6,
+    "weather_max_age_hours": 24,
+    "input_feature_columns": [
+      "water_level_depth",
+      "water_level_lag_60m",
+      "water_level_lag_180m",
+      "water_level_missing",
+      "rain_750062_depth",
+      "rain_750062_sum_3h",
+      "rain_750062_sum_6h",
+      "rain_750062_sum_12h",
+      "rain_750062_sum_24h",
+      "rain_750062_missing",
+      "rain_750007_depth",
+      "rain_750007_sum_3h",
+      "rain_750007_sum_6h",
+      "rain_750007_sum_12h",
+      "rain_750007_sum_24h",
+      "rain_750007_missing",
+      "flood_season",
+      "weather_forecast_rain_0_3h",
+      "weather_forecast_rain_3_6h",
+      "weather_forecast_rain_6_12h",
+      "weather_forecast_rain_12_24h",
+      "weather_forecast_rain_0_3h_missing",
+      "weather_forecast_rain_3_6h_missing",
+      "weather_forecast_rain_6_12h_missing",
+      "weather_forecast_rain_12_24h_missing",
+      "weather_forecast_age_hours"
+    ]
+  },
+  {
+    "station_id": "0074647403",
+    "model_type": "residual_lstm",
+    "model_version": "db9e226afb484e19a5ca66092a4fc303",
+    "model_path": "model/da_vien_0074647403_three_station_seed42.pt",
+    "preprocessing_path": "model/da_vien_0074647403_three_station_seed42_preprocessing.joblib",
+    "sequence_length": 96,
+    "rain_station_ids": [
+      "750062",
+      "750041",
+      "750014"
+    ],
+    "forecast_horizons_minutes": [
+      60,
+      180,
+      360,
+      720,
+      1440
+    ],
+    "feature_schema_version": "water-rain-season-forecast-hourly-v1",
+    "rain_windows_hours": [
+      3,
+      6,
+      12,
+      24
+    ],
+    "water_lags_hours": [
+      1,
+      3
+    ],
+    "flood_season_months": [
+      9,
+      10,
+      11,
+      12
+    ],
+    "calendar_timezone": "Asia/Ho_Chi_Minh",
+    "model_parameters": {
+      "hidden_size": 32,
+      "num_layers": 3,
+      "dropout": 0.7,
+      "input_dropout": 0.2,
+      "head_dropout": 0.2
+    },
+    "model_id": "three_station",
+    "name": "3 trạm · Hồng Thái + Bạch Mã + Phú Bài",
+    "is_default": false,
+    "sequence_policy": "hourly_grid",
+    "weather_location_id": "dcu:750007:16.221111:107.179444",
+    "weather_forecast_model": "ecmwf_ifs",
+    "weather_release_lag_hours": 6,
+    "weather_max_age_hours": 24,
+    "input_feature_columns": [
+      "water_level_depth",
+      "water_level_lag_60m",
+      "water_level_lag_180m",
+      "water_level_missing",
+      "rain_750062_depth",
+      "rain_750062_sum_3h",
+      "rain_750062_sum_6h",
+      "rain_750062_sum_12h",
+      "rain_750062_sum_24h",
+      "rain_750062_missing",
+      "flood_season",
+      "weather_forecast_rain_0_3h",
+      "weather_forecast_rain_3_6h",
+      "weather_forecast_rain_6_12h",
+      "weather_forecast_rain_12_24h",
+      "weather_forecast_rain_0_3h_missing",
+      "weather_forecast_rain_3_6h_missing",
+      "weather_forecast_rain_6_12h_missing",
+      "weather_forecast_rain_12_24h_missing",
+      "weather_forecast_age_hours",
+      "rain_750041_depth",
+      "rain_750041_sum_3h",
+      "rain_750041_sum_6h",
+      "rain_750041_sum_12h",
+      "rain_750041_sum_24h",
+      "rain_750041_missing",
+      "rain_750014_depth",
+      "rain_750014_sum_3h",
+      "rain_750014_sum_6h",
+      "rain_750014_sum_12h",
+      "rain_750014_sum_24h",
+      "rain_750014_missing"
+    ]
   }
 ]

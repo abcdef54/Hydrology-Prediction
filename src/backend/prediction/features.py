@@ -1,4 +1,4 @@
-"""Hourly features matching the existing top-four-rain training dataset."""
+"""Hourly water/rain features matching each configured model's training schema."""
 
 from datetime import datetime
 
@@ -69,6 +69,9 @@ def build_hourly_features(
         series = station_history.set_index("observed_at")["depth"]
         grouped = series.resample("1h", closed="right", label="right")
         hourly = grouped.mean() if station == config.station_id else grouped.sum(min_count=1)
+        if station != config.station_id and config.sequence_policy == "hourly_grid":
+            invalid = series.lt(0).resample("1h", closed="right", label="right").max().fillna(False)
+            hourly = hourly.mask(invalid.astype(bool))
         hourly_by_station[station] = hourly.loc[hourly.index <= reference]
 
     water = hourly_by_station[config.station_id]
@@ -92,4 +95,12 @@ def build_hourly_features(
         .month.isin(config.flood_season_months)
         .astype("int8")
     )
+    # The forecast service fills these from an eligible weather vintage later.
+    # Missing forecasts remain explicit, never treated as zero rainfall.
+    if config.weather_location_id is not None:
+        for start, end in [(0, 3), (3, 6), (6, 12), (12, 24)]:
+            column = f"weather_forecast_rain_{start}_{end}h"
+            features[column] = np.nan
+            features[f"{column}_missing"] = 1
+        features["weather_forecast_age_hours"] = np.nan
     return features.loc[:, list(config.feature_columns)]

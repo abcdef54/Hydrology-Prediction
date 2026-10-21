@@ -75,7 +75,7 @@ def resolve_forecast_identity(
     if query.model_version is not None and query.pipeline_version is not None:
         return query.model_version, query.pipeline_version
     try:
-        config = request.app.state.model_registry.get(station_id)
+        config = request.app.state.model_registry.get(station_id, query.model_id)
     except ModelNotConfiguredError:
         raise HTTPException(
             503,

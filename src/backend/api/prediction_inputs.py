@@ -21,7 +21,7 @@ from src.backend.prediction.preprocessing import InputPreprocessor
 router = APIRouter(prefix="/api/v1", tags=["Prediction inputs"])
 
 
-def get_station_model_config(request: Request, station_id: str) -> StationModelConfig:
+def get_station_model_config(request: Request, station_id: str, model_id: str | None = None) -> StationModelConfig:
     """Resolve a supported water station; unknown IDs return 404, unavailable models 503.
 
     Args:
@@ -58,8 +58,12 @@ def get_station_model_config(request: Request, station_id: str) -> StationModelC
                 },
             )
         try:
-            config = request.app.state.model_registry.get(station_id)
+            config = request.app.state.model_registry.get(station_id, model_id)
         except ModelNotConfiguredError:
+            if model_id is not None:
+                raise HTTPException(
+                    422, {"code": "MODEL_NOT_CONFIGURED", "message": "Requested model is not configured for this station."}
+                ) from None
             raise HTTPException(
                 503,
                 {
@@ -90,7 +94,10 @@ def get_input_service(request: Request, station_id: str) -> tuple[PredictionInpu
             missing model configuration or unavailable preprocessing artifacts.
         sqlalchemy.exc.SQLAlchemyError: If station/source metadata cannot be read.
     """
-    config = get_station_model_config(request, station_id)
+    # The endpoint's query model validates this value. Declaring it again as a
+    # dependency parameter prevents FastAPI from flattening that query model.
+    model_id = request.query_params.get("model_id")
+    config = get_station_model_config(request, station_id, model_id)
     engine = request.app.state.database_engine
     with engine.connect() as connection:
         source_ids = (config.station_id, *config.rain_station_ids)
@@ -132,7 +139,8 @@ def describe_feature(
     return InputFeature(
         name=name,
         value=float(value) if np.isfinite(value) else None,
-        unit="dimensionless" if is_flag else units.get(source_station_id),
+        unit=("dimensionless" if is_flag else "h" if name == "weather_forecast_age_hours"
+              else "mm" if name.startswith("weather_forecast_rain_") else units.get(source_station_id)),
         source_station_id=source_station_id,
     )
 
@@ -213,6 +221,8 @@ def prediction_inputs(
     is_stale = input_age_minutes > stale_after_minutes
     return PredictionInputsResponse(
         station_id=prepared.station_id,
+        model_id=config.model_id,
+        model_name=config.name,
         model_version=prepared.model_version,
         feature_schema_version=prepared.feature_schema_version,
         requested_reference_time=prepared.requested_reference_time,

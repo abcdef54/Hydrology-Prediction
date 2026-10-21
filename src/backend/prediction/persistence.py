@@ -43,6 +43,7 @@ def build_pipeline_version(
     configuration.pop("preprocessing_path")
     source_names = (
         "features.py",
+        "weather.py",
         "inputs.py",
         "preprocessing.py",
         "inference.py",

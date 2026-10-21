@@ -155,6 +155,7 @@ class HourlyHistoryResponse(BaseModel):
 
 class PredictionInputsQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    model_id: str | None = Field(default=None, min_length=1, max_length=100)
     reference_time: AwareDatetime | None = Field(
         default=None,
         description="ISO 8601 with timezone; rounded down to the hour. Omit for latest data.",
@@ -165,6 +166,7 @@ class ForecastHistoryQuery(BaseModel):
     """Select one forecast series by target time; before pages toward older points."""
 
     model_config = ConfigDict(extra="forbid")
+    model_id: str | None = Field(default=None, min_length=1, max_length=100)
     start: AwareDatetime
     end: AwareDatetime
     horizon_minutes: int = Field(gt=0)
@@ -207,6 +209,7 @@ class ForecastHistoryResponse(BaseModel):
 
 
 class PredictionAvailabilityQuery(BaseModel):
+    model_id: str | None = Field(default=None, min_length=1, max_length=100)
     model_config = ConfigDict(extra="forbid")
     start: AwareDatetime
     end: AwareDatetime
@@ -248,6 +251,8 @@ class InputFeature(BaseModel):
 
 class PredictionInputsResponse(BaseModel):
     station_id: str
+    model_id: str = "legacy"
+    model_name: str = "Production cũ"
     model_version: str
     feature_schema_version: str
     requested_reference_time: datetime | None
@@ -283,6 +288,7 @@ class PredictionRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     station_id: str = Field(strict=True, min_length=1)
+    model_id: str | None = Field(default=None, strict=True, min_length=1, max_length=100)
     reference_time: AwareDatetime | None = None
     overrides: dict[str, Annotated[float, Field(strict=True, allow_inf_nan=False)] | None] = Field(
         default_factory=dict,
@@ -298,6 +304,8 @@ class PredictedWaterLevel(BaseModel):
 
 class PredictionResponse(BaseModel):
     station_id: str
+    model_id: str = "legacy"
+    model_name: str = "Production cũ"
     model_version: str
     feature_schema_version: str
     requested_reference_time: datetime | None
@@ -366,8 +374,27 @@ class ForecastDetailResponse(BaseModel):
 
 class PredictionOptionsResponse(BaseModel):
     station_id: str
+    model_id: str = "legacy"
+    model_name: str = "Production cũ"
     model_version: str
     forecast_horizons_minutes: list[int]
+
+
+class PredictionModelOption(BaseModel):
+    model_id: str
+    name: str
+    model_version: str
+    rain_station_ids: list[str]
+    forecast_horizons_minutes: list[int]
+    feature_count: int
+    sequence_length: int
+    is_default: bool
+
+
+class PredictionModelsResponse(BaseModel):
+    station_id: str
+    default_model_id: str
+    models: list[PredictionModelOption]
 
 
 class RangePredictionRequest(BaseModel):
@@ -375,6 +402,7 @@ class RangePredictionRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     station_id: str = Field(min_length=1)
+    model_id: str | None = Field(default=None, min_length=1, max_length=100)
     start: AwareDatetime
     end: AwareDatetime
     horizon_minutes: int = Field(gt=0)
@@ -409,6 +437,8 @@ class RangePredictionPoint(BaseModel):
 
 class RangePredictionResponse(BaseModel):
     station_id: str
+    model_id: str = "legacy"
+    model_name: str = "Production cũ"
     start: AwareDatetime
     end: AwareDatetime
     horizon_minutes: int

@@ -36,7 +36,8 @@ def get_prediction_service(request: Request, config: StationModelConfig) -> Pred
         HTTPException: With status 503 when model artifacts cannot be loaded.
     """
     with request.app.state.prediction_service_lock:
-        service = request.app.state.prediction_services.get(config.station_id)
+        key = (config.station_id, config.model_id)
+        service = request.app.state.prediction_services.get(key)
         try:
             if (
                 service is not None
@@ -55,7 +56,7 @@ def get_prediction_service(request: Request, config: StationModelConfig) -> Pred
             request.app.state.forecast_cache,
             request.app.state.prediction_input_cache,
         )
-        request.app.state.prediction_services[config.station_id] = service
+        request.app.state.prediction_services[key] = service
         return service
 
 
@@ -100,7 +101,7 @@ def predict_water_level(
             },
         )
     with prediction_slot(request):
-        config = get_station_model_config(request, prediction_request.station_id)
+        config = get_station_model_config(request, prediction_request.station_id, prediction_request.model_id)
         service = get_prediction_service(request, config)
         try:
             # Reject bad edits before fetching the potentially large historical window.
@@ -134,6 +135,8 @@ def predict_water_level(
     stale_after_minutes = request.app.state.stale_after_minutes
     return PredictionResponse(
         **asdict(forecast),
+        model_id=config.model_id,
+        model_name=config.name,
         overrides_applied=prediction_request.overrides,
         is_stale=input_age_minutes > stale_after_minutes,
         input_age_minutes=input_age_minutes,

@@ -201,7 +201,7 @@ class PredictionInputsApiTests(TestCase):
         ]
         self.assertEqual(
             {parameter["name"] for parameter in operation["parameters"]},
-            {"station_id", "reference_time"},
+            {"station_id", "reference_time", "model_id"},
         )
         self.assertIn("503", operation["responses"])
 

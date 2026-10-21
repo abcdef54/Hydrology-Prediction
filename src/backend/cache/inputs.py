@@ -94,7 +94,8 @@ class ObservationDependentCache:
         """
         if overrides:
             return service.prepare(reference_time, overrides)
-        if self.client is None:
+        if self.client is None or service.config.weather_location_id is not None:
+            # Observation generations do not track new weather vintages.
             return service.prepare(reference_time)
         config = service.config
         artifact = config.preprocessing_path.stat()

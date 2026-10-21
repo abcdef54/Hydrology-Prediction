@@ -598,6 +598,15 @@ PostgreSQL lưu station metadata và quan trắc lịch sử vì nhu cầu nghi�
 
 ## 5. Component Responsibilities & Data Model
 
+**Cập nhật 21/10/2026 — chọn model Dã Viên:** registry hỗ trợ nhiều model mỗi trạm
+qua `model_id`. Giữ `legacy` (production cũ, mặc định), thêm `model_b` seed 42 và
+`three_station` seed 42 (Hồng Thái + Bạch Mã + Phú Bài). UI đọc danh mục từ
+`prediction-models`, truyền lựa chọn vào input/options và POST single/range;
+đổi model bỏ edits cũ, hủy request cũ. Runtime và kết quả lưu tách theo model/version.
+Hai model mới dùng 96 giờ liên tiếp và forecast ECMWF IFS có kiểm tra vintage,
+khác policy bỏ giờ thiếu nước của legacy. Chi tiết schema, forecast thiếu và
+artifact độc lập ở [prediction/README.md](backend/prediction/README.md).
+
 **Mở rộng danh mục nước/mưa — task 1, 14/10/2026:** nguồn API có 19 trạm nước và
 55 trạm mưa, trong khi SQLite cũ có 17/55. Migration `0005` bổ sung subtype/nhãn
 subtype nguồn. Importer metadata riêng có dry-run và apply nguyên tử, phân trang

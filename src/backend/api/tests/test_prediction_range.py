@@ -213,3 +213,25 @@ class RangeApiTests(TestCase):
         self.assertEqual(response.json()["reused_count"], 2)
         self.loader.assert_not_called()
         self.service.predict.assert_not_called()
+
+    def test_selected_model_is_used_for_range_runtime_and_stored_identity(self):
+        selected = replace(TEST_CONFIG, model_id="model_b", model_version="b-version", name="Model B")
+        original_forecast = self.forecast
+        self.service.predict.side_effect = lambda *args, **kwargs: replace(
+            original_forecast(*args, **kwargs), model_version=selected.model_version
+        )
+        with patch(
+            "src.backend.api.prediction_range.get_station_model_config", return_value=selected
+        ) as resolver, patch(
+            "src.backend.api.prediction_range.resolve_forecast_identity",
+            return_value=(selected.model_version, "pipeline"),
+        ) as identity:
+            response = self.client.post(
+                "/api/v1/predictions/range", json={**self.body, "model_id": selected.model_id}
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["model_id"], selected.model_id)
+        self.assertEqual(response.json()["model_version"], selected.model_version)
+        self.assertEqual(resolver.call_args.args[2], selected.model_id)
+        self.assertEqual(identity.call_args.args[2].model_id, selected.model_id)
+        self.assertEqual(self.loader.call_args.args[1], selected)

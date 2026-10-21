@@ -115,6 +115,9 @@ class PredictionInputService:
                 connection.execute(sa.text("SET TRANSACTION READ ONLY"))
                 reference = self._resolve_reference(connection, requested)
                 selected = self._select_history(connection, reference)
+                if self.config.weather_location_id is not None:
+                    from src.backend.prediction.weather import add_weather_features
+                    selected = add_weather_features(connection, selected, self.config)
         prepared, tensor = self.preprocessor.prepare_features(selected, overrides)
         return PreparedInput(
             station_id=self.config.station_id,
@@ -168,8 +171,9 @@ class PredictionInputService:
 
         Returns:
             Original-unit feature table containing exactly the model's sequence
-            length, ordered oldest to newest. Water must be finite at each retained
-            step. Missing rain/lags and gaps between steps remain allowed. Extra
+            length, ordered oldest to newest. observed_steps requires finite water
+            at every step; hourly_grid retains missing historical water hours.
+            Missing rain/lags remain allowed. Extra
             earlier history supplies rolling rainfall windows and physical lags.
 
         Raises:
@@ -210,6 +214,19 @@ class PredictionInputService:
             # Valid serving timesteps need observed water. Missing rain/lag features
             # remain allowed and use the saved training imputation after scaling.
             valid = features.loc[np.isfinite(features["water_level_depth"])]
+            if self.config.sequence_policy == "hourly_grid" and not valid.empty:
+                # These models trained on consecutive hours, retaining missing
+                # historical water with its mask. Only the anchor must be observed.
+                grid = features.loc[:valid.index[-1]]
+                if len(grid) >= self.preprocessor.sequence_length:
+                    selected = grid.tail(self.preprocessor.sequence_length).copy()
+                    warmup_start = selected.index[0] - pd.Timedelta(hours=self.config.warmup_hours)
+                    if start <= warmup_start or start <= earliest_required:
+                        return selected
+                if start <= earliest_required:
+                    raise InsufficientHistoryError(len(grid), self.preprocessor.sequence_length)
+                history_hours *= 2
+                continue
             if len(valid) >= self.preprocessor.sequence_length:
                 selected = valid.tail(self.preprocessor.sequence_length).copy()
                 # Gaps can move the first selected timestep closer to the query

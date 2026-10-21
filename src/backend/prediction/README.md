@@ -1,7 +1,7 @@
 # Đầu vào dự báo theo từng trạm nước
 
-Mỗi trạm nước dùng **một mô hình được train riêng**, đi cùng scaler, nguồn mưa và
-cấu hình riêng. Thêm trạm không có nghĩa là đưa nhiều trạm nước vào mô hình Dã Viên.
+Mỗi trạm nước có thể có nhiều mô hình được train riêng, mỗi model đi cùng scaler,
+nguồn mưa và cấu hình riêng. Thêm trạm không đưa trạm nước đó vào mô hình Dã Viên.
 
 ## Cấu trúc
 
@@ -12,8 +12,15 @@ cấu hình riêng. Thêm trạm không có nghĩa là đưa nhiều trạm nư�
 - `inputs.py`: query PostgreSQL theo nguồn của cấu hình; trả tensor và định danh model.
 - `inference.py`: load checkpoint, chạy Residual LSTM ở chế độ eval và trả dự báo bằng mm.
 
-Hiện registry chỉ cấu hình Dã Viên: Residual LSTM, 96 timestep, 29 feature và 4 trạm
-mưa đã chọn. Logic dùng chung không cố định mã Dã Viên hoặc kích thước 96 × 29.
+Registry Dã Viên có ba lựa chọn, đều Residual LSTM với chuỗi 96 timestep:
+
+| model_id | Mô hình | Số feature | Trạm mưa |
+|---|---|---:|---|
+| `legacy` (mặc định) | Production cũ | 29 | 750062, 750007, 750003, 750011 |
+| `model_b` | Model B, seed 42 | 26 | Hồng Thái (750062), Nhâm (750007) |
+| `three_station` | Ba trạm, seed 42 | 32 | Hồng Thái (750062), Bạch Mã (750041), Phú Bài (750014) |
+
+Logic dùng chung không cố định mã Dã Viên hoặc kích thước tensor.
 Trạm chưa có cấu hình báo `ModelNotConfiguredError`; không fallback sang Dã Viên.
 
 ## Cách sử dụng
@@ -35,7 +42,7 @@ registry = StationModelRegistry.from_json(
     project_root / "src/backend/prediction/model_configs.json",
     artifact_root=project_root,
 )
-config = registry.get("0074647403")
+config = registry.get("0074647403", "model_b")  # Bỏ model_id để dùng mặc định.
 preprocessor = InputPreprocessor.from_file(config)
 engine = build_engine()
 service = PredictionInputService(engine, preprocessor)
@@ -68,12 +75,42 @@ phiên bản, đặt cặp file riêng rồi cập nhật registry và khởi đ
 2. Nhãn t đại diện `(t−1h, t]`: nước lấy trung bình, mưa lấy tổng từng trạm.
    Lag và mưa tích lũy tính trên lưới giờ trước khi chọn chuỗi. Các khoảng lấy từ
    cấu hình của model, không shift theo vị trí hàng sau khi bỏ giờ thiếu.
-3. Chọn số timestep theo `sequence_length`, cần có nước hiện tại, cho phép gaps.
-   Mưa hoặc lag thiếu vẫn được giữ. Query mở rộng về trước khi thiếu timestep hoặc
-   thiếu lịch sử để tính cửa sổ mưa. Không nội suy, thêm timestep giả hoặc điền mưa 0.
+3. `legacy` dùng `observed_steps`: chọn timestep có nước, cho phép gaps. Hai model
+   mới dùng `hourly_grid`: giữ đủ 96 giờ liên tiếp, kể cả giờ thiếu nước trong quá
+   khứ; anchor phải có nước. Mưa hoặc lag thiếu vẫn giữ nguyên. Query mở rộng khi
+   thiếu timestep hoặc lịch sử tính tổng mưa; không nội suy hoặc điền mưa 0.
 4. Cờ mùa lấy từ lịch và múi giờ trong cấu hình. Dã Viên dùng tháng 9–12, giờ Việt Nam.
 5. Sắp đúng feature order, chuyển float32, áp scaler riêng rồi thay NaN đã chuẩn hóa
    bằng 0. Không fit lại scaler; không dùng các nhãn tương lai làm điều kiện chọn chuỗi.
+6. Hai model mới đọc thêm dự báo ECMWF IFS tại location cố định trong registry,
+   từ bảng `hydrology.weather_forecast_runs/hourly`. Mỗi giờ chọn một vintage
+   khởi tạo trước ít nhất 6 giờ, ưu tiên tuổi ≤12 giờ; thiếu thì thử vintage đầy
+   đủ trong 24 giờ. Không trộn vintage. `available_at` nếu có phải ≤ giờ đầu vào;
+   archive không có thời điểm phát hành dùng giả định trễ 6 giờ giống dataset.
+   Tổng mưa tương lai theo cửa sổ 0–3/3–6/6–12/12–24 giờ, cùng cờ thiếu và tuổi.
+   Không có forecast phù hợp thì giữ thiếu và bật cờ, không tự gọi API thời tiết.
+   Cache đầu vào forecast-aware đọc lại DB để tránh giữ forecast cũ khi thêm run.
+
+Feature order lấy chính xác từ preprocessing, kể cả các block trạm được nối thêm
+sau nhóm dự báo mưa trong dataset rain pool. Kiểm chứng trên hai anchor lịch sử
+25/09 và 07/10/2026: cả chuỗi 96 giờ của hai model mới khớp dataset, kể cả tensor
+chuẩn hóa. Tại kiểm tra 21/10/2026, quan trắc mới nhất là 20/10 16:00 giờ Việt Nam
+nhưng forecast tương ứng còn thiếu; cần cập nhật forecast để dùng đủ đầu vào mới.
+
+## Chọn mô hình trong ứng dụng/API
+
+Trong cửa sổ lịch sử/dự báo, chọn **Mô hình dự báo** trước khi lấy đầu vào hoặc
+chạy dự báo theo khoảng. Đổi model tải lại feature và bỏ các chỉnh sửa cũ.
+
+- `GET /api/v1/stations/{station_id}/prediction-models`: danh sách và mặc định.
+- `GET .../prediction-inputs?model_id=model_b` và `.../prediction-options?model_id=model_b`.
+- `POST /api/v1/predictions` hoặc `/api/v1/predictions/range`: thêm `"model_id": "model_b"`
+  (hoặc `"three_station"`) vào body hiện có.
+
+Bỏ `model_id` vẫn dùng production cũ. Model không hợp lệ bị từ chối, không âm thầm
+đổi về mặc định. Runtime, scaler và kết quả lưu tách theo model/version/pipeline;
+không cần migration DB. Chi tiết forecast cũ vẫn truy cập bằng `forecast_id`.
+Khởi động lại API sau khi thay registry hoặc code pipeline.
 
 Thiếu chuỗi trả `InsufficientHistoryError` với số hiện có và số cần thiết.
 Đầu ra gồm tensor CPU, bảng feature, timestamps, `station_id`, `model_version`,

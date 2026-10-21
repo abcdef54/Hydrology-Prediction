@@ -7,7 +7,11 @@ Tên file gồm tên trạm, mã trạm và loại model để dễ phân biệt
 model/
 ├── README.md
 ├── da_vien_0074647403_residual_lstm.pt
-└── da_vien_0074647403_residual_lstm_preprocessing.joblib
+├── da_vien_0074647403_residual_lstm_preprocessing.joblib
+├── da_vien_0074647403_model_b_seed42.pt
+├── da_vien_0074647403_model_b_seed42_preprocessing.joblib
+├── da_vien_0074647403_three_station_seed42.pt
+└── da_vien_0074647403_three_station_seed42_preprocessing.joblib
 ```
 
 File `.pt` chứa trọng số model. File `_preprocessing.joblib` chứa scaler đầu vào,
@@ -25,6 +29,12 @@ khôi phục phần dự báo sau khi clone; backend không cần thư mục MLf
    dẫn hai file, model version, sequence length, features/sources và các horizon.
 4. Kiểm chứng cặp model/scaler rồi khởi động lại API.
 
-Registry chọn một model đang dùng cho mỗi trạm. Mỗi trạm có model/scaler riêng;
+Registry hỗ trợ nhiều model cho mỗi trạm, phân biệt bởi `model_id`, cùng một
+`is_default` cho lựa chọn mặc định. Dã Viên giữ `legacy` làm mặc định và có thêm
+`model_b` (Hồng Thái + Nhâm, seed 42), `three_station` (Hồng Thái + Bạch Mã +
+Phú Bài, seed 42). Các cặp mới được sao chép riêng; bản cũ và checkpoint thử nghiệm
+giữ nguyên. Không cần đưa `model/experiments/` lên Git để phục vụ dự báo.
+
+Mỗi model có scaler riêng;
 trạm chưa được cấu hình sẽ không dùng model Dã Viên thay thế. Thêm kiến trúc model
 mới hoặc nhóm feature mới cần có runtime/preprocessing hỗ trợ tương ứng.

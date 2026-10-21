@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 import sqlalchemy as sa
 
 from src.backend.api.forecast_detail import hourly_actuals_query
@@ -12,6 +12,8 @@ from src.backend.api.predictions import get_prediction_service
 from src.backend.api.schemas import (
     ErrorResponse,
     PredictionOptionsResponse,
+    PredictionModelOption,
+    PredictionModelsResponse,
     RangePredictionPoint,
     RangePredictionRequest,
     RangePredictionResponse,
@@ -36,8 +38,28 @@ def require_mm(request, station_id):
         )
 
 
+@router.get("/stations/{station_id}/prediction-models", response_model=PredictionModelsResponse)
+def get_prediction_models(request: Request, station_id: str) -> PredictionModelsResponse:
+    """List this station's model choices without loading numerical artifacts."""
+    default = get_station_model_config(request, station_id)
+    models = request.app.state.model_registry.models_for(station_id)
+    return PredictionModelsResponse(
+        station_id=station_id,
+        default_model_id=default.model_id,
+        models=[PredictionModelOption(
+            model_id=config.model_id, name=config.name, model_version=config.model_version,
+            rain_station_ids=list(config.rain_station_ids),
+            forecast_horizons_minutes=list(config.forecast_horizons_minutes),
+            feature_count=len(config.feature_columns), sequence_length=config.sequence_length,
+            is_default=config.model_id == default.model_id,
+        ) for config in models],
+    )
+
+
 @router.get("/stations/{station_id}/prediction-options", response_model=PredictionOptionsResponse)
-def get_prediction_options(request: Request, station_id: str) -> PredictionOptionsResponse:
+def get_prediction_options(request: Request, station_id: str,
+                           model_id: str | None = Query(default=None, min_length=1, max_length=100)
+                           ) -> PredictionOptionsResponse:
     """Read allowed horizons without preparing inputs or loading model artifacts.
 
     Args:
@@ -50,10 +72,12 @@ def get_prediction_options(request: Request, station_id: str) -> PredictionOptio
     Raises:
         HTTPException: Unknown/disabled/unconfigured station or unconfirmed mm units.
     """
-    config = get_station_model_config(request, station_id)
+    config = get_station_model_config(request, station_id, model_id)
     require_mm(request, station_id)
     return PredictionOptionsResponse(
         station_id=station_id,
+        model_id=config.model_id,
+        model_name=config.name,
         model_version=config.model_version,
         forecast_horizons_minutes=list(config.forecast_horizons_minutes),
     )
@@ -89,14 +113,15 @@ def predict_range(request: Request, body: RangePredictionRequest) -> RangePredic
     start, end = body.start.astimezone(timezone.utc), body.end.astimezone(timezone.utc)
     points = []
     with prediction_slot(request):
-        config = get_station_model_config(request, body.station_id)
+        config = get_station_model_config(request, body.station_id, body.model_id)
         require_mm(request, body.station_id)
         if body.horizon_minutes not in config.forecast_horizons_minutes:
             raise HTTPException(
                 422, {"code": "INVALID_HORIZON", "message": "Unsupported forecast horizon."}
             )
         history_query = ForecastHistoryQuery(
-            start=start, end=end, horizon_minutes=body.horizon_minutes, limit=1000
+            start=start, end=end, horizon_minutes=body.horizon_minutes, limit=1000,
+            model_id=body.model_id,
         )
         _, pipeline = resolve_forecast_identity(request, body.station_id, history_query)
         if body.model_version is not None and (
@@ -229,6 +254,8 @@ def predict_range(request: Request, body: RangePredictionRequest) -> RangePredic
     ]
     return RangePredictionResponse(
         station_id=body.station_id,
+        model_id=config.model_id,
+        model_name=config.name,
         start=start,
         end=end,
         horizon_minutes=body.horizon_minutes,
