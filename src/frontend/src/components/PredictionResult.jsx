@@ -32,7 +32,9 @@ export default function PredictionResult({ state, onBack, onRetry, onRetryActual
           <strong>Dự báo thử từ đầu vào đã chỉnh sửa.</strong> Giá trị tự nhập và kết quả này không lưu vào database.
           Đường thực tế là số đo quan trắc để đối chiếu với kịch bản này.
         </p>}
-        <p className="prediction-result-meta">Mốc đầu vào thực tế: <strong>{formatObservationTime(prediction.anchor_observed_at)}</strong>
+        <p className="prediction-result-meta">
+          {Boolean(prediction.model_name || state.modelName) && <>Mô hình: <strong>{prediction.model_name || state.modelName}</strong>{' · '}</>}
+          Mốc đầu vào thực tế: <strong>{formatObservationTime(prediction.anchor_observed_at)}</strong>
           {' · '}Dự báo đến {formatObservationTime(prediction.predictions.at(-1).forecast_at)} · Đơn vị: mm</p>
         {Date.parse(state.referenceTime) !== Date.parse(prediction.anchor_observed_at)
           && <p className="prediction-inputs-warning">Mốc đầu vào thực tế khác mốc đã chọn; các thời điểm dự báo được tính từ mốc thực tế.</p>}

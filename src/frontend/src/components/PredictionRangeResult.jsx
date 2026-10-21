@@ -31,7 +31,10 @@ export default function PredictionRangeResult({state,onBack,onResume}) {
   return <section className="prediction-result" aria-labelledby="range-result-title">
     <div className="prediction-result-heading"><div>
       <h3 id="range-result-title" ref={heading} tabIndex={-1}>Dự báo theo khoảng — {request.station.name}</h3>
-      <p>{formatObservationTime(request.start)} đến trước {formatObservationTime(request.end)} · Dự báo trước {request.horizon/60} giờ · mm</p>
+      <p>
+        {Boolean(request.modelName) && <>Mô hình: <strong>{request.modelName}</strong> · </>}
+        {formatObservationTime(request.start)} đến trước {formatObservationTime(request.end)} · Dự báo trước {request.horizon/60} giờ · mm
+      </p>
     </div><button type="button" onClick={onBack}>{state.status==='loading'||state.status==='waiting'?'Dừng và quay lại lịch sử':'← Quay lại lịch sử'}</button></div>
     <div className="prediction-result-meta" aria-live="polite">
       <p>Đã xử lý {points.length}/{total} mốc giờ</p>

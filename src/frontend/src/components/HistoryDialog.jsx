@@ -9,6 +9,7 @@ import HourlyHistoryTable from './HourlyHistoryTable.jsx';
 import PredictionInputsPanel from './PredictionInputsPanel.jsx';
 import PredictionResult from './PredictionResult.jsx';
 import { usePredictionInputs } from '../hooks/usePredictionInputs.js';
+import { usePredictionModels } from '../hooks/usePredictionModels.js';
 import { usePrediction } from '../hooks/usePrediction.js';
 import { usePredictionRange } from '../hooks/usePredictionRange.js';
 import PredictionRangeResult from './PredictionRangeResult.jsx';
@@ -29,7 +30,7 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
   const [retryCount, setRetryCount] = useState(0);
   const [formError, setFormError] = useState('');
   const [inputSelection, setInputSelection] = useState(null);
-  const inputState = usePredictionInputs(inputSelection);
+  const inputState = usePredictionInputs(inputSelection?.modelId ? inputSelection : null);
   const predictionFlow = usePrediction();
   const [showResult, setShowResult] = useState(false);
   const predictButtonRef = useRef(null);
@@ -38,6 +39,44 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
   const [resultMode, setResultMode] = useState('single');
   const eligibleStations = stations.filter((item) => item.station_type === 'water_level'
     && item.prediction_enabled && item.model_configured);
+  const [activeStationId, setActiveStationId] = useState(
+    eligibleStations.find((item) => item.station_id === station?.station_id)?.station_id
+      ?? eligibleStations[0]?.station_id ?? ''
+  );
+  const currentStationId = inputSelection?.station.station_id ?? activeStationId;
+  const modelsState = usePredictionModels(currentStationId || null);
+  const [selectedModels, setSelectedModels] = useState({});
+
+  useEffect(() => {
+    if (modelsState.status === 'ready' && modelsState.data) {
+      const { station_id, default_model_id, models } = modelsState.data;
+      setSelectedModels((prev) => {
+        const existing = prev[station_id];
+        if (!existing || !models.some((m) => m.model_id === existing.modelId)) {
+          const defaultModel = models.find((m) => m.model_id === default_model_id) ?? models[0];
+          return {
+            ...prev,
+            [station_id]: { modelId: defaultModel.model_id, modelName: defaultModel.name },
+          };
+        }
+        return prev;
+      });
+    }
+  }, [modelsState.status, modelsState.data]);
+
+  useEffect(() => {
+    if (inputSelection && modelsState.status === 'ready' && modelsState.data?.station_id === inputSelection.station.station_id) {
+      const chosen = selectedModels[inputSelection.station.station_id];
+      if (chosen && (inputSelection.modelId !== chosen.modelId || inputSelection.modelName !== chosen.modelName)) {
+        setInputSelection((prev) => ({
+          ...prev,
+          modelId: chosen.modelId,
+          modelName: chosen.modelName,
+        }));
+      }
+    }
+  }, [inputSelection?.station.station_id, selectedModels, modelsState.status, modelsState.data]);
+
   const request = useMemo(() => ({
     filters: appliedFilters, cursor: cursors.at(-1), retryCount,
   }), [appliedFilters, cursors, retryCount]);
@@ -75,8 +114,40 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
     setInputSelection(null);
   }
 
+  function handleSelectModel(modelId) {
+    if (!modelsState.data?.models) return;
+    const model = modelsState.data.models.find((m) => m.model_id === modelId);
+    if (!model) return;
+    setSelectedModels((prev) => ({
+      ...prev,
+      [currentStationId]: { modelId: model.model_id, modelName: model.name },
+    }));
+    predictionFlow.cancel();
+    rangeFlow.cancel();
+    if (inputSelection) {
+      setInputSelection((prev) => ({
+        ...prev,
+        modelId: model.model_id,
+        modelName: model.name,
+      }));
+    }
+  }
+
   function selectInputs(selectedStation, referenceTime) {
-    setInputSelection({ station: selectedStation, referenceTime });
+    setActiveStationId(selectedStation.station_id);
+    const chosen = selectedModels[selectedStation.station_id];
+    const modelId = chosen?.modelId
+      ?? (modelsState.data?.station_id === selectedStation.station_id ? modelsState.data.default_model_id : null);
+    const modelName = chosen?.modelName
+      ?? (modelsState.data?.station_id === selectedStation.station_id ? modelsState.data.models.find((m) => m.model_id === modelId)?.name : null);
+    predictionFlow.cancel();
+    rangeFlow.cancel();
+    setInputSelection({
+      station: selectedStation,
+      referenceTime,
+      modelId,
+      modelName,
+    });
   }
 
   function predict(overrides) {
@@ -146,9 +217,14 @@ export default function HistoryDialog({ stations, station, opener, onClose }) {
       </form>
 
       <PredictionInputsPanel stations={stations} eligibleStations={eligibleStations} selection={inputSelection}
-        defaultStationId={station?.station_id} onSelect={selectInputs} onClear={() => setInputSelection(null)}
+        defaultStationId={activeStationId} onSelect={selectInputs} onClear={() => setInputSelection(null)}
         inputState={inputState} onPredict={predict} predictButtonRef={predictButtonRef}
-        onPredictRange={predictRange} rangeButtonRef={rangeButtonRef} />
+        onPredictRange={predictRange} rangeButtonRef={rangeButtonRef}
+        activeModelId={selectedModels[currentStationId]?.modelId ?? modelsState.data?.default_model_id ?? null}
+        onSelectModel={handleSelectModel}
+        modelsData={modelsState.data}
+        modelsStatus={modelsState.status}
+        onStationChange={setActiveStationId} />
 
       <div className="history-summary" aria-live="polite">
         <span>Đang xem: {formatHistoryDate(appliedFilters.startDate)}

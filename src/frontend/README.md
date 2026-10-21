@@ -20,6 +20,10 @@ npm run dev
 
 Mở <http://localhost:5173>. Bản đồ cần Internet và trình duyệt hỗ trợ WebGL.
 Backend cần chạy tại cổng 8000, kết nối PostgreSQL đã có dữ liệu trạm.
+Proxy cho `POST /api/v1/predictions/range` chờ tối đa 190 giây, dài hơn deadline
+180 giây của client vì mỗi nhóm có thể chạy 24 dự báo mới. Các API khác vẫn dùng
+timeout proxy 10 giây. Khi sửa timeout cần giữ cấu hình ở cả `server` và `preview`;
+nhóm bị ngắt có thể đã lưu một phần kết quả, chạy lại sẽ dùng các dự báo đã lưu.
 Có trạng thái tải và thông báo khi không truy cập được bản đồ hoặc danh sách trạm;
 lỗi API trạm không làm mất bản đồ nền.
 

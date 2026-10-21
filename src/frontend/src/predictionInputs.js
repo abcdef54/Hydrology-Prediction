@@ -9,6 +9,7 @@ export function describePredictionFeature(feature, stations, index) {
   const station = stations.find((item) => item.station_id === feature.source_station_id);
   const waterLag = /^water_level_lag_(\d+)m$/.exec(feature.name);
   const rain = /^rain_\d+_(depth|missing|sum_(\d+)h)$/.exec(feature.name);
+  const forecastRain = /^weather_forecast_rain_(\d+)_(\d+)h(_missing)?$/.exec(feature.name);
   let label = `Thông tin bổ sung ${index + 1}`;
   let flag = false;
   if (feature.name === 'water_level_depth') label = 'Mực nước đầu vào';
@@ -23,13 +24,21 @@ export function describePredictionFeature(feature, stations, index) {
       : rain[1] === 'missing' ? 'Tình trạng dữ liệu mưa'
         : `Tổng số đo mưa ${rain[2]} giờ`;
     flag = rain[1] === 'missing';
+  } else if (forecastRain) {
+    label = forecastRain[3]
+      ? `Tình trạng dự báo mưa ${forecastRain[1]}–${forecastRain[2]} giờ`
+      : `Dự báo mưa ${forecastRain[1]}–${forecastRain[2]} giờ tới`;
+    flag = Boolean(forecastRain[3]);
+  } else if (feature.name === 'weather_forecast_age_hours') {
+    label = 'Độ trễ bản tin dự báo';
   } else if (feature.name === 'flood_season') {
     return { label: 'Thuộc mùa lũ', value: feature.value === null ? '' : feature.value === 1 ? 'Có' : 'Không', unit: '' };
   }
   const value = feature.value === null ? ''
     : flag ? (feature.value === 1 ? 'Thiếu dữ liệu' : 'Có dữ liệu') : feature.value;
   const unit = flag || feature.unit === 'dimensionless' ? '' : feature.unit ?? 'Chưa rõ đơn vị';
-  return { label, value, unit, sourceName: station?.name ?? (rain ? 'Trạm mưa' : '') };
+  const defaultSource = feature.name.startsWith('weather_forecast_') ? 'Dự báo thời tiết' : (rain ? 'Trạm mưa' : '');
+  return { label, value, unit, sourceName: station?.name ?? defaultSource };
 }
 
 /**

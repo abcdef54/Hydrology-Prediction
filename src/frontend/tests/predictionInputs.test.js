@@ -87,3 +87,27 @@ test('chỉnh sửa chỉ gửi phần khác gốc, giữ 0/âm/null và kiểm 
   assert.ok(buildInputOverrides(inputs,{water_level_missing:'2'}).errors.water_level_missing);
   assert.deepEqual(buildInputOverrides(inputs,{water_level_depth:'0'}).overrides,{water_level_depth:0});
 });
+
+test('truy vấn model_id trong prediction-inputs, nhận model_name và từ chối khi lệch model_id', async (context) => {
+  let url;
+  const payload = {
+    ...inputResponse(),
+    model_id: 'model_b',
+    model_name: 'Model B — Hồng Thái + Nhâm',
+  };
+  context.mock.method(globalThis, 'fetch', async (path) => {
+    url = new URL(path, 'http://localhost');
+    return Response.json(payload);
+  });
+
+  const res = await fetchPredictionInputs('0074647403', '2026-10-14T10:00:00+07:00', undefined, 'model_b');
+  assert.equal(url.searchParams.get('model_id'), 'model_b');
+  assert.equal(res.model_id, 'model_b');
+  assert.equal(res.model_name, 'Model B — Hồng Thái + Nhâm');
+
+  // Mismatched model_id
+  await assert.rejects(
+    fetchPredictionInputs('0074647403', '2026-10-14T10:00:00+07:00', undefined, 'three_station'),
+    /không khớp mô hình đã yêu cầu/
+  );
+});

@@ -27,9 +27,17 @@ export function usePrediction() {
     const controller = new AbortController();
     active.current = controller;
     const referenceTime = selection.referenceTime ?? inputs.hourly_reference_time;
+    const modelId = selection.modelId ?? inputs.model_id ?? null;
     setState({ status: 'loading', selection, referenceTime, inputs, overrides, prediction: null, detail: null });
     try {
-      const prediction = await createPrediction(selection.station.station_id, referenceTime, controller.signal, overrides);
+      const prediction = await createPrediction(
+        selection.station.station_id,
+        referenceTime,
+        controller.signal,
+        overrides,
+        modelId,
+        inputs.model_version ?? null
+      );
       if (controller.signal.aborted) return;
       setState({ status: 'ready', selection, referenceTime, inputs, overrides, prediction, detail: null,
         actualStatus: 'loading' });

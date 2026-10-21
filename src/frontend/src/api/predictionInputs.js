@@ -14,13 +14,15 @@ const inputErrors = {
  * @param {string} stationId Mã trạm có quyền dự báo, giữ số 0 đầu.
  * @param {string|null} referenceTime Timestamp có timezone; null để lấy mới nhất.
  * @param {AbortSignal} [signal] Hủy khi đổi mốc/đóng bảng.
+ * @param {string|null} [modelId] Mã mô hình dự báo cụ thể nếu chọn mô hình khác mặc định.
  * @returns {Promise<object>} Input gốc, metadata chuỗi, anchor thực tế và trạng thái sẵn sàng.
  * @throws {Error} Lỗi API an toàn hoặc response không hợp lệ; không trả dữ liệu giả.
  * @throws {DOMException} Khi caller hủy request.
  */
-export async function fetchPredictionInputs(stationId, referenceTime, signal) {
+export async function fetchPredictionInputs(stationId, referenceTime, signal, modelId = null) {
   const query = new URLSearchParams();
   if (referenceTime) query.set('reference_time', referenceTime);
+  if (modelId) query.set('model_id', modelId);
   let inputs;
   try {
     inputs = await fetchApiJson(`/api/v1/stations/${encodeURIComponent(stationId)}/prediction-inputs${query.size ? `?${query}` : ''}`, signal);
@@ -31,6 +33,9 @@ export async function fetchPredictionInputs(stationId, referenceTime, signal) {
   }
   const validTime = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value));
   const validNames = (value) => Array.isArray(value) && value.every((name) => typeof name === 'string');
+  if (modelId !== null && inputs?.model_id !== undefined && inputs.model_id !== modelId) {
+    throw new Error('Mô hình trả về không khớp mô hình đã yêu cầu.');
+  }
   if (
     inputs?.station_id !== stationId
     || typeof inputs.input_ready !== 'boolean' || typeof inputs.is_stale !== 'boolean'
@@ -49,6 +54,8 @@ export async function fetchPredictionInputs(stationId, referenceTime, signal) {
       && (feature.source_station_id === null || typeof feature.source_station_id === 'string')
       && typeof feature.editable === 'boolean')
     || new Set(inputs.features.map((feature) => feature.name)).size !== inputs.feature_count
+    || (inputs.model_id !== undefined && typeof inputs.model_id !== 'string')
+    || (inputs.model_name !== undefined && typeof inputs.model_name !== 'string')
   ) throw new Error('Dữ liệu đầu vào từ backend không hợp lệ. Vui lòng thử lại.');
   return inputs;
 }

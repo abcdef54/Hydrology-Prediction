@@ -13,7 +13,12 @@ export function usePredictionInputs(selection) {
     const controller = new AbortController();
     async function load() {
       try {
-        const data = await fetchPredictionInputs(selection.station.station_id, selection.referenceTime, controller.signal);
+        const data = await fetchPredictionInputs(
+          selection.station.station_id,
+          selection.referenceTime,
+          controller.signal,
+          selection.modelId ?? null
+        );
         if (!controller.signal.aborted) setResult({ selection, status: 'ready', data, error: '' });
       } catch (error) {
         if (!controller.signal.aborted) setResult({ selection, status: 'error', data: null, error: error.message });

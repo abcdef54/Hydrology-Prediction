@@ -95,3 +95,33 @@ test('thực tế cho kịch bản lấy đúng anchor/horizon POST, không gử
     const original=body;body={...body,...change};await assert.rejects(fetchScenarioActuals(scenario));body=original;
   }
 });
+
+test('truyền model_id trong body POST, nhận diện model_id/model_name và từ chối khi lệch model/version', async (context) => {
+  let sentBody;
+  const modelPayload = {
+    ...prediction(),
+    model_id: 'three_station',
+    model_name: '3 trạm — Hồng Thái + Bạch Mã + Phú Bài',
+  };
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    sentBody = JSON.parse(options.body);
+    return Response.json(modelPayload);
+  });
+
+  const res = await createPrediction('0074647403', '2026-10-13T07:00:00+07:00', undefined, {}, 'three_station', 'm1');
+  assert.equal(sentBody.model_id, 'three_station');
+  assert.equal(res.model_id, 'three_station');
+  assert.equal(res.model_name, '3 trạm — Hồng Thái + Bạch Mã + Phú Bài');
+
+  // Mismatched model_id
+  await assert.rejects(
+    createPrediction('0074647403', '2026-10-13T07:00:00+07:00', undefined, {}, 'model_b', 'm1'),
+    /không hợp lệ/
+  );
+
+  // Mismatched inputModelVersion
+  await assert.rejects(
+    createPrediction('0074647403', '2026-10-13T07:00:00+07:00', undefined, {}, 'three_station', 'wrong_version'),
+    /không hợp lệ/
+  );
+});

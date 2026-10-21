@@ -34,6 +34,7 @@ export function usePredictionRange() {
           try {
             chunk=await fetchRangeChunk({station_id:request.station.station_id,
               start:new Date(start).toISOString(),end:new Date(end).toISOString(),horizon_minutes:request.horizon,
+              ...(request.modelId ? { model_id: request.modelId } : {}),
               ...(current.identity??{})},controller.signal);
           } catch(error) {
             if(controller.signal.aborted)throw error;
@@ -49,7 +50,8 @@ export function usePredictionRange() {
         if (controller.signal.aborted) return;
         current={...current,points:[...current.points,...chunk.points],created:current.created+chunk.created_count,
           reused:current.reused+chunk.reused_count,skipped:current.skipped+chunk.skipped_count,
-          identity:{model_version:chunk.model_version,pipeline_version:chunk.pipeline_version}};
+          identity:{model_version:chunk.model_version,pipeline_version:chunk.pipeline_version,
+            ...(chunk.model_id ? {model_id:chunk.model_id} : {})}};
         setState(current);
       }
       if (!controller.signal.aborted) setState({...current,status:'ready'});

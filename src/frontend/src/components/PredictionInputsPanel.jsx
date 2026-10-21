@@ -10,8 +10,9 @@ import PredictionRangeForm from './PredictionRangeForm.jsx';
  * @returns {import('react').ReactElement} Input có thể sửa theo quyền API, reset và kiểm tra lỗi.
  */
 export default function PredictionInputsPanel({ stations, eligibleStations, selection, onSelect, onClear, defaultStationId,
-  inputState, onPredict, predictButtonRef, onPredictRange, rangeButtonRef }) {
-  const [latestStationId, setLatestStationId] = useState(defaultStationId ?? '');
+  inputState, onPredict, predictButtonRef, onPredictRange, rangeButtonRef,
+  activeModelId, onSelectModel, modelsData, modelsStatus, onStationChange }) {
+  const [internalStationId, setInternalStationId] = useState(defaultStationId ?? '');
   const { status, data, error } = inputState;
   const [editState, setEditState] = useState(null);
   const drafts = editState?.inputs === data ? editState.values : {};
@@ -20,9 +21,14 @@ export default function PredictionInputsPanel({ stations, eligibleStations, sele
   function editFeature(name, value) {
     setEditState({ inputs: data, values: { ...drafts, [name]: value } });
   }
-  const stationId = selection?.station.station_id ?? latestStationId;
+  const stationId = selection?.station.station_id ?? internalStationId;
   const latestStation = eligibleStations.find((station) => station.station_id === stationId)
     ?? (eligibleStations.length === 1 ? eligibleStations[0] : null);
+
+  const availableModels = modelsData?.station_id === latestStation?.station_id ? (modelsData?.models ?? []) : [];
+  const currentModelId = activeModelId ?? modelsData?.default_model_id ?? availableModels[0]?.model_id;
+  const currentModel = availableModels.find((m) => m.model_id === currentModelId);
+
   return (
     <section className="prediction-inputs-panel" aria-labelledby="prediction-inputs-title">
       <div className="prediction-inputs-toolbar">
@@ -31,11 +37,38 @@ export default function PredictionInputsPanel({ stations, eligibleStations, sele
         <div className="prediction-inputs-actions">
           <label className="sr-only" htmlFor="prediction-latest-station">Trạm lấy đầu vào mới nhất</label>
           <select id="prediction-latest-station" value={latestStation?.station_id ?? ''}
-            onChange={(event) => { setLatestStationId(event.target.value); onClear(); }}>
+            onChange={(event) => {
+              const sid = event.target.value;
+              setInternalStationId(sid);
+              onStationChange?.(sid);
+              onClear();
+            }}>
             <option value="" disabled>Chọn trạm nước</option>
             {eligibleStations.map((station) => <option key={station.station_id} value={station.station_id}>{station.name}</option>)}
           </select>
-          <button type="button" disabled={!latestStation} onClick={() => onSelect(latestStation, null)}>Đầu vào mới nhất</button>
+          {eligibleStations.length > 0 && (
+            <>
+              <label className="sr-only" htmlFor="prediction-model-select">Mô hình dự báo</label>
+              <select id="prediction-model-select"
+                aria-label="Mô hình dự báo"
+                value={currentModelId ?? ''}
+                disabled={modelsStatus === 'loading' || !availableModels.length}
+                onChange={(event) => {
+                  setEditState(null);
+                  onSelectModel?.(event.target.value);
+                }}>
+                {modelsStatus === 'loading' && <option value="">Đang đọc danh sách mô hình…</option>}
+                {modelsStatus === 'error' && <option value="">Chưa tải được mô hình</option>}
+                {availableModels.map((model) => (
+                  <option key={model.model_id} value={model.model_id}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+          <button type="button" disabled={!latestStation || !currentModel}
+            onClick={() => onSelect(latestStation, null)}>Đầu vào mới nhất</button>
           {selection && <button type="button" onClick={onClear}>Bỏ chọn</button>}
           {Object.keys(drafts).length > 0 && <button type="button" onClick={() => setEditState(null)}>Khôi phục giá trị gốc</button>}
           <button type="button" className="prediction-run-button" ref={predictButtonRef}
@@ -44,9 +77,12 @@ export default function PredictionInputsPanel({ stations, eligibleStations, sele
         </div>
       </div>
       {!eligibleStations.length && <p>Chưa có trạm nước được bật dự báo và cấu hình mô hình.</p>}
-      <PredictionRangeForm station={latestStation} enabled={!selection} onRun={onPredictRange} buttonRef={rangeButtonRef} />
+      <PredictionRangeForm station={latestStation} enabled={!selection && Boolean(currentModel)} onRun={onPredictRange} buttonRef={rangeButtonRef}
+        modelId={currentModelId} modelName={currentModel?.name} />
       {selection && <div className="prediction-inputs-status" aria-live="polite">
-        <strong>{selection.station.name}</strong> · Mốc yêu cầu: {selection.referenceTime ? formatObservationTime(selection.referenceTime) : 'Mới nhất'}
+        <strong>{selection.station.name}</strong>
+        {currentModel?.name && <> · Mô hình: <strong>{currentModel.name}</strong></>}
+        {' · '}Mốc yêu cầu: {selection.referenceTime ? formatObservationTime(selection.referenceTime) : 'Mới nhất'}
         {status === 'loading' && <p role="status">Đang chuẩn bị đầu vào…</p>}
         {status === 'error' && <div role="alert"><p>{error}</p>
           <button type="button" onClick={() => onSelect(selection.station, selection.referenceTime)}>Thử lại đầu vào</button></div>}

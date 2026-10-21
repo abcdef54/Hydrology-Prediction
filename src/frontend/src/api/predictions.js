@@ -23,16 +23,19 @@ function validatePredictionPoints(result) {
  * @param {string} referenceTime Mốc có timezone, cố định theo input đang hiển thị, kể cả latest.
  * @param {AbortSignal} signal Hủy chờ khi quay lại/đóng bảng; không tự retry POST.
  * @param {object} [overrides] Giá trị khác gốc ở bước cuối, chỉ gửi trong request, không sửa quan trắc.
+ * @param {string|null} [modelId] Mã mô hình dự báo cụ thể nếu chọn mô hình khác mặc định.
+ * @param {string|null} [inputModelVersion] Phiên bản mô hình từ input để đối chiếu tính nhất quán.
  * @returns {Promise<object>} Dự báo gốc có ID; dự báo thử có metadata lưu trữ null, đơn vị mm.
  * @throws {Error} Lỗi mạng/HTTP hoặc kết quả không khớp dữ liệu đã gửi.
  */
-export async function createPrediction(stationId, referenceTime, signal, overrides = {}) {
+export async function createPrediction(stationId, referenceTime, signal, overrides = {}, modelId = null, inputModelVersion = null) {
   const isScenario = Object.keys(overrides).length > 0;
   let result;
   try {
     result = await fetchApiJson('/api/v1/predictions', signal, {
       method: 'POST', json: { station_id: stationId, reference_time: referenceTime,
-        ...(isScenario ? { overrides } : {}) }, timeoutMs: 60_000,
+        ...(isScenario ? { overrides } : {}),
+        ...(modelId ? { model_id: modelId } : {}) }, timeoutMs: 60_000,
     });
   } catch (error) {
     if (signal?.aborted) throw error;
@@ -52,7 +55,10 @@ export async function createPrediction(stationId, referenceTime, signal, overrid
     : validId(result.forecast_id) && validTime(result.generated_at) && typeof result.pipeline_version === 'string';
   if (result.station_id !== stationId || !validStorage || typeof result.is_stale !== 'boolean'
     || !result.overrides_applied || Object.keys(result.overrides_applied).length !== Object.keys(overrides).length
-    || Object.entries(overrides).some(([name, value]) => result.overrides_applied[name] !== value)) {
+    || Object.entries(overrides).some(([name, value]) => result.overrides_applied[name] !== value)
+    || (result.model_id !== undefined && (typeof result.model_id !== 'string' || (modelId && result.model_id !== modelId)))
+    || (result.model_name !== undefined && typeof result.model_name !== 'string')
+    || (inputModelVersion && result.model_version !== inputModelVersion)) {
     throw new Error('Thông tin bản dự báo từ backend không hợp lệ.');
   }
   return result;

@@ -7,7 +7,7 @@ import { defaultPredictionRange, getPredictionRangeError, parseVietnamHour } fro
  * buttonRef phục hồi focus khi quay lại. Chế độ này không tải/hiện/sửa feature.
  * @returns {import('react').ReactElement} Chọn thời gian Việt Nam và một horizon từ API.
  */
-export default function PredictionRangeForm({station,onRun,buttonRef,enabled}) {
+export default function PredictionRangeForm({station,onRun,buttonRef,enabled,modelId,modelName}) {
   const [dates,setDates]=useState(defaultPredictionRange);
   const [horizon,setHorizon]=useState(null);
   const [result,setResult]=useState(null);
@@ -16,13 +16,13 @@ export default function PredictionRangeForm({station,onRun,buttonRef,enabled}) {
   useEffect(()=>{
     if(!id||!enabled)return;
     const controller=new AbortController();
-    fetchPredictionOptions(id,controller.signal).then(data=>{
-      if(!controller.signal.aborted)setResult({id,data});
-    }).catch(error=>{if(!controller.signal.aborted)setResult({id,error:error.message});});
+    fetchPredictionOptions(id,controller.signal,modelId??null).then(data=>{
+      if(!controller.signal.aborted)setResult({id,modelId:modelId??null,data});
+    }).catch(error=>{if(!controller.signal.aborted)setResult({id,modelId:modelId??null,error:error.message});});
     return()=>controller.abort();
-  },[id,retry,enabled]);
-  const data=result&&result.id===id ? result.data : null;
-  const error=result&&result.id===id ? result.error : '';
+  },[id,modelId,retry,enabled]);
+  const data=result&&result.id===id&&result.modelId===(modelId??null) ? result.data : null;
+  const error=result&&result.id===id&&result.modelId===(modelId??null) ? result.error : '';
   const selectedHorizon=data?.forecast_horizons_minutes.includes(horizon)?horizon:data?.forecast_horizons_minutes[0];
   const validation=getPredictionRangeError(dates.start,dates.end);
   return <div className="prediction-range-form" hidden={!enabled}>
@@ -40,7 +40,8 @@ export default function PredictionRangeForm({station,onRun,buttonRef,enabled}) {
       </select></div>
       <button type="button" ref={buttonRef} disabled={!station||!data||Boolean(validation)}
         onClick={()=>onRun({station,start:new Date(parseVietnamHour(dates.start)).toISOString(),
-          end:new Date(parseVietnamHour(dates.end)).toISOString(),horizon:selectedHorizon})}>Dự báo theo khoảng</button>
+          end:new Date(parseVietnamHour(dates.end)).toISOString(),horizon:selectedHorizon,
+          modelId:modelId??null,modelName:modelName??null})}>Dự báo theo khoảng</button>
     </div>
     {validation&&<p role="alert">{validation}</p>}
     {error&&<div role="alert">{error} <button type="button" onClick={()=>{setResult(null);setRetry(value=>value+1);}}>Thử lại cấu hình</button></div>}

@@ -3,15 +3,22 @@ import { fetchApiJson } from './client.js';
 /**
  * @param {string} stationId Trạm nước được phép dự báo.
  * @param {AbortSignal} signal Hủy khi đổi trạm/chọn một mốc.
+ * @param {string|null} [modelId] Mã mô hình dự báo nếu chọn mô hình khác mặc định.
  * @returns {Promise<object>} Horizon từ registry, không tải input hoặc chạy inference.
  * @throws {Error} Lỗi API hoặc metadata không hợp lệ.
  */
-export async function fetchPredictionOptions(stationId, signal) {
-  const data = await fetchApiJson(`/api/v1/stations/${encodeURIComponent(stationId)}/prediction-options`, signal);
+export async function fetchPredictionOptions(stationId, signal, modelId = null) {
+  const query = modelId ? `?model_id=${encodeURIComponent(modelId)}` : '';
+  const data = await fetchApiJson(`/api/v1/stations/${encodeURIComponent(stationId)}/prediction-options${query}`, signal);
+  if (modelId && data?.model_id !== undefined && data.model_id !== modelId) {
+    throw new Error('Cấu hình mô hình trả về không khớp mô hình đã yêu cầu.');
+  }
   if (data?.station_id !== stationId || typeof data.model_version !== 'string'
     || !Array.isArray(data.forecast_horizons_minutes) || !data.forecast_horizons_minutes.length
     || !data.forecast_horizons_minutes.every(value => Number.isInteger(value) && value > 0)
-    || new Set(data.forecast_horizons_minutes).size !== data.forecast_horizons_minutes.length) {
+    || new Set(data.forecast_horizons_minutes).size !== data.forecast_horizons_minutes.length
+    || (data.model_id !== undefined && typeof data.model_id !== 'string')
+    || (data.model_name !== undefined && typeof data.model_name !== 'string')) {
     throw new Error('Không đọc được cấu hình dự báo của trạm.');
   }
   return data;
@@ -24,13 +31,21 @@ export async function fetchPredictionOptions(stationId, signal) {
  * @throws {Error} Lỗi/quota/pipeline đổi hoặc response không khớp; không gửi overrides.
  */
 export async function fetchRangeChunk(request, signal) {
-  const data = await fetchApiJson('/api/v1/predictions/range', signal, {method:'POST', json:request, timeoutMs:180_000});
+  const jsonPayload = {
+    ...request,
+  };
+  const data = await fetchApiJson('/api/v1/predictions/range', signal, {method:'POST', json:jsonPayload, timeoutMs:180_000});
   const start=Date.parse(request.start), end=Date.parse(request.end);
   const count=(end-start)/3600000;
+  if (request.model_id && data?.model_id !== undefined && data.model_id !== request.model_id) {
+    throw new Error('Kết quả theo khoảng không khớp mô hình đã yêu cầu.');
+  }
   if (data?.station_id !== request.station_id || data.unit !== 'mm'
     || Date.parse(data.start)!==start || Date.parse(data.end)!==end || data.horizon_minutes!==request.horizon_minutes
     || typeof data.model_version!=='string' || typeof data.pipeline_version!=='string'
     || request.model_version && (data.model_version!==request.model_version || data.pipeline_version!==request.pipeline_version)
+    || (data.model_id !== undefined && typeof data.model_id !== 'string')
+    || (data.model_name !== undefined && typeof data.model_name !== 'string')
     || !Array.isArray(data.points) || data.points.length!==count || count<1 || count>24) {
     throw new Error('Kết quả theo khoảng không khớp yêu cầu.');
   }
