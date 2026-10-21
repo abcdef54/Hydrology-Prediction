@@ -312,3 +312,278 @@ mực nước tuyệt đối. Các trial chạy tuần tự; `--n-jobs` là số
 - Chỉ thêm `--evaluate-best` khi muốn chấm trial đã chọn trên test và so với
   B/production sau khi search kết thúc. Test không tham gia chọn tham số;
   test hiện đã xem nhiều lần vẫn chỉ là đánh giá khám phá.
+
+## Phân bố thay đổi mực nước dự báo — 21/10/2026
+
+Chạy lại ba artifact phục vụ trong `src/backend/prediction/model_configs.json`: production cũ,
+Model B seed 42 và Hồng Thái + Bạch Mã + Phú Bài seed 42. Không train, không đổi checkpoint,
+không ghi forecast vào DB. ΔH = dự báo H(t+h) − quan trắc H(t), không phải sai số dự báo.
+Dấu dương/âm là tăng/giảm; TB |ΔH| đo độ lớn để tránh hai chiều triệt tiêu.
+
+7.672 anchor chung: train 6.095 (19/11/2025 01:00–30/07/2026 23:00), validation 985
+(04/08/2026 23:00–14/09/2026 23:00), test 592 (19/09/2026 23:00–14/10/2026 14:00), giờ VN.
+Mỗi model chạy đủ +1/+3/+6/+12/+24h, tổng 115.080 dự báo. Giữ warmup 96 giờ riêng từng split,
+lọc cùng anchor đủ năm nhãn và dùng scaler riêng, không fit lại. Dataset gốc production:
+`train_data/1h_top4_pg_2026-10-15_val_aug01_sep15`; hai model mới dùng
+`train_data/da_vien_1h_2026-10-15_rain_pool_o24`. Batch inference kiểm tra khớp single forward
+(sai khác ≤0,002 mm). Test tái hiện RMSE/N200: cũ 87,03/97; B 75,78/48; ba trạm 77,04/50.
+
+### Bảng chính: 1.577 anchor validation + test, đơn vị mm
+
+| Horizon | Model | TB ΔH | Median | Min | Max | TB \|ΔH\| | % dương | Khoảng phổ biến (rộng 20 mm) | % trong khoảng |
+|---|---|---:|---:|---:|---:|---:|---:|---|---:|
+| +1h | Production cũ | 0.84 | 0.82 | -53.52 | 61.91 | 11.42 | 52.57 | [0, 20) | 43.75 |
+| +1h | Model B | 4.00 | 2.71 | -54.68 | 67.89 | 16.37 | 59.48 | [0, 20) | 40.84 |
+| +1h | Ba trạm | 4.11 | 3.98 | -56.81 | 72.03 | 15.31 | 65.25 | [0, 20) | 49.90 |
+| +3h | Production cũ | 5.07 | 6.08 | -167.81 | 185.22 | 36.30 | 55.10 | [-20, 0) | 20.99 |
+| +3h | Model B | 10.27 | 8.07 | -164.42 | 193.08 | 45.91 | 59.29 | [0, 20) | 19.72 |
+| +3h | Ba trạm | 14.36 | 12.84 | -162.16 | 207.90 | 45.55 | 64.17 | [0, 20) | 20.29 |
+| +6h | Production cũ | 10.92 | 12.29 | -292.45 | 277.23 | 58.06 | 57.77 | [20, 40) | 12.05 |
+| +6h | Model B | 13.86 | 13.81 | -280.61 | 283.71 | 72.25 | 58.40 | [-20, 0) | 11.10 |
+| +6h | Ba trạm | 20.29 | 19.25 | -285.84 | 314.59 | 71.74 | 60.43 | [-20, 0) | 11.60 |
+| +12h | Production cũ | 13.01 | 14.72 | -204.91 | 209.18 | 49.25 | 59.92 | [40, 60) | 13.63 |
+| +12h | Model B | 14.96 | 23.09 | -162.00 | 158.28 | 51.40 | 63.22 | [60, 80) | 14.39 |
+| +12h | Ba trạm | 23.88 | 25.19 | -181.23 | 189.29 | 55.94 | 65.31 | [0, 20) | 11.86 |
+| +24h | Production cũ | 9.42 | 14.98 | -154.71 | 132.06 | 38.42 | 63.92 | [20, 40) | 20.86 |
+| +24h | Model B | 20.47 | 27.52 | -146.25 | 158.18 | 41.29 | 77.49 | [20, 40) | 30.88 |
+| +24h | Ba trạm | 31.79 | 36.38 | -133.21 | 182.46 | 47.30 | 77.49 | [20, 40) | 21.81 |
+
+Các ΔH dự báo không có giá trị đúng 0 trong mẫu này: % âm = 100 − % dương.
+Khoảng histogram là [trái, phải); mode phụ thuộc độ rộng/vị trí bin, không phải giá trị chính xác
+xuất hiện nhiều nhất. Train là mô tả in-sample; không trộn với validation/test để đánh giá tổng quát.
+
+### Đối chiếu độ lớn thực tế và nhóm biến động mạnh
+
+Chọn theo quan trắc |H(t+h) − H(t)| >200 mm, riêng từng horizon, không chọn theo lỗi model.
+Các model dùng cùng mốc. Các giờ/horizon chồng lấn không phải nhiều đợt độc lập.
+
+| Horizon | N mạnh | TB \|ΔH thực tế\| | Cũ | B | Ba trạm |
+|---|---:|---:|---:|---:|---:|
+| +1h | 0 | — | — | — | — |
+| +3h | 94 | 243.54 | 110.07 | 125.65 | 127.14 |
+| +6h | 213 | 297.08 | 133.23 | 166.54 | 167.79 |
+| +12h | 60 | 267.27 | 76.86 | 67.95 | 73.70 |
+| +24h | 95 | 301.73 | 51.51 | 48.11 | 42.20 |
+
+Những khoảng anchor biến động mạnh tập trung: 10–14/09, 25/09–02/10, 05–07/10
+và 08–14/10/2026; đây là mốc đầu vào, actual nằm ở t+h. Không dùng nhãn tương lai này để chọn model online.
+
+| Trường hợp | N | TB ΔH thực tế | Cũ | B | Ba trạm |
+|---|---:|---:|---:|---:|---:|
+| +3h, Tăng >200 mm | 51 | +258.33 | +110.75 | +132.23 | +133.94 |
+| +3h, Giảm >200 mm | 43 | -225.99 | -109.25 | -117.85 | -119.06 |
+| +6h, Tăng >200 mm | 107 | +294.56 | +129.27 | +173.39 | +172.88 |
+| +6h, Giảm >200 mm | 106 | -299.62 | -134.95 | -158.93 | -162.24 |
+| +12h, Tăng >200 mm | 29 | +259.64 | +32.22 | +44.10 | +51.70 |
+| +12h, Giảm >200 mm | 31 | -274.41 | -94.69 | -77.12 | -88.71 |
+| +24h, Tăng >200 mm | 63 | +293.07 | -5.63 | +21.76 | +21.40 |
+| +24h, Giảm >200 mm | 32 | -318.79 | -75.95 | -52.43 | -44.11 |
+
+### Diễn giải và giới hạn
+
+- +3/+6h thường nhận đúng chiều khi nước đổi mạnh (B: 100%/98,59%), nhưng biên độ vẫn nhỏ.
+- +12h mạnh: tỷ lệ đúng chiều cũ/B/ba trạm = 81,67%/88,33%/95,00%; +24h = 55,79%/74,74%/71,58%.
+- +24h tăng mạnh: B dự báo trung bình +21,76 mm trong khi thực tế +293,07 mm; khi giảm mạnh:
+  B −52,43 mm, thực tế −318,79 mm. Ba trạm không khắc phục được co biên độ +24h.
+- Trên toàn validation/test, B và ba trạm dự báo tăng ở 77,49% mốc +24h, thực tế 50,54%.
+  Riêng test, tỷ lệ tăng B/ba trạm = 54,05%/58,45%; không coi 77,49% là thiên lệch cố định mọi thời kỳ.
+- TB |ΔH| thực tế +6h =97,51 mm, +24h =71,43 mm: không mặc định horizon xa phải đổi nhiều hơn.
+- Những mẫu có ít nhất một model lỗi >200 mm, dùng cùng tập union: +12h có 53 mốc,
+  TB |ΔH thực tế| 245,59 mm, dự báo cũ/B/ba trạm 59,04/38,19/45,35 mm; +24h có 81 mốc,
+  thực tế 310,05 mm, dự báo 46,20/40,68/36,54 mm. Đây là chọn mẫu theo kết quả, chỉ mô tả hậu nghiệm.
+- Không suy ra nguyên nhân do thiếu dữ liệu/loss/kiến trúc chỉ từ thống kê này; test đã xem nhiều lần.
+
+### Thống kê toàn bộ 7.672 anchor (bao gồm train)
+
+| Horizon | Model | TB ΔH | Median | Min | Max | TB \|ΔH\| | % dương | % \|ΔH\|≤20 mm |
+|---|---|---:|---:|---:|---:|---:|---:|---:|
+| +1h | Production cũ | -0.88 | -1.16 | -64.03 | 63.18 | 8.88 | 43.27 | 87.28 |
+| +1h | Model B | 1.05 | -0.16 | -55.20 | 67.89 | 10.48 | 49.09 | 82.55 |
+| +1h | Ba trạm | 1.11 | 0.46 | -57.28 | 72.03 | 10.86 | 52.39 | 83.47 |
+| +3h | Production cũ | -2.47 | -3.78 | -191.32 | 205.45 | 28.64 | 44.86 | 55.14 |
+| +3h | Model B | 2.51 | -0.18 | -167.41 | 193.08 | 29.91 | 49.57 | 60.43 |
+| +3h | Ba trạm | 4.88 | 2.29 | -162.16 | 208.64 | 32.55 | 53.81 | 51.99 |
+| +6h | Production cũ | -1.90 | -3.20 | -313.80 | 360.99 | 46.45 | 47.28 | 35.35 |
+| +6h | Model B | 2.75 | -0.26 | -280.61 | 319.04 | 48.72 | 49.73 | 39.17 |
+| +6h | Ba trạm | 6.39 | 3.05 | -290.60 | 326.88 | 52.73 | 52.82 | 34.29 |
+| +12h | Production cũ | -1.97 | -1.73 | -249.89 | 288.68 | 42.48 | 48.66 | 33.73 |
+| +12h | Model B | 2.86 | 5.10 | -208.18 | 281.15 | 39.69 | 54.90 | 35.58 |
+| +12h | Ba trạm | 5.90 | 7.52 | -262.99 | 347.69 | 45.10 | 56.56 | 32.06 |
+| +24h | Production cũ | -3.34 | 0.39 | -277.83 | 285.03 | 31.45 | 50.52 | 46.30 |
+| +24h | Model B | 2.16 | 2.22 | -268.83 | 170.70 | 25.71 | 53.38 | 57.26 |
+| +24h | Ba trạm | 5.08 | 5.26 | -293.30 | 266.25 | 30.18 | 57.96 | 53.79 |
+
+## Hai thí nghiệm train mở rộng — chuẩn bị ngày 21/10/2026
+
+Mục tiêu: bổ sung các đợt biến động thật từ validation cũ vào train, rồi tách riêng
+tác dụng của lấy mẫu ưu tiên. Giữ B seed 42 và production cũ làm tham chiếu đóng băng;
+không ghi đè artifact hoặc đổi registry production.
+
+| Trường hợp | Dataset | Cách lấy mẫu train |
+|---|---|---|
+| 1 — `uniform` | Train mở rộng | Shuffle thông thường, không lặp mẫu trong epoch |
+| 2 — `event-balanced` | Giống trường hợp 1 | Khoảng 80% tự nhiên +10% ưu tiên tăng mạnh +10% ưu tiên giảm mạnh |
+
+Hai trường hợp train **từ đầu**, cùng seed, cùng scaler fit lại trên train mở rộng,
+cùng số lượt lấy mẫu và số batch mỗi epoch. Giữ nguyên cấu hình B: ResidualLSTM,
+Hồng Thái + Nhâm, 26 inputs, chuỗi 96 giờ, outputs +1/+3/+6/+12/+24h; hidden 32,
+3 layers; dropout/input/head 0,7/0,2/0,2; AdamW lr 0,0009, weight decay 0,001;
+correction penalty 0,1; tail penalty 0,5, threshold 200 mm, transition 20 mm;
+horizon weights đều 1, batch 128, clip gradient 1, StepLR(10;0,9), tối đa 50 epochs,
+patience 25; checkpoint chọn theo (N200 validation, RMSE), có persistence epoch 0.
+
+### Dataset và ranh giới
+
+`research.build_expanded_train_dataset` tạo dataset offline từ hourly pool, không
+nối thẳng CSV. Khôi phục 24 giờ purge nội bộ giữa train/val cũ vì nay cùng thuộc
+train; giữ nguyên 24 giờ purge trước validation mới. Kiểm tra nhãn bằng lookup
+quan trắc đúng t+h, không nội suy, không đổi predictor hoặc forecast vintage.
+
+Dataset: `train_data/da_vien_1h_2026-10-15_expanded_train_o24`.
+
+| Tập | Khoảng bản ghi đầu vào (giờ Việt Nam) | Rows | Chuỗi hợp lệ 96 giờ |
+|---|---|---:|---:|
+| Train mới | 15/11/2025 02:00–14/09/2026 23:00 | 7.294 | 7.199 |
+| Validation mới = test cũ | 16/09/2026 00:00–15/10/2026 14:00 | 711 | 592 |
+
+Không tạo `test.csv`: **không còn test độc lập**. Validation mới đã xem nhiều lần
+và được dùng early stopping/chọn checkpoint; mọi so sánh đều là khám phá. Giữ
+cùng 592 anchor trước đây, từ 19/09 23:00 đến 14/10 14:00, để so các model.
+`reference_validation.csv` giữ nguồn quan trắc nguyên bản của production cũ,
+tránh thiếu các feature trạm 750003/750011 khi so với rain pool.
+
+### Quy tắc lấy mẫu ưu tiên
+
+- Chỉ tính nhãn nhóm từ các **anchor train hợp lệ**. Chọn ΔH có độ lớn lớn hơn
+  giữa +12/+24h; nếu bằng nhau dùng +12h. ΔH >200 mm là tăng mạnh, <−200 mm là
+  giảm mạnh. Nhãn nhóm không trở thành feature và không cần khi inference.
+- Gộp anchor mạnh thành nhóm thời gian khi khoảng cách ≤12 giờ; đây là quy ước
+  nhóm mẫu, không khẳng định các nhóm là những trận mưa/lũ độc lập.
+- Trong mỗi nhóm tăng/giảm: chọn nhóm thời gian đều nhau rồi chọn anchor đều nhau.
+  Thực thi bằng trọng số nghịch số anchor của nhóm; không để nhóm dài chiếm hết.
+- Mỗi epoch vẫn 7.199 lượt: 5.761 tự nhiên không hoàn lại, 719 tăng và 719 giảm
+  có hoàn lại. Shuffle toàn bộ rồi chia batch, nên tỷ lệ từng batch chỉ xấp xỉ.
+  Phần tự nhiên vẫn có thể chứa mẫu mạnh. Train mới có 409 anchor mạnh
+  (179 tăng, 230 giảm), nên tỷ lệ mạnh kỳ vọng khoảng 24,5%, không chỉ 20%.
+- Không thay chuỗi 96 giờ, không ghép/sinh dữ liệu và không oversample validation.
+  Thiếu nhóm được yêu cầu thì báo lỗi, không âm thầm đổi tỷ lệ thí nghiệm.
+
+### Lệnh tái lập
+
+Tạo dataset một lần; output đã tồn tại sẽ bị từ chối để tránh ghi đè:
+
+```bash
+.venv/bin/python -m research.build_expanded_train_dataset
+
+.venv/bin/python -m research.expanded_train_experiment \
+  --variant uniform --check-only
+.venv/bin/python -m research.expanded_train_experiment \
+  --variant event-balanced --check-only
+```
+
+Chạy trường hợp 1 trước:
+
+```bash
+.venv/bin/python -m research.expanded_train_experiment \
+  --variant uniform \
+  --device cuda --seed 42 --num-epochs 50 --early-stopping 25 \
+  --output-dir model/experiments/expanded_train_20261021 \
+  --mlflow-ex-name da_vien_expanded_train
+```
+
+Trường hợp 2, giữ nguyên các tham số còn lại:
+
+```bash
+.venv/bin/python -m research.expanded_train_experiment \
+  --variant event-balanced \
+  --device cuda --seed 42 --num-epochs 50 --early-stopping 25 \
+  --output-dir model/experiments/expanded_train_20261021 \
+  --mlflow-ex-name da_vien_expanded_train
+```
+
+Các giá trị mặc định theo B và có args để thay đổi. Có thể chọn tổ hợp bằng
+`--rain-stations`, nhưng hai trường hợp đầu giữ mặc định `hong_thai+nham` để cô lập
+tác dụng. Mỗi lượt chạy tự có run name riêng, không cần đổi tên thủ công.
+Output tách `<combination>/<variant>/seed_<seed>/<run_name>/`, không resume/ghi đè.
+MLflow mặc định localhost:5000, có `--mlflow-tracking-uri`
+hoặc `--no-mlflow`; chỉ log settings/metrics, không upload model hay bảng artifact.
+Cuối run reload checkpoint và so với B/cũ trên cùng anchor, đủ năm horizon;
+log N200, RMSE, độ lớn ΔH và độ lớn ΔH ở nhóm biến động mạnh dưới nhãn validation.
+
+`--checkpoint-metric` chọn cả checkpoint và tiêu chí early stopping:
+`large_error_rate` (mặc định, ưu tiên N200 rồi RMSE), `rmse` (RMSE gộp cả năm
+horizon bằng mm, không ưu tiên N200), hoặc `val_loss` (HorizonWeightedTailLoss).
+Các metric còn lại vẫn được log đầy đủ. Run name chứa sequence length, hidden size,
+tiêu chí checkpoint, timestamp UTC và mã ngẫu nhiên ngắn. Muốn so sampler thì giữ
+cùng tiêu chí hai nhánh.
+
+Các hyperparameter đều được truyền từ CLI vào dataset/model/optimizer/loss thực tế,
+không chỉ ghi vào log. Các cờ `--lstm-*` tương ứng của `src.ai.train` cũng được nhận
+làm alias. Danh sách cờ chính và mặc định:
+
+| Args | Mặc định |
+|---|---|
+| `--sequence-length` | 96 |
+| `--hidden-size`, `--num-layers` | 32; 3 |
+| `--dropout`, `--input-dropout`, `--head-dropout` | 0.7; 0.2; 0.2 |
+| `--learning-rate`, `--weight-decay` | 0.0009; 0.001 |
+| `--correction-penalty` | 0.1 |
+| `--horizon-weights` | 1 1 1 1 1, theo +1/+3/+6/+12/+24h |
+| `--tail-penalty`, `--tail-threshold-mm`, `--tail-transition-mm` | 0.5; 200; 20 |
+| `--batch-size`, `--num-worker`, `--gradient-accumulation`, `--gradient-clip` | 128; 0; 1; 1.0 |
+| `--scheduler`, `--scheduler-step-size`, `--scheduler-gamma` | step; 10; 0.9 |
+
+`--scheduler none` tắt lịch LR; `--tail-penalty 0` dùng weighted MSE không có tail.
+Thay ngưỡng tail không thay định nghĩa N200 trong checkpoint/report (vẫn >200 mm).
+Input size tự tính từ feature của tổ hợp trạm; outputs vẫn là cả năm horizon.
+Đổi sequence length sẽ đổi số anchor hợp lệ; báo cáo dùng giao các anchor với
+hai model tham chiếu. Có thể chạy lại cùng command; mỗi lần tạo thư mục mới tự động.
+
+`--output-dir` và `--report-dir` đều tùy chọn, nay là **thư mục gốc** có thể tái sử dụng.
+Mặc định lần lượt là `model/experiments/expanded_train` và
+`reports/model_comparisons/expanded_train`. Trong cả hai, các thư mục con chứa cùng
+`<combination>/<variant>/seed_<seed>/<run_name>` để đối chiếu dễ dàng. Các thư mục
+và checkpoint cũ giữ nguyên. MLflow cũng dùng tên riêng mỗi run; terminal in đường
+dẫn trước khi train. `--check-only` chỉ in dự kiến, không tạo thư mục.
+
+Đã check-only cả hai nhánh, chạy smoke 1 epoch CPU mỗi nhánh với checkpoint ở
+`/tmp`, kiểm tra reload và so sánh tham chiếu end-to-end. Smoke không đánh giá
+hiệu quả thí nghiệm; chưa chạy các run đầy đủ hoặc thay model production.
+
+### Báo cáo tự động sau mỗi lượt train
+
+`expanded_train_experiment` tự reload checkpoint tốt nhất và tạo báo cáo ba model:
+production cũ, Model B và candidate. Lệnh train bên trên không cần thêm cờ.
+Output mặc định:
+`reports/model_comparisons/expanded_train/<combination>/<variant>/seed_<seed>/<run_name>/`.
+Có thể chọn thư mục gốc bằng `--report-dir`; mỗi lượt luôn tạo thư mục run mới.
+
+- `comparison.md`: tổng hợp RMSE/MAE/N200, đủ năm horizon, chênh lệch với từng model
+  tham chiếu, biên độ ΔH và nhóm biến động mạnh. Ghi rõ validation mới không phải test độc lập.
+- `metrics.csv`: metric theo model/horizon và thống kê phân bố ΔH.
+- `predictions.csv.gz`: cả ba model trên cùng anchor, actual, current, target time.
+- `manifest.json`: seed/variant, epoch được chọn, dataset, model/version/scaler paths,
+  feature order, thiết bị và cấu hình train nếu báo cáo được tạo trong run mới.
+
+Các file này chỉ lưu local; không upload model/báo cáo lên MLflow. Model tham chiếu
+không bị sửa, không dùng chung scaler với candidate. CPU/GPU có thể lệch số lẻ nhỏ.
+
+Lượt uniform seed 42 đã chạy xong trước khi thêm tính năng này: epoch 43, RMSE
+76,87 mm, N200=51; B 75,78/48; production cũ 87,03/97. Báo cáo đã tạo tại
+[uniform seed 42](../reports/model_comparisons/expanded_train/nham+hong_thai/uniform/seed_42/044689eeb379414a82a15f73eabb68c8/comparison.md).
+Nó gần B nhưng chưa tốt hơn theo hai chỉ số tổng hợp; cần xem nhánh lấy mẫu ưu tiên.
+
+Tạo báo cáo từ checkpoint có sẵn, **không train lại**:
+
+```bash
+.venv/bin/python -m research.expanded_train_experiment \
+  --variant uniform --seed 42 --device cpu \
+  --report-only --best-epoch 43 \
+  --checkpoint 'model/experiments/expanded_train_20261021/nham+hong_thai/uniform/seed_42/1h/ResidualLSTM_water_level+rain+flood_season+weather_forecast_best.pt'
+```
+
+`--best-epoch` chỉ ghi metadata đã biết, không chọn checkpoint; nếu không có thì
+bỏ cờ, báo cáo ghi chưa có metadata. Nhánh report-only dùng scaler cạnh checkpoint,
+không tạo checkpoint mới, không ghi MLflow và không yêu cầu output train mới.
+Process train đã khởi động trước thay đổi code không tự nhận tính năng mới;
+nếu đang chạy nhánh thứ hai thì để nó chạy xong rồi dùng report-only.

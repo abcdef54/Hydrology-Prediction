@@ -45,11 +45,15 @@ class LSTMTrainer:
         checkpoint_dir: str | Path = "model",
         checkpoint_metric: str = "val_loss",
         validation_threshold_mm: float = 200.0,
+        gradient_clip: float = 1.0,
     ) -> None:
         if gradient_accumulation < 1:
             raise ValueError("gradient_accumulation must be at least 1")
+        if not math.isfinite(gradient_clip) or gradient_clip <= 0:
+            raise ValueError("gradient_clip must be finite and positive")
+        self.gradient_clip = gradient_clip
 
-        if checkpoint_metric not in ("val_loss", "large_error_rate"):
+        if checkpoint_metric not in ("val_loss", "large_error_rate", "rmse"):
             raise ValueError("Unknown checkpoint metric")
         if not math.isfinite(validation_threshold_mm) or validation_threshold_mm <= 0:
             raise ValueError("Validation error threshold must be finite and positive")
@@ -239,7 +243,7 @@ class LSTMTrainer:
 
             last_batch = batch_number + 1 == len(self.train_dataloader)
             if (batch_number + 1) % self.gradient_accumulation == 0 or last_batch:
-                nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
+                nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=getattr(self, "gradient_clip", 1.0))
                 self.optimizer.step()
 
         if self.scheduler is not None:
@@ -294,7 +298,7 @@ class LSTMTrainer:
             for name, sq, bad in zip(dataloader.dataset.target_cols, physical_squared, physical_bad):
                 self.last_validation_metrics[f"val/{name}/rmse_mm"] = math.sqrt(sq.item() / row_count)
                 self.last_validation_metrics[f"val/{name}/large_error_pct"] = 100 * bad.item() / row_count
-        elif getattr(self, "checkpoint_metric", "val_loss") == "large_error_rate":
+        elif getattr(self, "checkpoint_metric", "val_loss") in ("large_error_rate", "rmse"):
             raise ValueError("Physical-unit checkpoint selection requires the train-fitted target scaler")
         if isinstance(self.loss_func, HorizonWeightedTailLoss):
             self.last_validation_metrics.update({"val/base_weighted_mse": base_sum / element_count,
@@ -302,6 +306,8 @@ class LSTMTrainer:
         return loss_sum / element_count
 
     def validation_score(self, val_loss):
+        if getattr(self, "checkpoint_metric", "val_loss") == "rmse":
+            return (self.last_validation_metrics["val/rmse_mm"],)
         if getattr(self, "checkpoint_metric", "val_loss") == "large_error_rate":
             metrics = self.last_validation_metrics
             return (metrics["val/large_error_count"], metrics["val/rmse_mm"])
@@ -309,7 +315,7 @@ class LSTMTrainer:
 
     def record_validation(self, epoch: int, val_loss: float) -> None:
         score = self.validation_score(val_loss)
-        if getattr(self, "checkpoint_metric", "val_loss") == "large_error_rate":
+        if getattr(self, "checkpoint_metric", "val_loss") in ("large_error_rate", "rmse"):
             improved = score < self.best_checkpoint_score
             self.epochs_without_improvement = 0 if improved else self.epochs_without_improvement + 1
             self.best_training_val_loss = min(self.best_training_val_loss, val_loss)
