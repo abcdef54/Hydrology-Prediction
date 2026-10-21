@@ -90,36 +90,6 @@ class OutputLossTests(unittest.TestCase):
 
 
 class OutputDatasetTests(unittest.TestCase):
-    def test_attention_architectures_backward_and_checkpoint_reload(self):
-        if not DEFAULT_OUTPUT.exists():self.skipTest('Build local O24 dataset first')
-        from src.ai.models import AttentionLSTM1,AttentionLSTM2,AttentionLSTM3
-        classes=[AttentionLSTM1,AttentionLSTM2,AttentionLSTM3]
-        for outputs in [5,24]:
-            _,datasets,saved=prepare_data(DEFAULT_OUTPUT,outputs,96)
-            x,y=datasets['train'][0];x=x[None];y=y[None]
-            for i,cls in enumerate(classes,1):
-                with self.subTest(outputs=outputs,architecture=cls.__name__):
-                    args=parser().parse_args(['--outputs',str(outputs),'--train-method',
-                        f'attention_lstm{i}','--attention-head-dim','7'])
-                    model=make_model(saved,args,'cpu').eval()
-                    self.assertIs(type(model),cls)
-                    before=model(x)
-                    self.assertEqual(before.shape,(1,outputs))
-                    if i>1:torch.testing.assert_close(before,model.persistence(x))
-                    loss=CommonHorizonAuxiliaryLoss(saved['target_columns'],saved['target_scaler'].scale_)
-                    objective=training_objective(model,x,before,loss(before,y),loss,-.1 if i>1 else 0.)
-                    objective.backward()
-                    self.assertTrue(all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None))
-                    # Nonzero heads exercise attention during reload, beyond initial persistence.
-                    with torch.no_grad():
-                        if i==3:
-                            for head in model.horizon_heads:head[-1].weight.fill_(.1)
-                        else:model.linear.weight.fill_(.1)
-                    buffer=io.BytesIO();torch.save(model.state_dict(),buffer)
-                    reloaded=load_candidate(buffer.getvalue(),saved,'cpu')
-                    self.assertIs(type(reloaded),cls)
-                    torch.testing.assert_close(model(x),reloaded(x))
-
     def test_plain_lstm_training_and_reload_for_five_and_24_outputs(self):
         if not DEFAULT_OUTPUT.exists():self.skipTest('Build local O24 dataset first')
         from src.ai.lstm import LSTM,ResidualLSTM

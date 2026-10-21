@@ -72,17 +72,12 @@ def make_model(saved,args,device):
     options=dict(input_size=len(saved['feature_columns']),output_size=len(saved['target_columns']),
         hidden_size=args.lstm_hidden_size,num_layers=args.lstm_num_layers,dropout=args.lstm_drop_out,
         input_dropout=args.lstm_input_dropout,head_dropout=args.lstm_head_dropout)
-    if args.train_method.startswith('attention_lstm'):
-        from src.ai.models import AttentionLSTM1,AttentionLSTM2,AttentionLSTM3
-        architectures=dict(attention_lstm1=AttentionLSTM1,attention_lstm2=AttentionLSTM2,
-                           attention_lstm3=AttentionLSTM3)
-        architecture=architectures[args.train_method]
-    else:
-        architecture=LSTM if args.train_method=='lstm' else ResidualLSTM
+    architectures = {'lstm': LSTM, 'residual_lstm': ResidualLSTM}
+    if args.train_method not in architectures:
+        raise ValueError(f'Unsupported sequence model: {args.train_method}')
+    architecture = architectures[args.train_method]
     if not issubclass(architecture,ResidualLSTM):
         return architecture(**options).to(device)
-    if args.train_method=='attention_lstm3':
-        options['head_dim']=args.attention_head_dim
     fs,ts=saved['feature_scaler'],saved['target_scaler']
     index=saved['feature_columns'].index('water_level_depth')
     return architecture(**options,
@@ -235,7 +230,7 @@ def training_objective(model,x,pred,data_loss,loss,penalty):
     if penalty==0:
         return data_loss
     if not isinstance(model,ResidualLSTM):
-        raise ValueError('Nonzero correction penalty requires residual_lstm or residual attention model')
+        raise ValueError('Nonzero correction penalty requires residual_lstm')
     return data_loss+penalty*loss.correction_loss(pred-model.persistence(x))
 
 
@@ -254,10 +249,7 @@ def parser():
     p.add_argument('--rain-stations',
                    help='Named combination, e.g. hong_thai+vp+bach_ma+phu_bai; omitted keeps dataset stations')
     p.add_argument('--outputs',type=int,choices=[5,24],required=True)
-    p.add_argument('--train-method',choices=['residual_lstm','lstm','attention_lstm1',
-                   'attention_lstm2','attention_lstm3'],default='residual_lstm')
-    p.add_argument('--attention-head-dim',type=int,default=32,
-                   help='Hidden dimension of each horizon head in attention_lstm3')
+    p.add_argument('--train-method',choices=['residual_lstm','lstm'],default='residual_lstm')
     p.add_argument('--output-dir',type=Path,help='New model directory; default creates a unique directory')
     p.add_argument('--device',default='cuda')
     p.add_argument('--seed',type=int,default=42)
@@ -288,12 +280,12 @@ def parser():
 
 def main():
     p=parser();args=p.parse_args()
-    residual=args.train_method in ('residual_lstm','attention_lstm2','attention_lstm3')
+    residual=args.train_method == 'residual_lstm'
     if args.lstm_correction_penalty is None:
         args.lstm_correction_penalty=.1 if residual else 0.
     if not residual and args.lstm_correction_penalty!=0:
         p.error(f'--train-method {args.train_method} requires --lstm-correction-penalty 0')
-    for name in ['batch_size','num_epochs','early_stopping','lstm_seq_len','lstm_hidden_size','lstm_num_layers','attention_head_dim']:
+    for name in ['batch_size','num_epochs','early_stopping','lstm_seq_len','lstm_hidden_size','lstm_num_layers']:
         if getattr(args,name)<1:p.error(f'{name} must be positive')
     for name in ['lstm_weight_decay','lstm_tail_penalty','aux_weight']:
         if not math.isfinite(getattr(args,name)) or getattr(args,name)<0:p.error(f'{name} must be finite and nonnegative')
@@ -308,7 +300,6 @@ def main():
     torch.backends.cudnn.deterministic=True;torch.backends.cudnn.benchmark=False;torch.use_deterministic_algorithms(True)
     frames,datasets,saved=prepare_data(args.dataset_dir,args.outputs,args.lstm_seq_len,args.rain_stations)
     saved['train_method']=args.train_method
-    if args.train_method=='attention_lstm3':saved['attention_head_dim']=args.attention_head_dim
     model=make_model(saved,args,args.device)
     loss=CommonHorizonAuxiliaryLoss(saved['target_columns'],saved['target_scaler'].scale_,
         auxiliary_weight=args.aux_weight if args.outputs==24 else 0.,tail_strength=args.lstm_tail_penalty,

@@ -71,28 +71,6 @@ không checkpoint và không kết nối MLflow. Cũng hỗ trợ `--outputs 5`.
 
 ## Train O24 — cấu hình B, thêm 19 target phụ
 
-Các kiến trúc attention trong `src/ai/models.py` cũng được hỗ trợ:
-
-| `--train-method` | Dự đoán | Correction penalty |
-|---|---|---|
-| `attention_lstm1` | Attention trên toàn sequence, dự đoán trực tiếp | Chỉ 0, mặc định 0 |
-| `attention_lstm2` | Attention + persistence | Hữu hạn > -1, mặc định 0.1 |
-| `attention_lstm3` | Attention + persistence + head riêng mỗi horizon | Hữu hạn > -1, mặc định 0.1 |
-
-Với `attention_lstm3`, `--attention-head-dim 32` đặt kích thước tầng ẩn trong
-mỗi head (mặc định 32). Cả ba dùng được với O5/O24, loss/checkpoint metric
-hiện tại, scaler và báo cáo so sánh B/production. Ví dụ kiểm tra không train:
-
-```bash
-.venv/bin/python -m research.output_horizon_experiment \
-  --outputs 24 --train-method attention_lstm3 --attention-head-dim 32 \
-  --device cpu --check-only
-```
-
-Khi train, giữ command hiện tại và đổi `--train-method`; dùng thư mục output
-mới hoặc bỏ `--output-dir` để tự tạo. Các bản residual khởi tạo đúng persistence.
-XGBoost/LightGBM và adapter pretrained không được thêm vào runner sequence này.
-
 Pipeline hỗ trợ `--train-method residual_lstm` (mặc định) và `--train-method lstm`.
 LSTM thường dự đoán trực tiếp target chuẩn hóa, không cộng persistence.
 Để thử LSTM thường, giữ các tham số khác và thêm:

@@ -514,8 +514,7 @@ def train_neural(trial, args, params, data, saved, folder):
         raise ValueError("O24 requires positive aux_weight")
 
     model = make_model(saved, config, args.device)
-    pre = dict(saved, attention_head_dim=config.attention_head_dim)
-    joblib.dump(pre, folder / "model_best.preprocessing.joblib")
+    joblib.dump(saved, folder / "model_best.preprocessing.joblib")
 
     loss = CommonHorizonAuxiliaryLoss(
         saved["target_columns"],

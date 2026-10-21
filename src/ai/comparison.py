@@ -180,14 +180,6 @@ def load_candidate(checkpoint_bytes, saved, device):
     layers = [k for k in state if re.fullmatch(r"lstm.weight_ih_l\d+", k)]
     options = dict(input_size=len(saved["feature_columns"]), output_size=len(saved["target_columns"]),
                    hidden_size=state["lstm.weight_hh_l0"].shape[1], num_layers=len(layers), dropout=0.)
-    direct_architecture,residual_architecture=LSTM,ResidualLSTM
-    if 'attention_score.weight' in state:
-        from src.ai.models import AttentionLSTM1,AttentionLSTM2,AttentionLSTM3
-        direct_architecture=AttentionLSTM1
-        residual_architecture=AttentionLSTM2
-        if 'horizon_heads.0.0.weight' in state:
-            residual_architecture=AttentionLSTM3
-            options['head_dim']=state['horizon_heads.0.0.weight'].shape[0]
     if "persistence_scale" in state:
         index = saved["feature_columns"].index("water_level_depth")
         fs, ts = saved["feature_scaler"], saved["target_scaler"]
@@ -201,13 +193,13 @@ def load_candidate(checkpoint_bytes, saved, device):
             options.update(weather_feature_indices=weather_indices,
                            weather_mask_indices=mask_indices,
                            weather_mask_values=((1. - fs.mean_[mask_indices]) / fs.scale_[mask_indices]).tolist())
-        model = residual_architecture(**options, level_feature_index=index,
+        model = ResidualLSTM(**options, level_feature_index=index,
                              persistence_scale=(fs.scale_[index] / ts.scale_).tolist(),
                              persistence_offset=((fs.mean_[index] - ts.mean_) / ts.scale_).tolist())
         for key in ("persistence_scale", "persistence_offset"):
             torch.testing.assert_close(state[key], getattr(model, key))
     else:
-        model = direct_architecture(**options)
+        model = LSTM(**options)
     model.load_state_dict(state, strict=True)
     return model.to(device).eval()
 
