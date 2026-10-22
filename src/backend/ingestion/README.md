@@ -24,10 +24,59 @@ lấy từng run ECMWF từ Open-Meteo Single Runs, bỏ qua run đã có trừ 
 `available_at` chưa xác minh được giữ NULL; giả định trễ phát hành mặc định 6 giờ
 không phải bằng chứng về thời điểm dự báo thực sự có sẵn trong lịch sử.
 
-Collector chưa chạy theo lịch trong worker quan trắc và không tự gọi khi dự báo.
-Việc chuyển module không bổ sung đồng bộ dự báo thời tiết mới nhất.
+Collector lịch sử vẫn là lệnh riêng, không chạy trong luồng dự báo.
 Notebook, phân tích độ phủ và công cụ tạo dataset vẫn nằm trong
 `research/weather_forecast/`.
+
+### Đồng bộ dự báo mới trong ứng dụng
+
+`weather_live.py` được worker `src.backend.ingestion` gọi mỗi chu kỳ đồng bộ,
+mặc định bật. Với Docker, lệnh chạy cả app và worker là:
+
+```bash
+docker compose --profile ingestion up --build -d
+```
+
+Module đọc các location của model production trong `model_configs.json`, gộp
+location trùng, thu thập các run ECMWF sáu giờ gần nhất trong giới hạn tuổi của
+model. Không cần dataset CSV. Giữ `ecmwf_ifs`, lưới và các cửa sổ feature hiện có;
+không thay bằng dự báo đã ghép từ nhiều run. API chỉ đọc PostgreSQL, không gọi
+Open-Meteo trong request dự báo.
+
+Mỗi run đủ 48 giờ không thiếu được bỏ qua ở chu kỳ sau; run chưa có hoặc còn
+thiếu được thử lại. Lỗi kết nối, HTTP 429/5xx retry tối đa ba lần, chờ có thể hủy;
+run chưa công bố không ngăn thu thập run cũ hơn. Advisory lock riêng ngăn hai
+worker cùng thu thập thời tiết. Lỗi thời tiết không rollback quan trắc đã commit,
+và lỗi nguồn quan trắc không ngăn thử đồng bộ thời tiết.
+
+Run mới ghi `available_at = retrieved_at`, `availability_basis=observed_retrieval`:
+đây là lúc hệ thống thực sự nhận được dữ liệu, không suy ra giờ công bố từ giờ
+khởi tạo. Không backdate dữ liệu để lấp đầu vào lịch sử. Các vintage archive đã
+có vẫn giữ metadata khả dụng chưa xác minh; run/payload trùng không bị ghi đè.
+Vì vậy, khi mới bật collector, lịch sử forecast 96 giờ có thể còn thiếu và dùng
+mask của mô hình cho tới khi thu thập đủ. Không đảm bảo đầy đủ dữ liệu lịch sử
+chỉ bằng việc bật worker hôm nay.
+
+Xem mục `weather` trong log/report worker: `fetched`, `skipped`, `incomplete`,
+`failures`, `latest_initialized_at`, `latest_age_hours`, `stale`. Tuổi này tính
+từ giờ khởi tạo của run, không phải xác nhận mọi feature ở hiện tại đều đủ.
+`WEATHER_SYNC_ENABLED=false` tắt riêng thu thập thời tiết. `--dry-run` chỉ liệt kê
+location cho phần thời tiết, không gọi Open-Meteo hoặc ghi bảng thời tiết.
+`WEATHER_SYNC_ENDPOINT` cho phép trỏ HTTP client vào simulator khi kiểm thử;
+mặc định là Open-Meteo Single Runs API.
+
+Kiểm thử HTTP bằng Postman CLI >=1.70 (terminal riêng cho simulator):
+
+```bash
+postman simulation run src/backend/ingestion/tests/fixtures/weather-simulation.sim.yaml \
+  --port 4900 --no-history --output ndjson
+WEATHER_SIMULATION_URL=http://127.0.0.1:4900 .venv/bin/python -m unittest \
+  src.backend.ingestion.tests.test_weather_live \
+  src.backend.ingestion.tests.test_weather_live_database -v
+```
+
+Fixture dùng contract [Open-Meteo Single Runs](https://open-meteo.com/en/docs/single-runs-api).
+Test database dùng PostgreSQL local đã migrate, rollback toàn bộ dữ liệu thử.
 
 ## Hồ/đập SOHOA và báo cáo vận hành
 

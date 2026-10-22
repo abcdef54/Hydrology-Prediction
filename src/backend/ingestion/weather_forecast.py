@@ -98,14 +98,15 @@ def parse_response(payload, cycle):
     return result
 
 
-def save_response(connection, location, cycle, params, payload, checksum, retrieved):
+def save_response(connection, location, cycle, params, payload, checksum, retrieved,
+                  *, available_at=None, availability_basis='unknown_archive', archive_kind=None):
     points = parse_response(payload, cycle)
     # Archive metadata explicitly does not claim historical operational availability.
     transition = datetime(2026, 5, 12, 6, tzinfo=UTC)
     run_id = connection.execute(insert(runs).values(
         id=uuid4(), location_id=location['id'], model=MODEL, initialized_at=cycle,
-        retrieved_at=retrieved, available_at=None, availability_basis='unknown_archive',
-        archive_kind='hindcast_49r1' if cycle < transition else 'archive_50r1_unverified',
+        retrieved_at=retrieved, available_at=available_at, availability_basis=availability_basis,
+        archive_kind=archive_kind or ('hindcast_49r1' if cycle < transition else 'archive_50r1_unverified'),
         grid_latitude=payload['latitude'], grid_longitude=payload['longitude'],
         checksum=checksum, payload=payload, request=params,
     ).on_conflict_do_nothing(constraint='uq_weather_run_vintage').returning(runs.c.id)).scalar()

@@ -25,6 +25,7 @@ from sqlalchemy.dialects.postgresql import insert
 from src.backend.db.models import Observation, Station, WindObservation
 from src.backend.db.session import build_engine
 from src.backend.cache.latest import LatestObservationCache
+from src.backend.ingestion.weather_live import sync_weather_forecasts
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -627,6 +628,17 @@ def main() -> int:
                         else "Database sync failed; no credentials logged."
                     ),
                 }
+            if stop.is_set():
+                break
+            try:
+                report["weather"] = sync_weather_forecasts(
+                    engine, stop, dry_run=arguments.dry_run
+                )
+                if report["weather"]["status"] in {"partial", "failed"}:
+                    last_failed = True
+            except (ValueError, OSError, sa.exc.SQLAlchemyError) as error:
+                last_failed = True
+                report["weather"] = {"status": "failed", "error_type": type(error).__name__}
             report["interval_minutes"] = settings.interval_minutes
             report["overlap_hours"] = settings.overlap_hours
             report["elapsed_seconds"] = round(time.monotonic() - began, 2)

@@ -68,7 +68,8 @@ Model và scaler của ba model production lấy từ `./model`, mount chỉ đ�
 Image mặc định cài PyTorch CPU và dùng `PREDICTION_DEVICE=cpu`, kể cả khi `.env`
 local đang đặt CUDA; cấu hình này chưa cấp GPU cho container.
 
-Service `ingestion` thuộc profile `ingestion`, dùng thông tin đăng nhập nguồn
+Service `ingestion` thuộc profile `ingestion`, đồng bộ quan trắc và dự báo mưa
+ECMWF mới cho các model production, dùng thông tin đăng nhập nguồn
 trong `.env` và lưu trạng thái trong volume `ingestion-reports`. API tắt
 `HYDROLOGY_SYNC_AUTOSTART` để tránh worker trùng. Service `migrate` thuộc profile
 `tools`, dành cho migration chủ động; khởi động thông thường không chạy migration.

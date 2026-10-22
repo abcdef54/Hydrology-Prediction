@@ -64,3 +64,37 @@ class DatabaseTests(unittest.TestCase):
                 self.assertEqual(report['train']['complete_24h'],0)
                 self.assertIsNone(c.scalar(sa.select(runs.c.available_at).where(runs.c.location_id==location['id']).limit(1)))
             finally: tx.rollback()
+
+    def test_operational_availability_is_preserved_without_backdating(self):
+        with self.engine.connect() as connection:
+            transaction = connection.begin()
+            try:
+                location = dict(id='test-weather-live-rollback', station_id='750007',
+                                latitude=16.22, longitude=107.17)
+                connection.execute(sa.insert(locations).values(**location))
+                retrieved = T + timedelta(hours=7, minutes=15)
+                options = dict(available_at=retrieved, availability_basis='observed_retrieval',
+                               archive_kind='operational_single_run')
+                self.assertTrue(save_response(connection, location, T, {}, payload(),
+                                              'c' * 64, retrieved, **options))
+                self.assertFalse(save_response(connection, location, T, {}, payload(),
+                                               'c' * 64, retrieved + timedelta(hours=1), **options))
+                row = connection.execute(sa.select(runs).where(
+                    runs.c.location_id == location['id'])).mappings().one()
+                self.assertEqual(row['available_at'], retrieved)
+                self.assertEqual(row['availability_basis'], 'observed_retrieval')
+                self.assertEqual(row['archive_kind'], 'operational_single_run')
+                self.assertGreater(row['available_at'], T + timedelta(hours=6))
+                from src.backend.ingestion.weather_live import complete_run
+
+                self.assertTrue(complete_run(connection, location['id'], T))
+                revised = payload()
+                revised['hourly']['precipitation'][8] = None
+                self.assertTrue(save_response(connection, location, T, {}, revised,
+                                              'd' * 64, retrieved + timedelta(hours=1),
+                                              available_at=retrieved + timedelta(hours=1),
+                                              availability_basis='observed_retrieval',
+                                              archive_kind='operational_single_run'))
+                self.assertFalse(complete_run(connection, location['id'], T))
+            finally:
+                transaction.rollback()

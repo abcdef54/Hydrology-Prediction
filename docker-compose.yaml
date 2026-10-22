@@ -13,6 +13,7 @@ x-backend: &backend
     REDIS_URL: redis://redis:6379/0
     PREDICTION_DEVICE: cpu
     HYDROLOGY_SYNC_AUTOSTART: "false"
+    WEATHER_SYNC_ENABLED: "${WEATHER_SYNC_ENABLED:-true}"
     MODEL_ARTIFACT_ROOT: /app
     MODEL_CONFIG_PATH: /app/src/backend/prediction/model_configs.json
   extra_hosts:
