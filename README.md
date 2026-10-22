@@ -48,6 +48,52 @@ Click marker hoặc item sidebar để mở box thông tin, số đo và các ng
 Bản đồ nền cần Internet; marker trạm lấy từ backend đang chạy ở cổng 8000.
 Xem [hướng dẫn frontend](src/frontend/README.md) cho yêu cầu Node.js và cách build.
 
+## Cấu hình Docker
+
+[`Dockerfile`](Dockerfile) có hai target `backend` và `frontend`;
+[`docker-compose.yaml`](docker-compose.yaml) cấu hình API một worker, giao diện
+static qua Nginx và Redis nội bộ. Cổng giao diện mặc định là
+`http://localhost:5173`, chỉnh bằng `HTTP_BIND_ADDRESS` và `HTTP_PORT`.
+Nginx chuyển `/api/` tới backend, giữ timeout 190 giây cho dự báo theo khoảng.
+Backend không mở cổng trực tiếp ra host.
+
+Compose dùng **PostgreSQL hiện có**, đã migrate và có dữ liệu. `.env` cung cấp
+`DATABASE_URL`; có thể đặt `DOCKER_DATABASE_URL` để ghi đè riêng cho container.
+Địa chỉ database phải truy cập được từ container, không dùng `localhost` hoặc
+`127.0.0.1` để trỏ tới host. Với PostgreSQL trong WSL, dùng IP của WSL trong
+`DOCKER_DATABASE_URL`; `host.docker.internal` trên Docker Desktop có thể trỏ
+tới Windows. PostgreSQL phải cho phép kết nối từ mạng Docker. IP WSL có thể
+đổi sau khi khởi động lại, khi đó cần cập nhật `.env` và tạo lại container.
+Model và scaler của ba model production lấy từ `./model`, mount chỉ đọc.
+Image mặc định cài PyTorch CPU và dùng `PREDICTION_DEVICE=cpu`, kể cả khi `.env`
+local đang đặt CUDA; cấu hình này chưa cấp GPU cho container.
+
+Service `ingestion` thuộc profile `ingestion`, dùng thông tin đăng nhập nguồn
+trong `.env` và lưu trạng thái trong volume `ingestion-reports`. API tắt
+`HYDROLOGY_SYNC_AUTOSTART` để tránh worker trùng. Service `migrate` thuộc profile
+`tools`, dành cho migration chủ động; khởi động thông thường không chạy migration.
+Các service này không tự nhập lịch sử hoặc khôi phục dữ liệu PostgreSQL.
+
+Khi đổi địa chỉ/cổng giao diện, đặt `CORS_ORIGINS` trong `.env` theo đúng origin
+trình duyệt, không có dấu `/` ở cuối. Secrets chỉ được truyền lúc chạy backend
+và worker; `.dockerignore` loại `.env`, model, dataset và artifact khỏi build context.
+
+Chạy cả ứng dụng và worker quan trắc:
+
+```bash
+docker compose --profile ingestion up --build -d
+```
+
+Nếu image đã có, bỏ `--build`. Không bật profile `ingestion` thì chỉ chạy
+frontend/backend/Redis, không tự cập nhật quan trắc. Xem log worker bằng
+`docker compose logs -f --tail 50 ingestion`.
+
+Tắt toàn bộ ứng dụng và worker, giữ dữ liệu volume:
+
+```bash
+docker compose --profile ingestion down
+```
+
 ## Huấn luyện và phân tích
 
 Xem các tùy chọn huấn luyện:

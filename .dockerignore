@@ -1,0 +1,27 @@
+# Build context contains application sources, never local data or credentials.
+**/.env
+**/.env.*
+**/.git
+.agents
+.codex
+.aws
+.venv
+**/node_modules
+**/dist
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.ipynb_checkpoints
+**/*.ipynb
+**/tests
+archive
+data
+figures
+mlartifacts
+model
+pretrained
+reports
+scripts/local
+train_data
+*.db
+*.db-*

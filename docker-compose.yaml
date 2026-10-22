@@ -1,0 +1,94 @@
+# Uses the existing PostgreSQL database. DATABASE_URL must be reachable from Docker.
+# Use a reachable host address, not localhost/127.0.0.1. WSL PostgreSQL may
+# require the WSL IP; host.docker.internal can refer to the Windows host instead.
+x-backend: &backend
+  image: hydrology-backend:local
+  build:
+    context: .
+    target: backend
+  env_file:
+    - .env
+  environment: &backend-environment
+    DATABASE_URL: ${DOCKER_DATABASE_URL:-${DATABASE_URL}}
+    REDIS_URL: redis://redis:6379/0
+    PREDICTION_DEVICE: cpu
+    HYDROLOGY_SYNC_AUTOSTART: "false"
+    MODEL_ARTIFACT_ROOT: /app
+    MODEL_CONFIG_PATH: /app/src/backend/prediction/model_configs.json
+  extra_hosts:
+    - host.docker.internal:host-gateway
+  init: true
+  stop_grace_period: 45s
+
+services:
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  backend:
+    <<: *backend
+    restart: unless-stopped
+    # Only the frontend proxy publishes the API; forwarded headers are trusted
+    # within this Compose network. Do not publish this port directly.
+    expose:
+      - "8000"
+    volumes:
+      - type: bind
+        source: ./model
+        target: /app/model
+        read_only: true
+        bind:
+          create_host_path: false
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # Liveness only; does not query PostgreSQL or load model checkpoints.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/openapi.json', timeout=5).close()"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  frontend:
+    image: hydrology-frontend:local
+    build:
+      context: .
+      target: frontend
+    restart: unless-stopped
+    ports:
+      - "${HTTP_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+  # Optional source synchronization; never duplicates an API-owned worker.
+  ingestion:
+    <<: *backend
+    profiles: ["ingestion"]
+    command: ["python", "-m", "src.backend.ingestion"]
+    restart: unless-stopped
+    environment:
+      <<: *backend-environment
+      HYDROLOGY_SYNC_REPORT_PATH: /app/reports/hydrology_sync_status.json
+    volumes:
+      - ingestion-reports:/app/reports
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # Explicit maintenance task; normal startup never migrates the existing DB.
+  migrate:
+    <<: *backend
+    profiles: ["tools"]
+    command: ["python", "-m", "alembic", "-c", "src/backend/db/alembic.ini", "upgrade", "head"]
+    restart: "no"
+
+volumes:
+  ingestion-reports:
