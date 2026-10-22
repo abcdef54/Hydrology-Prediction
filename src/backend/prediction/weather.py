@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import sqlalchemy as sa
 
-from research.weather_forecast.schema import hourly, runs
+from src.backend.db.weather import hourly, runs
 
 
 WINDOWS = ((0, 3), (3, 6), (6, 12), (12, 24))

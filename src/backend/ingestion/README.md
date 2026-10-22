@@ -1,5 +1,34 @@
 # Pipeline cập nhật dữ liệu quan trắc
 
+## Thu thập dự báo lượng mưa ECMWF
+
+Collector nằm trong `src/backend/ingestion/weather_forecast.py`; schema các bảng
+nằm trong `src/backend/db/weather.py`, được tạo bởi migration `0009`.
+Backend đọc trực tiếp các bảng này để chuẩn bị đầu vào cho Model B và model ba trạm.
+Phần chạy ứng dụng không còn import từ `research/weather_forecast/`.
+
+Chạy từ thư mục gốc, dùng `DATABASE_URL` từ environment hoặc `.env`:
+
+```bash
+.venv/bin/python -m src.backend.ingestion.weather_forecast \
+  --dataset-dir train_data/da_vien_1h_2026-10-15_forecast_mask_o24 \
+  --station-ids 750062 750007 \
+  --report reports/weather_collection/report.json
+```
+
+Đây là collector **lịch sử theo các timestamp Train/Val/Test của dataset**:
+lấy từng run ECMWF từ Open-Meteo Single Runs, bỏ qua run đã có trừ khi dùng
+`--refresh`, giữ riêng các vintage thay đổi và phân biệt mưa 0 với thiếu dữ liệu.
+`--plan-only` chỉ đọc dataset/catalog, không gọi nguồn hoặc ghi DB;
+`--audit-only` kiểm tra độ phủ đã lưu. Các chế độ vẫn ghi report theo `--report`.
+`available_at` chưa xác minh được giữ NULL; giả định trễ phát hành mặc định 6 giờ
+không phải bằng chứng về thời điểm dự báo thực sự có sẵn trong lịch sử.
+
+Collector chưa chạy theo lịch trong worker quan trắc và không tự gọi khi dự báo.
+Việc chuyển module không bổ sung đồng bộ dự báo thời tiết mới nhất.
+Notebook, phân tích độ phủ và công cụ tạo dataset vẫn nằm trong
+`research/weather_forecast/`.
+
 ## Hồ/đập SOHOA và báo cáo vận hành
 
 Cần migration `0008`. Chạy từ thư mục gốc:

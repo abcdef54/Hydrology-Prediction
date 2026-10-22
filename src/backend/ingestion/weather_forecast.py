@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 from src.backend.db.models import Station
 from src.backend.db.session import build_engine
-from research.weather_forecast.schema import locations, runs, hourly, fetches
+from src.backend.db.weather import locations, runs, hourly, fetches
 
 UTC = timezone.utc
 ENDPOINT = 'https://single-runs-api.open-meteo.com/v1/forecast'

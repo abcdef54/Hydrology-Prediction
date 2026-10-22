@@ -1,1 +1,1 @@
-"""Historical forecast rainfall collection pipeline."""
+"""Offline weather-rainfall analysis and dataset preparation utilities."""

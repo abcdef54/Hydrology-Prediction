@@ -5,10 +5,13 @@
 - `models.py`: ORM model `Station`, `Observation`, `WindObservation`, `Forecast`, `ForecastPoint`,
   gồm khóa và ràng buộc dữ liệu.
 - `session.py`: tạo engine và session SQLAlchemy; lấy kết nối từ `DATABASE_URL`.
+- `weather.py`: metadata bốn bảng dự báo mưa, lưu location, vintage, giá trị giờ
+  và lịch sử thu thập; được đăng ký cùng `Base.metadata` trong `models.py`.
 - `Facility`, `FacilityOperation`: metadata SOHOA và báo cáo vận hành, khóa ID
   nguồn để giữ báo cáo trùng thời điểm. Migration `0008` tạo bảng/trigger, FK về
   Station chỉ cho các điểm sông đã ghép; không đổi observations hoặc forecast.
 - `alembic/versions/`: migration Python tạo bảng và thêm metadata 5 trạm.
+  Revision `0009` chứa trực tiếp DDL dự báo mưa, không phụ thuộc thư mục research.
 - `tests/test_schema.py`: kiểm tra trực tiếp trên PostgreSQL; rollback dữ liệu thử.
 
 Alembic quản lý phiên bản schema; SQLAlchemy quản lý model và truy vấn bằng Python.

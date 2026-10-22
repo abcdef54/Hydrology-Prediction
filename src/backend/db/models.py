@@ -398,4 +398,4 @@ class ForecastPoint(Base):
     water_level_mm: Mapped[float] = mapped_column(sa.Double)
 
 # Register separate forecast-weather tables for Alembic metadata discovery.
-from research.weather_forecast import schema as _weather  # noqa: E402,F401
+from src.backend.db import weather as _weather  # noqa: E402,F401

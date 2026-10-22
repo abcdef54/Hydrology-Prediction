@@ -9,7 +9,7 @@ giá mô hình nằm trong `src/ai/`.
 | [TAIL_LOSS.md](TAIL_LOSS.md) | Loss phạt quanh ngưỡng 200 mm, chọn checkpoint theo lỗi lớn và lệnh train |
 | [OUTPUT_HORIZON_ABLATION.md](OUTPUT_HORIZON_ABLATION.md) | Dataset 24 target giờ, loss chính/phụ, command tự train O5/O24 và so B/production |
 | [TREE_HORIZON_EXPERIMENT.md](TREE_HORIZON_EXPERIMENT.md) | XGBoost/LightGBM trên dataset mới, lịch sử96h, native checkpoint và so B/production theo lỗi >200mm |
-| [weather_forecast/](weather_forecast/README.md) | Thu thập ECMWF Single Runs, lưu PostgreSQL và kiểm tra độ phủ; chưa tạo dataset |
+| [weather_forecast/](weather_forecast/) | Phân tích dự báo mưa và tạo dataset; collector nằm ở `src/backend/ingestion/weather_forecast.py` |
 | `build_training_dataset_1h_top4.py` | Tạo dataset theo giờ với bốn trạm mưa đã chọn, chia Train/Val/Test và kiểm tra dữ liệu |
 | `seasonal_analysis.ipynb` | Phân tích mùa mưa, tương quan mưa–mực nước và các đợt mưa |
 | `mlflow_metrics.ipynb` | Tổng hợp, đối chiếu metric từ MLflow và đánh giá theo mùa |

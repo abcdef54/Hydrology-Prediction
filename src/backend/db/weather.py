@@ -1,4 +1,4 @@
-"""Independent, immutable forecast vintages; never mixed with observations."""
+"""Weather forecast tables registered with the application's database metadata."""
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 from src.backend.db.models import Base

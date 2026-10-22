@@ -5,8 +5,8 @@ import pandas as pd
 import sqlalchemy as sa
 from dotenv import load_dotenv
 from src.backend.db.session import build_engine
-from research.weather_forecast.schema import locations, runs, hourly
-from research.weather_forecast.collect import cycles, parse_response, save_response, coverage
+from src.backend.db.weather import locations, runs, hourly
+from src.backend.ingestion.weather_forecast import cycles, parse_response, save_response, coverage
 
 T = datetime(2025,11,14,12,tzinfo=timezone.utc)
 
