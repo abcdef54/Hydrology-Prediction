@@ -15,10 +15,10 @@ import pandas as pd
 from dotenv import load_dotenv
 from sqlalchemy import text
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT))
 from src.backend.db.session import build_engine
-from research.build_training_dataset_1h_top4 import build_table, split_table, audit, RAIN_STATIONS, WIND_STATIONS
+from research.scripts.build_training_dataset_1h_top4 import build_table, split_table, audit, RAIN_STATIONS, WIND_STATIONS
 
 
 def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()

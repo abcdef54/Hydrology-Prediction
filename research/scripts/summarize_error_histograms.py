@@ -90,7 +90,7 @@ Histogram dùng bin **25 mm**, cùng thang trục. Trục x là sai số tuyệt
 
 [Thống kê horizon](statistics.csv) · [Số mẫu từng bin](histogram_counts.csv) · [Thống kê ngày](daily_statistics.csv) · [Dự báo và sai số](forecast_points.csv) · [Metadata](manifest.json)
 
-Chạy lại: dùng `research/plot_forecast_error_histograms.py` với `--start-date`, `--end-date`, `--output-dir`, sau đó `research/summarize_error_histograms.py <output-dir>`.
+Chạy lại: dùng `research/scripts/plot_forecast_error_histograms.py` với `--start-date`, `--end-date`, `--output-dir`, sau đó `research/scripts/summarize_error_histograms.py <output-dir>`.
 '''
     (out/'phan_tich_sai_so.md').write_text(md)
     (out/'report.md').write_text(md)

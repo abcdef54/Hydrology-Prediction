@@ -5,7 +5,7 @@
 Collector nằm trong `src/backend/ingestion/weather_forecast.py`; schema các bảng
 nằm trong `src/backend/db/weather.py`, được tạo bởi migration `0009`.
 Backend đọc trực tiếp các bảng này để chuẩn bị đầu vào cho Model B và model ba trạm.
-Phần chạy ứng dụng không còn import từ `research/weather_forecast/`.
+Phần chạy ứng dụng không import code từ `research/`.
 
 Chạy từ thư mục gốc, dùng `DATABASE_URL` từ environment hoặc `.env`:
 
@@ -26,7 +26,7 @@ không phải bằng chứng về thời điểm dự báo thực sự có sẵn
 
 Collector lịch sử vẫn là lệnh riêng, không chạy trong luồng dự báo.
 Notebook, phân tích độ phủ và công cụ tạo dataset vẫn nằm trong
-`research/weather_forecast/`.
+`research/scripts/` và `research/notebooks/weather_forecast.ipynb`.
 
 ### Đồng bộ dự báo mới trong ứng dụng
 

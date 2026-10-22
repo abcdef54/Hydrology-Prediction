@@ -4,31 +4,45 @@ Thư mục này lưu công cụ tạo dữ liệu và các notebook dùng trong 
 triển mô hình. Backend của ứng dụng nằm trong `src/backend/`; mã train và đánh
 giá mô hình nằm trong `src/ai/`.
 
+- `scripts/`: script tạo dataset, train thí nghiệm và phân tích; test trong `scripts/tests/`.
+- `notebooks/`: notebook và kết quả phân tích tương tác.
+- Code thu thập dự báo mưa phục vụ app nằm trong `src/backend/ingestion/`, schema
+  trong `src/backend/db/`. Thư mục `research/weather_forecast/` cũ đã được gộp vào
+  hai thư mục trên; code phân tích còn dùng được giữ lại.
+
 | File | Mục đích |
 |---|---|
-| [TAIL_LOSS.md](TAIL_LOSS.md) | Loss phạt quanh ngưỡng 200 mm, chọn checkpoint theo lỗi lớn và lệnh train |
-| [OUTPUT_HORIZON_ABLATION.md](OUTPUT_HORIZON_ABLATION.md) | Dataset 24 target giờ, loss chính/phụ, command tự train O5/O24 và so B/production |
-| [TREE_HORIZON_EXPERIMENT.md](TREE_HORIZON_EXPERIMENT.md) | XGBoost/LightGBM trên dataset mới, lịch sử96h, native checkpoint và so B/production theo lỗi >200mm |
-| [weather_forecast/](weather_forecast/) | Phân tích dự báo mưa và tạo dataset; collector nằm ở `src/backend/ingestion/weather_forecast.py` |
-| `build_training_dataset_1h_top4.py` | Tạo dataset theo giờ với bốn trạm mưa đã chọn, chia Train/Val/Test và kiểm tra dữ liệu |
-| `seasonal_analysis.ipynb` | Phân tích mùa mưa, tương quan mưa–mực nước và các đợt mưa |
-| `mlflow_metrics.ipynb` | Tổng hợp, đối chiếu metric từ MLflow và đánh giá theo mùa |
-| `refresh_da_vien_dataset.py` | Xuất snapshot PostgreSQL chỉ đọc, tạo dataset có phiên bản và audit |
-| `resplit_hourly_dataset.py` | Chia lại snapshot theo mốc thời gian, purge horizon và giữ dataset nguồn |
-| `rank_rain_stations.py` | So correlation trên train và toàn snapshot, đề xuất top 1/top 2 từ train |
-| [RAIN_STATION_ABLATION.md](RAIN_STATION_ABLATION.md) | Lệnh train chọn 1/2/4 trạm mưa và cách tách checkpoint |
-| [MODEL_COMPARISON.md](MODEL_COMPARISON.md) | Pipeline tự so model mới với model app sau mỗi lần train |
-| `plot_forecast_error_histograms.py`, `summarize_error_histograms.py` | Histogram theo horizon và báo cáo thống kê theo khoảng ngày |
+| [src/ai/expanded_train_experiment.py](../src/ai/expanded_train_experiment.py) | Code chính train trên dữ liệu gộp, lấy mẫu uniform/event-balanced và so với B/production |
+| [scripts/output_horizon_experiment.py](scripts/output_horizon_experiment.py) | Thí nghiệm LSTM/ResidualLSTM với 5 hoặc 24 output |
+| [scripts/tree_horizon_experiment.py](scripts/tree_horizon_experiment.py) | Thí nghiệm XGBoost/LightGBM |
+| [scripts/build_weather_datasets.py](scripts/build_weather_datasets.py) | Tạo dataset có feature dự báo mưa |
+| [scripts/weather_dataset_readiness.py](scripts/weather_dataset_readiness.py), [scripts/fill_missing_weather.py](scripts/fill_missing_weather.py) | Phân tích độ phủ và fallback forecast |
+| [scripts/build_training_dataset_1h_top4.py](scripts/build_training_dataset_1h_top4.py) | Tạo dataset theo giờ và chia Train/Val/Test |
+| [notebooks/seasonal_analysis.ipynb](notebooks/seasonal_analysis.ipynb) | Phân tích mùa mưa, tương quan mưa–mực nước |
+| [notebooks/mlflow_metrics.ipynb](notebooks/mlflow_metrics.ipynb) | Tổng hợp metric từ MLflow |
+| [notebooks/weather_forecast.ipynb](notebooks/weather_forecast.ipynb) | Phân tích forecast ECMWF đã thu thập |
+| [scripts/refresh_da_vien_dataset.py](scripts/refresh_da_vien_dataset.py), [scripts/resplit_hourly_dataset.py](scripts/resplit_hourly_dataset.py) | Xuất snapshot PostgreSQL và chia lại dữ liệu |
+| [scripts/plot_forecast_error_histograms.py](scripts/plot_forecast_error_histograms.py), [scripts/summarize_error_histograms.py](scripts/summarize_error_histograms.py) | Histogram và thống kê sai số |
 
 ## Sử dụng
 
 Chạy lệnh từ thư mục gốc dự án:
 
 ```bash
-.venv/bin/python research/build_training_dataset_1h_top4.py --help
+.venv/bin/python -m research.scripts.build_training_dataset_1h_top4 --help
 ```
 
-Mở các notebook tại đây bằng Jupyter hoặc VS Code. Các đường dẫn dữ liệu và
+Script nghiên cứu dùng `python -m research.scripts.<script>` thay cho
+`python -m research.<script>`. Riêng pipeline dataset expand đã chuyển vào
+`src.ai`: builder `src.ai.build_expanded_train_dataset`, runner
+`src.ai.expanded_train_experiment`, report/inference comparison nằm cùng `src/ai/`.
+Ví dụ:
+
+```bash
+.venv/bin/python -m src.ai.expanded_train_experiment --help
+```
+
+Mở notebook trong `notebooks/` bằng Jupyter hoặc VS Code. Các đường dẫn dữ liệu và
 artifacts vẫn tính từ thư mục gốc dự án. Cần có dữ liệu/model/MLflow tương ứng
 trên máy để chạy; việc chuyển thư mục không tạo lại dataset hoặc chạy model.
 Kết quả xuất vào `reports/`, được bỏ qua trong Git.
@@ -39,11 +53,9 @@ Dataset hiện dùng: `train_data/da_vien_1h_2026-10-15` (đổi tên từ
 `1h_top4_pg_2026-10-15_val_aug01_sep15`; tên cũ là symlink tương thích local).
 CSV/split/manifest gốc giữ nguyên, lịch sử đổi tên nằm trong `dataset_identity.json`.
 
-```bash
-.venv/bin/python research/rank_rain_stations.py \
-  --dataset-dir train_data/da_vien_1h_2026-10-15 \
-  --output-dir reports/rain_station_correlation/<run_id>
-```
+Script ranking cũ đã được dọn; phân tích tương quan hiện nằm trong
+[notebooks/rain_station_direction_correlation.ipynb](notebooks/rain_station_direction_correlation.ipynb)
+và [notebooks/rain_forecast_training_aligned_correlation.ipynb](notebooks/rain_forecast_training_aligned_correlation.ipynb).
 
 Bảng chính dùng Pearson giữa tổng mưa 6 giờ và thay đổi nước 12 giờ tiếp theo,
 cùng các timestamp hợp lệ ở cả bốn trạm. Có thêm bảng đủ 25 cặp cửa sổ/horizon
@@ -88,7 +100,7 @@ nguyên từ dataset B O24. Model B và registry production không đổi.
 Tạo lại dataset vào một thư mục mới (builder từ chối ghi đè):
 
 ```bash
-.venv/bin/python -m research.build_rain_station_dataset
+.venv/bin/python -m research.scripts.build_rain_station_dataset
 ```
 
 Builder đọc parent `da_vien_1h_2026-10-15_forecast_mask_o24` và snapshot local
@@ -100,7 +112,7 @@ Không truy cập DB hoặc mạng. Dataset mới đang được ignore theo quy
 Chạy một tổ hợp với defaults ResidualLSTM/loss/seed theo cấu hình B, 5 outputs:
 
 ```bash
-.venv/bin/python -m research.output_horizon_experiment \
+.venv/bin/python -m research.scripts.output_horizon_experiment \
   --dataset-dir train_data/da_vien_1h_2026-10-15_rain_pool_o24 \
   --rain-stations hong_thai+nham+bach_ma+phu_bai \
   --outputs 5 --device cuda \
@@ -158,11 +170,11 @@ không phải trung bình của 12h/24h tương lai. Split và purge giữ từ 
 Tạo dataset (đã tạo local; chỉ chạy lại vào thư mục mới):
 
 ```bash
-.venv/bin/python -m research.build_temporal_experiment_dataset \
+.venv/bin/python -m research.scripts.build_temporal_experiment_dataset \
   --step-hours 12 --target-hours 12 24 \
   --output-dir train_data/da_vien_12h_2026-10-15_rain_pool_h12_h24
 
-.venv/bin/python -m research.build_temporal_experiment_dataset \
+.venv/bin/python -m research.scripts.build_temporal_experiment_dataset \
   --step-hours 24 --target-hours 24 \
   --output-dir train_data/da_vien_24h_2026-10-15_rain_pool_h24
 ```
@@ -434,7 +446,7 @@ patience 25; checkpoint chọn theo (N200 validation, RMSE), có persistence epo
 
 ### Dataset và ranh giới
 
-`research.build_expanded_train_dataset` tạo dataset offline từ hourly pool, không
+`src.ai.build_expanded_train_dataset` tạo dataset offline từ hourly pool, không
 nối thẳng CSV. Khôi phục 24 giờ purge nội bộ giữa train/val cũ vì nay cùng thuộc
 train; giữ nguyên 24 giờ purge trước validation mới. Kiểm tra nhãn bằng lookup
 quan trắc đúng t+h, không nội suy, không đổi predictor hoặc forecast vintage.
@@ -473,18 +485,18 @@ tránh thiếu các feature trạm 750003/750011 khi so với rain pool.
 Tạo dataset một lần; output đã tồn tại sẽ bị từ chối để tránh ghi đè:
 
 ```bash
-.venv/bin/python -m research.build_expanded_train_dataset
+.venv/bin/python -m src.ai.build_expanded_train_dataset
 
-.venv/bin/python -m research.expanded_train_experiment \
+.venv/bin/python -m src.ai.expanded_train_experiment \
   --variant uniform --check-only
-.venv/bin/python -m research.expanded_train_experiment \
+.venv/bin/python -m src.ai.expanded_train_experiment \
   --variant event-balanced --check-only
 ```
 
 Chạy trường hợp 1 trước:
 
 ```bash
-.venv/bin/python -m research.expanded_train_experiment \
+.venv/bin/python -m src.ai.expanded_train_experiment \
   --variant uniform \
   --device cuda --seed 42 --num-epochs 50 --early-stopping 25 \
   --output-dir model/experiments/expanded_train_20261021 \
@@ -494,7 +506,7 @@ Chạy trường hợp 1 trước:
 Trường hợp 2, giữ nguyên các tham số còn lại:
 
 ```bash
-.venv/bin/python -m research.expanded_train_experiment \
+.venv/bin/python -m src.ai.expanded_train_experiment \
   --variant event-balanced \
   --device cuda --seed 42 --num-epochs 50 --early-stopping 25 \
   --output-dir model/experiments/expanded_train_20261021 \
@@ -576,7 +588,7 @@ Nó gần B nhưng chưa tốt hơn theo hai chỉ số tổng hợp; cần xem 
 Tạo báo cáo từ checkpoint có sẵn, **không train lại**:
 
 ```bash
-.venv/bin/python -m research.expanded_train_experiment \
+.venv/bin/python -m src.ai.expanded_train_experiment \
   --variant uniform --seed 42 --device cpu \
   --report-only --best-epoch 43 \
   --checkpoint 'model/experiments/expanded_train_20261021/nham+hong_thai/uniform/seed_42/1h/ResidualLSTM_water_level+rain+flood_season+weather_forecast_best.pt'

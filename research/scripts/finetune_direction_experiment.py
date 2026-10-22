@@ -1,6 +1,6 @@
 """BL-01: controlled fine-tuning of restored B, using its unchanged scalers.
 
-Run: python -m research.finetune_direction_experiment --output-dir <new directory>
+Run: python -m research.scripts.finetune_direction_experiment --output-dir <new directory>
 Each arm starts from B (not from the other arm). Test is scored after validation
 selection only. No model upload or production registry update.
 """
@@ -24,7 +24,7 @@ from src.ai.comparison import evaluation_dataset, load_candidate, paired_metrics
 from src.ai.losses import DirectionAmplitudeLoss, HorizonWeightedTailLoss
 from src.ai.lstm import ResidualLSTM
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 SOURCE=ROOT/'model/experiments/model_b_retrain_20261019/rain_750007-750062/tail_0.5_threshold_200_transition_20_large_error_rate/1h/ResidualLSTM_water_level+rain+flood_season+weather_forecast_best.pt'
 DATA=ROOT/'train_data/da_vien_1h_2026-10-15_forecast_mask'
 

@@ -9,9 +9,9 @@ import sys
 
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
-from research.build_training_dataset_1h_top4 import audit
+from research.scripts.build_training_dataset_1h_top4 import audit
 
 
 def checksum(path):

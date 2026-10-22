@@ -219,7 +219,7 @@ class HyperparameterSearchTests(unittest.TestCase):
                         self.assertTrue(frames['test']['water_level_depth'].notna().all())
                         return {}, {}
 
-                    with patch('research.output_horizon_experiment.write_comparisons', side_effect=compare_cohort):
+                    with patch('research.scripts.output_horizon_experiment.write_comparisons', side_effect=compare_cohort):
                         search.evaluate_best(args, folder, args.output_dir, reference_saved)
 
     def test_low_learning_rate_gets_longer_patience_and_comparable_pruning_steps(self):

@@ -7,9 +7,9 @@ import unittest
 import pandas as pd
 import torch
 
-from research.build_rain_station_dataset import DEFAULT_POOL
-from research.build_output24_dataset import read_frame
-from research.build_temporal_experiment_dataset import build
+from research.scripts.build_rain_station_dataset import DEFAULT_POOL
+from research.scripts.build_output24_dataset import read_frame
+from research.scripts.build_temporal_experiment_dataset import build
 from src.ai.train import build_sequence_trainer, parser, validate_args
 from src.ai.utils import get_dataloader
 

@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 RAIN_STATIONS = {
     '750062': 'Hồng Thái (A Lưới)',
     '750007': 'Nhâm (A Lưới)',
@@ -224,7 +224,7 @@ def main():
     for name, summary in split_summary.items():
         lines.append(f"| {name} | {summary['rows']} | {summary['complete_label_and_current_level_rows']} | {summary['flood_season_fraction']:.1%} |")
     lines += ['', f'Kiểm tra: {sum(checks.values())}/{len(checks)} đạt.', '',
-              'Tạo lại: `.venv/bin/python research/build_training_dataset_1h_top4.py --force`.',
+              'Tạo lại: `.venv/bin/python research/scripts/build_training_dataset_1h_top4.py --force`.',
               'Chọn khi train: `--horizon 1h --dataset-dir train_data/1h_top4 --feature-set water+rain+flood_season`.']
     args.output.with_suffix('.md').write_text('\n'.join(lines) + '\n')
     print(f'Wrote {args.output}: {len(table)} rows, {len(features)} features, {len(targets)} targets')

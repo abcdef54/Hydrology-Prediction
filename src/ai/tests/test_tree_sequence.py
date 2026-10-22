@@ -5,7 +5,7 @@ import unittest
 import numpy as np
 import pandas as pd
 from src.ai.tree_sequence import sequence_table,ValidationSelector,train_horizon,TreeSequenceForecast
-from research.tree_horizon_experiment import prepare,compare
+from research.scripts.tree_horizon_experiment import prepare,compare
 
 
 class TreeSequenceTests(unittest.TestCase):
@@ -77,7 +77,7 @@ class TreeSequenceTests(unittest.TestCase):
             np.testing.assert_array_equal(d5[s]['X'],d24[s]['X'])
 
     def test_real_comparison_preserves_B_population_and_common_horizons(self):
-        from research.finetune_direction_experiment import SOURCE
+        from research.scripts.finetune_direction_experiment import SOURCE
         from src.ai.comparison import load_candidate
         import joblib
         root=Path(__file__).resolve().parents[3]/'train_data/da_vien_1h_2026-10-15_forecast_mask_o24'
@@ -98,8 +98,8 @@ class TreeSequenceTests(unittest.TestCase):
         from unittest.mock import patch
         from contextlib import redirect_stdout
         import io
-        from research.tree_horizon_experiment import main
-        from research.finetune_direction_experiment import SOURCE
+        from research.scripts.tree_horizon_experiment import main
+        from research.scripts.finetune_direction_experiment import SOURCE
         root=Path(__file__).resolve().parents[3]
         dataset=root/'train_data/da_vien_1h_2026-10-15_forecast_mask_o24'
         if not dataset.exists() or not SOURCE.exists():self.skipTest('Local fixtures absent')
@@ -110,7 +110,7 @@ class TreeSequenceTests(unittest.TestCase):
             out=Path(name)/'run'
             argv=['tree_horizon_experiment','--train-method','xgb','--dataset-dir',str(dataset),
                 '--output-dir',str(out),'--no-mlflow']
-            with patch('sys.argv',argv),patch('research.tree_horizon_experiment.train_horizon',side_effect=no_fit),redirect_stdout(io.StringIO()):
+            with patch('sys.argv',argv),patch('research.scripts.tree_horizon_experiment.train_horizon',side_effect=no_fit),redirect_stdout(io.StringIO()):
                 main()
             self.assertTrue((out/'REPORT.md').exists())
             self.assertEqual(json.loads((out/'tree_model.json').read_text())['status'],'complete')

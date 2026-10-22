@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 import pandas as pd
 
-from research.weather_forecast.analyze_dataset_readiness import WINDOWS, read_times
+from research.scripts.weather_dataset_readiness import WINDOWS, read_times
 
 
 def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()

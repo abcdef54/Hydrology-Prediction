@@ -13,8 +13,8 @@ from torch import nn
 from torch.utils.data import DataLoader,TensorDataset
 from src.ai.losses import CommonHorizonAuxiliaryLoss,HorizonWeightedTailLoss
 from src.ai.comparison import load_candidate,paired_metrics
-from research.build_output24_dataset import COMMON,TARGETS,add_targets,assert_matched_population,build,DEFAULT_OUTPUT
-from research.output_horizon_experiment import prepare_data,make_model,parser,evaluate,validation_score,write_comparisons,training_objective
+from research.scripts.build_output24_dataset import COMMON,TARGETS,add_targets,assert_matched_population,build,DEFAULT_OUTPUT
+from research.scripts.output_horizon_experiment import prepare_data,make_model,parser,evaluate,validation_score,write_comparisons,training_objective
 
 
 class OutputLossTests(unittest.TestCase):
@@ -172,7 +172,7 @@ class OutputDatasetTests(unittest.TestCase):
             np.testing.assert_equal(d5[split].X,d24[split].X)
         np.testing.assert_equal(s5['target_scaler'].mean_,s24['target_scaler'].mean_[indices])
         np.testing.assert_equal(s5['target_scaler'].scale_,s24['target_scaler'].scale_[indices])
-        from research.finetune_direction_experiment import SOURCE
+        from research.scripts.finetune_direction_experiment import SOURCE
         if SOURCE.exists():
             import joblib
             original=joblib.load(SOURCE.with_suffix('.preprocessing.joblib'))
@@ -200,7 +200,7 @@ class OutputDatasetTests(unittest.TestCase):
 
     def test_report_compares_only_common_five_and_writes_all_24(self):
         if not DEFAULT_OUTPUT.exists():self.skipTest('Build local O24 dataset first')
-        from research.finetune_direction_experiment import SOURCE
+        from research.scripts.finetune_direction_experiment import SOURCE
         if not SOURCE.exists():self.skipTest('Local B artifact not available')
         frames,datasets,saved=prepare_data(DEFAULT_OUTPUT,24,96)
         args=parser().parse_args(['--outputs','24','--device','cpu','--check-only'])

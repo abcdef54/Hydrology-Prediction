@@ -1,6 +1,6 @@
 """O5/O24 training CLI: primary-horizon loss plus auxiliary hourly supervision.
 
-Dataset preparation: python -m research.build_output24_dataset
+Dataset preparation: python -m research.scripts.build_output24_dataset
 Training is only started by main(); importing helpers never trains or contacts MLflow.
 """
 import argparse
@@ -25,21 +25,21 @@ from src.ai.dataset import HydrologyDataset
 from src.ai.lstm import LSTM,ResidualLSTM
 from src.ai.losses import CommonHorizonAuxiliaryLoss
 from src.ai.comparison import load_candidate,paired_metrics
-from research.build_output24_dataset import DEFAULT_OUTPUT,COMMON,TARGETS,read_frame,assert_matched_population
-from research.finetune_direction_experiment import SOURCE
+from research.scripts.build_output24_dataset import DEFAULT_OUTPUT,COMMON,TARGETS,read_frame,assert_matched_population
+from research.scripts.finetune_direction_experiment import SOURCE
 from src.ai.metrics import markdown_table as table
 from src.ai.rain_stations import (
     available_rain_ids, combination_name, resolve_rain_stations, select_rain_columns,
 )
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 
 
 def prepare_data(directory,outputs,sequence_length,rain_stations=None):
     directory=Path(directory)
     spec=json.loads((directory/'manifest.json').read_text())
     if spec.get('experiment')!='O5_O24' or spec['target_columns']!=TARGETS:
-        raise ValueError('Build the O5/O24 dataset first with research.build_output24_dataset')
+        raise ValueError('Build the O5/O24 dataset first with research.scripts.build_output24_dataset')
     features=spec['feature_columns'];selected=COMMON if outputs==5 else TARGETS
     rain_ids = resolve_rain_stations(
         rain_stations, available_rain_ids(features), spec.get('rain_station_aliases'),

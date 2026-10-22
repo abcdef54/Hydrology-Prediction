@@ -1,6 +1,6 @@
 """Build a reusable rainfall pool while preserving B labels, splits and predictors.
 
-Run python -m research.build_rain_station_dataset. New stations use the existing
+Run python -m research.scripts.build_rain_station_dataset. New stations use the existing
 offline hourly export; source datasets and checkpoints are never overwritten.
 """
 
@@ -13,13 +13,13 @@ import shutil
 import numpy as np
 import pandas as pd
 
-from research.build_output24_dataset import DEFAULT_OUTPUT, TARGETS, read_frame
+from research.scripts.build_output24_dataset import DEFAULT_OUTPUT, TARGETS, read_frame
+from src.ai.hourly_dataset import DEFAULT_POOL
 from src.ai.rain_stations import (
     DEFAULT_COMBINATION, RAIN_ALIASES, resolve_rain_stations, station_alias,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_POOL = ROOT / "train_data/da_vien_1h_2026-10-15_rain_pool_o24"
+ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_SNAPSHOT = ROOT / "reports/rain_regions_h12_h24_20261019"
 
 

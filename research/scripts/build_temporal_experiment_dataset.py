@@ -11,8 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from research.build_output24_dataset import read_frame
-from research.build_rain_station_dataset import DEFAULT_POOL
+from research.scripts.build_output24_dataset import read_frame
+from research.scripts.build_rain_station_dataset import DEFAULT_POOL
 
 
 def sample_grid(frame, step_hours):

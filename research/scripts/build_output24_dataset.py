@@ -13,40 +13,11 @@ import shutil
 import numpy as np
 import pandas as pd
 
-ROOT=Path(__file__).resolve().parents[1]
+from src.ai.hourly_dataset import COMMON, TARGETS, read_frame, add_targets, assert_matched_population
+
+ROOT=Path(__file__).resolve().parents[2]
 DEFAULT_SOURCE=ROOT/'train_data/da_vien_1h_2026-10-15_forecast_mask'
 DEFAULT_OUTPUT=ROOT/'train_data/da_vien_1h_2026-10-15_forecast_mask_o24'
-COMMON=[f'target_water_level_plus_{h*60}m' for h in (1,3,6,12,24)]
-TARGETS=[f'target_water_level_plus_{h*60}m' for h in range(1,25)]
-
-
-def read_frame(path):
-    d=pd.read_csv(path)
-    t=pd.DatetimeIndex(pd.to_datetime(d.pop('timestamp_utc'),utc=True),name='timestamp_utc')
-    if not t.is_unique or not t.is_monotonic_increasing or not t.to_series().diff().dropna().eq(pd.Timedelta(hours=1)).all():
-        raise ValueError(f'Expected a complete ordered hourly grid: {path}')
-    d.index=t
-    return d
-
-
-def add_targets(source):
-    """Use observed hourly means at exact future timestamps, never row interpolation."""
-    water=source.water_level_depth
-    labels=pd.DataFrame({c:water.reindex(source.index+pd.Timedelta(hours=h)).to_numpy()
-                         for h,c in enumerate(TARGETS,1)},index=source.index)
-    for c in COMMON:
-        if c not in source or not np.allclose(source[c],labels[c],rtol=0,atol=1e-9,equal_nan=True):
-            raise ValueError(f'Existing target does not agree with hourly observation: {c}')
-    return labels
-
-
-def assert_matched_population(labels,water,sequence_length=96):
-    all_complete=labels[TARGETS].notna().all(axis=1)
-    common_complete=labels[COMMON].notna().all(axis=1)
-    if not all_complete.equals(common_complete):
-        raise ValueError('O5/O24 have different complete-target rows; resolve paired eligibility explicitly before building')
-    eligible=all_complete&water.notna()
-    return int((eligible&(np.arange(len(labels))>=sequence_length-1)).sum())
 
 
 def build(source_dir,output_dir):
@@ -93,7 +64,7 @@ def build(source_dir,output_dir):
         caveats=spec.get('caveats',[])+['Test reused for exploratory comparisons; 24 labels do not imply 24x independent observations.'])
     (output_dir/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n')
     (output_dir/'README.md').write_text('# Dã Viên O5/O24\n\n26 B features; 24 direct observed hourly targets. '
-        'Use research.output_horizon_experiment with --outputs 5 or 24 on the same directory. '
+        'Use research.scripts.output_horizon_experiment with --outputs 5 or 24 on the same directory. '
         'No interpolation, no source modification. Manifest lists identical eligible populations.\n')
     print(json.dumps(coverage,ensure_ascii=False,indent=2))
     print(output_dir)

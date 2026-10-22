@@ -6,7 +6,7 @@ from unittest import TestCase
 import numpy as np
 import pandas as pd
 
-from research.weather_forecast.build_datasets import encode_pair
+from research.scripts.build_weather_datasets import encode_pair
 from src.ai.dataset import HydrologyDataset
 from src.ai.utils import get_dataloader, load_dataset
 

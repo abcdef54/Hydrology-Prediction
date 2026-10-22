@@ -126,13 +126,13 @@ Toàn bộ dữ liệu làm đổi thứ hạng hai trạm đầu nhưng không 
 Cặp mưa 6h/nước 12h được kế thừa từ khảo sát toàn thời gian trước đây, nên
 chưa thể coi toàn bộ quá trình chọn tiêu chí là hoàn toàn độc lập với test.
 
-Script: `research/rank_rain_stations.py`. Có bảng đầy đủ 25 cặp cửa sổ/horizon,
+Khảo sát ban đầu dùng script ranking đã được dọn; phân tích hiện tại nằm trong `research/notebooks/rain_station_direction_correlation.ipynb`. Có bảng đầy đủ 25 cặp cửa sổ/horizon,
 correlation riêng từng trạm theo độ phủ và ma trận tương quan giữa các trạm.
 [Báo cáo local](../reports/rain_station_correlation_2026-10-18/phan_tich.md).
 RS-01 đã có kết quả khảo sát này. Code chọn/loại feature từng trạm đã có qua
 `--num-rain-station 1–4`, tự xếp hạng correlation chỉ trên train và lấy top N;
 mỗi nhóm checkpoint được lưu riêng. Xem
-[lệnh train S1/S2/S4](../research/RAIN_STATION_ABLATION.md).
+[lệnh train S1/S2/S4](../research/README.md).
 **Cập nhật 19/10:** đã chạy các ablation số trạm; cấu hình bước 1 được chọn là
 hai trạm, correction penalty 0.1, horizon weights `1 1 1.5 1.5 2`. Bản lưu đúng
 model có trong báo cáo run `83e9c3fa81ea432d9d960965e72d18e1`. Kết quả strict
@@ -230,7 +230,7 @@ nguồn. Cả O5 và O24 có 6095/985/592 sequence; không mất thêm mẫu, gi
 24 giờ và NaN cuối snapshot. Builder kiểm tra hai quần thể nhãn đầy đủ khớp
 nhau trước khi xuất; snapshot khác có lỗ nhãn gây lệch sẽ dừng rõ.
 
-Entry point nghiên cứu riêng: `research.output_horizon_experiment --outputs
+Entry point nghiên cứu riêng: `research.scripts.output_horizon_experiment --outputs
 5|24`, train từ đầu, không nạp trọng số B. Scaler chỉ fit trên train. Các
 thống kê scaler feature và năm target chung đã đối chiếu khớp B hiện tại.
 Checkpoint mặc định dùng N200/hòa RMSE trên năm horizon chung cho cả hai nhóm.
@@ -248,7 +248,7 @@ history/settings nằm trong thư mục mới, không đổi backend/frontend/re
 
 **Chưa chạy training O5/O24.** Chỉ build dataset, chạy test và check-only
 forward/backward không optimizer step. Chủ dự án sẽ tự train và xét kết quả.
-[Hướng dẫn và command đầy đủ](../research/OUTPUT_HORIZON_ABLATION.md).
+[Hướng dẫn và command đầy đủ](../research/README.md).
 
 ### 1.6. Ba việc tiếp theo sau model B — cập nhật 19/10/2026
 
@@ -367,7 +367,7 @@ không trộn hai device để kết luận thay đổi model.
 
 [Công thức và command](../research/BL01_DIRECTION_LOSS.md) ·
 [Kết quả và figure](../reports/experiments/bl01_both_20261019/analysis_cuda/REPORT.md).
-Mã chạy riêng: `research/finetune_direction_experiment.py`; chưa đưa loss mới
+Mã chạy riêng: `research/scripts/finetune_direction_experiment.py`; chưa đưa loss mới
 vào CLI `src.ai.train`. BL-01 mới là kết quả lượt đầu, chưa chốt loss cuối cùng.
 
 #### BL-02: đối chứng fine-tune bằng tail penalty mạnh hơn
@@ -397,13 +397,13 @@ lỗi >200 mm; >400 mm giảm một điểm. Checkpoint val_loss thấp nhất c
 vẫn là B epoch 0. Chưa thay B/production; chưa chọn hệ số mới từ test.
 
 [Báo cáo BL-02](../reports/experiments/bl02_tail_strength_20261019/analysis_cuda/REPORT.md).
-Chạy lại bằng `research.finetune_direction_experiment` với
+Chạy lại bằng `research.scripts.finetune_direction_experiment` với
 `--mode finetune --tail-strengths 0.5 0.75 1.0` và thư mục output mới.
 
 #### BL-03: lịch sử dự báo mưa — xác minh trước khi thêm feature
 
 **[ĐÃ KIỂM TRA CODE]** B hiện đã nhận feature dự báo mưa ở **cả 96 hàng**:
-`research/weather_forecast/build_datasets.py` gắn dự báo vào mỗi timestep;
+`research/scripts/build_weather_datasets.py` gắn dự báo vào mỗi timestep;
 `src/ai/dataset.py::__getitem__` lấy toàn bộ feature trong chuỗi, không chỉ
 mực nước hoặc forecast ở hàng cuối. Do đó chưa thử ablation lịch sử forecast
 riêng, nhưng không được ghi rằng B chưa từng nhận lịch sử forecast.
@@ -465,8 +465,8 @@ model. Mỗi thử nghiệm lưu model/scaler/settings riêng một thư mục, 
 
 | Thành phần | Vị trí | Liên quan công việc mới |
 |---|---|---|
-| Tạo dataset Dã Viên | `research/build_training_dataset_1h_top4.py` | Mở rộng qua phiên bản dataset riêng |
-| Refresh PostgreSQL / chia thời gian | `research/refresh_da_vien_dataset.py`, `research/resplit_hourly_dataset.py` | Tái sử dụng cách snapshot, manifest, purge |
+| Tạo dataset Dã Viên | `research/scripts/build_training_dataset_1h_top4.py` | Mở rộng qua phiên bản dataset riêng |
+| Refresh PostgreSQL / chia thời gian | `research/scripts/refresh_da_vien_dataset.py`, `research/scripts/resplit_hourly_dataset.py` | Tái sử dụng cách snapshot, manifest, purge |
 | Dataset và chọn feature | `src/ai/dataset.py`, `src/ai/utils.py` | Thêm nhóm feature, cờ thiếu, thứ tự cột |
 | Train và loss | `src/ai/train.py`, `src/ai/trainers.py`, `src/ai/losses.py` | Log cấu hình và chạy ablation |
 | Mô hình | `src/ai/lstm.py` | Input mở rộng cần checkpoint mới |
@@ -814,8 +814,8 @@ chưa thay model phục vụ, chưa coi loss hướng/biên độ là đã cải
 src/backend/weather/                # Client, selector, feature builder dùng chung
 src/backend/ingestion/weather_import.py
 src/backend/db/alembic/versions/...  # Migration mới sau khi duyệt schema thực tế
-research/build_forecast_rain_dataset.py
-research/evaluate_forecast_rain.py
+research/scripts/build_forecast_rain_dataset.py
+research/scripts/evaluate_forecast_rain.py
 reports/forecast_rain/<run_id>/      # Coverage, audit, manifest, metrics, figures
 train_data/<dataset_version>/       # Snapshot và split có phiên bản
 model/<experiment>/<run_id>/        # Checkpoint, scaler, feature/policy metadata
@@ -918,8 +918,8 @@ LSTM mới hay tạo dataset/model phục vụ.
 
 ### 13.3. Đối chứng tree trên dataset forecast (20/10/2026)
 
-Đã chuẩn bị `research.tree_horizon_experiment`, hướng dẫn tại
-[TREE_HORIZON_EXPERIMENT.md](../research/TREE_HORIZON_EXPERIMENT.md).
+Đã chuẩn bị `research.scripts.tree_horizon_experiment`, hướng dẫn tại
+[TREE_HORIZON_EXPERIMENT.md](../research/README.md).
 XGBoost/LightGBM nhận toàn bộ26feature của96h, trải thành2496cột lag;
 giữ split/purge/warmup6095/985/592. Mặc định5horizon chung; hỗ trợ24booster độc lập.
 Mặc định học residual nước, squared error mm; không áp dụng loss tail/aux hoặc

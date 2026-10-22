@@ -19,7 +19,7 @@ import torch
 from torch.utils.data import DataLoader
 from src.ai.losses import HorizonWeightedTailLoss
 from src.ai.comparison import evaluation_dataset,load_candidate,paired_metrics
-from research.finetune_direction_experiment import SOURCE,DATA,make_model,evaluate
+from research.scripts.finetune_direction_experiment import SOURCE,DATA,make_model,evaluate
 
 
 def raw_change_weights(change_mm,boost=1.,scale_mm=200.):

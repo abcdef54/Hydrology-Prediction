@@ -29,14 +29,14 @@ from src.ai.tree_sequence import (
     sequence_table,
     train_horizon,
 )
-from research.build_output24_dataset import (
+from research.scripts.build_output24_dataset import (
     COMMON,
     TARGETS,
     assert_matched_population,
     read_frame,
 )
-from research.finetune_direction_experiment import SOURCE
-from research.output_horizon_experiment import (
+from research.scripts.finetune_direction_experiment import SOURCE
+from research.scripts.output_horizon_experiment import (
     evaluate,
     make_model,
     training_objective,
@@ -494,7 +494,7 @@ def tree_progress_scale(learning_rate):
 
 
 def train_neural(trial, args, params, data, saved, folder):
-    from research.output_horizon_experiment import parser as neural_parser
+    from research.scripts.output_horizon_experiment import parser as neural_parser
 
     config = neural_parser().parse_args([
         "--outputs", str(args.outputs), "--train-method", args.train_method,
@@ -728,7 +728,7 @@ def evaluate_best(args, folder, out, saved):
     frame.loc[frame.index < cohort_length - 1, saved["target_columns"]] = np.nan
 
     if args.train_method in NEURALS:
-        from research.output_horizon_experiment import write_comparisons
+        from research.scripts.output_horizon_experiment import write_comparisons
 
         pre = joblib.load(folder / "model_best.preprocessing.joblib")
         model = load_candidate((folder / "model_best.pt").read_bytes(), pre, args.device)
@@ -740,7 +740,7 @@ def evaluate_best(args, folder, out, saved):
             raise RuntimeError(f"Best model comparison incomplete: {errors}")
         return summaries
 
-    from research.tree_horizon_experiment import compare, prediction_points, summarize
+    from research.scripts.tree_horizon_experiment import compare, prediction_points, summarize
     from src.ai.metrics import markdown_table
 
     model = TreeSequenceForecast(folder)

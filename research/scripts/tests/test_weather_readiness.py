@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest import TestCase
 import pandas as pd
 import numpy as np
-from research.weather_forecast.analyze_dataset_readiness import select_windows, sequence_audit, metric_pair
+from research.scripts.weather_dataset_readiness import select_windows, sequence_audit, metric_pair
 
 
 class ReadinessTests(TestCase):
@@ -53,7 +53,7 @@ class ReadinessTests(TestCase):
         self.assertEqual(result['bias_mm'],1)
 
     def test_early_peak_is_history_but_not_a_training_target(self):
-        from research.weather_forecast.analyze_dataset_readiness import high_water_events
+        from research.scripts.weather_dataset_readiness import high_water_events
         index=pd.date_range('2026-01-01',periods=180,freq='h',tz='UTC')
         levels=np.full(180,100.)
         levels[48:60]=1000.  # Peak before the first 96-step anchor.
@@ -70,7 +70,7 @@ class ReadinessTests(TestCase):
         self.assertEqual(summary.iloc[0].max_water_in_eligible_targets_mm,300.)
 
     def test_future_window_report_counts_unavailable_forecasts(self):
-        from research.weather_forecast.analyze_dataset_readiness import window_analysis
+        from research.scripts.weather_dataset_readiness import window_analysis
         index=pd.date_range('2026-09-01',periods=48,freq='h',tz='UTC')
         hourly=pd.DataFrame({'rain_750007_depth':1.,'rain_750062_depth':1.},index=index)
         splits={'train':hourly.iloc[:24],'val':hourly.iloc[24:36],'test':hourly.iloc[36:]}

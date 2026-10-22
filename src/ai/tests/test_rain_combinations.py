@@ -11,9 +11,9 @@ import numpy as np
 import pandas as pd
 import torch
 
-from research.build_output24_dataset import TARGETS
-from research.build_rain_station_dataset import build
-from research.output_horizon_experiment import make_model, parser, prepare_data
+from research.scripts.build_output24_dataset import TARGETS
+from research.scripts.build_rain_station_dataset import build
+from research.scripts.output_horizon_experiment import make_model, parser, prepare_data
 from src.ai.comparison import load_candidate
 from src.ai.rain_stations import (
     DEFAULT_COMBINATION, RAIN_ALIASES, combination_name, resolve_rain_stations,

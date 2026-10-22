@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from research.weather_forecast.analyze_dataset_readiness import WINDOWS, read_times, sequence_audit
+from research.scripts.weather_dataset_readiness import WINDOWS, read_times, sequence_audit
 
 
 def fill_from_older(primary, fallback):

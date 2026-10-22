@@ -11,11 +11,11 @@ import pandas as pd
 import torch
 from src.ai.tree_sequence import sequence_table,train_horizon,TreeSequenceForecast
 from src.ai.comparison import load_candidate,evaluation_dataset,predict,DEFAULT_REGISTRY
-from research.build_output24_dataset import COMMON,TARGETS,read_frame,assert_matched_population
-from research.finetune_direction_experiment import SOURCE
+from research.scripts.build_output24_dataset import COMMON,TARGETS,read_frame,assert_matched_population
+from research.scripts.finetune_direction_experiment import SOURCE
 from src.ai.metrics import markdown_table as table
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=Path(__file__).resolve().parents[2]
 
 
 def prepare(directory,outputs,sequence_length):

@@ -1,7 +1,7 @@
 import unittest
 import numpy as np
 import torch
-from research.change_weight_experiment import raw_change_weights,weighted_loss,sequence_stats
+from research.scripts.change_weight_experiment import raw_change_weights,weighted_loss,sequence_stats
 from src.ai.losses import HorizonWeightedTailLoss
 
 

@@ -68,7 +68,7 @@ class DirectionLossTests(unittest.TestCase):
         torch.testing.assert_close(value,other(p,y,a))
 
     def test_checkpoint_guard_keeps_B_if_either_threshold_worsens(self):
-        from research.finetune_direction_experiment import choose_checkpoint
+        from research.scripts.finetune_direction_experiment import choose_checkpoint
         baseline=dict(above_200=90,above_400=10,rmse_mm=70.)
         self.assertFalse(choose_checkpoint(dict(above_200=80,above_400=11,rmse_mm=60.),baseline,baseline))
         self.assertFalse(choose_checkpoint(dict(above_200=91,above_400=0,rmse_mm=60.),baseline,baseline))
@@ -80,7 +80,7 @@ class DirectionLossTests(unittest.TestCase):
         import joblib
         import pandas as pd
         from src.ai.comparison import evaluation_dataset
-        from research.finetune_direction_experiment import SOURCE,DATA,make_model
+        from research.scripts.finetune_direction_experiment import SOURCE,DATA,make_model
         if not SOURCE.exists():self.skipTest('Local B checkpoint not available')
         saved=joblib.load(SOURCE.with_suffix('.preprocessing.joblib'))
         ds=evaluation_dataset(pd.read_csv(DATA/'train.csv'),saved)
@@ -98,7 +98,7 @@ class DirectionLossTests(unittest.TestCase):
 
     def test_scratch_initialization_does_not_load_B_weights(self):
         import joblib
-        from research.finetune_direction_experiment import SOURCE,make_model
+        from research.scripts.finetune_direction_experiment import SOURCE,make_model
         if not SOURCE.exists():self.skipTest('Local B checkpoint not available')
         saved=joblib.load(SOURCE.with_suffix('.preprocessing.joblib'))
         random_model=make_model(saved,'cpu',initialize_from_B=False).eval()
@@ -109,7 +109,7 @@ class DirectionLossTests(unittest.TestCase):
         torch.testing.assert_close(random_model(x),random_model.persistence(x),rtol=0,atol=0)
 
     def test_BL02_arms_only_change_tail_strength_and_reject_bad_configuration(self):
-        from research.finetune_direction_experiment import loss_arms
+        from research.scripts.finetune_direction_experiment import loss_arms
         self.assertEqual(loss_arms([.5,.75,1.]),[('tail_0.5',.5),('tail_0.75',.75),('tail_1',1.)])
         for strengths in [[],[-1],[float('nan')],[.5,.5]]:
             with self.assertRaises(ValueError):loss_arms(strengths)

@@ -11,7 +11,7 @@ Các mô hình đã thử nghiệm gồm XGBoost, LightGBM và các biến thể
 | `src/backend/` | API, chạy dự báo, lưu dữ liệu và tự động cập nhật quan trắc |
 | [src/frontend/](src/frontend/README.md) | React + Vite, bản đồ tương tác khu vực Huế |
 | `src/ai/` | Huấn luyện và đánh giá mô hình |
-| `research/` | Tạo dataset và các notebook phân tích |
+| `research/scripts/`, `research/notebooks/` | Script tạo dataset/thí nghiệm và các notebook phân tích |
 | `train_data/` | Dữ liệu Train/Val/Test |
 | [model/](model/README.md) | Trọng số và scaler riêng cho từng trạm |
 
@@ -102,6 +102,18 @@ Xem các tùy chọn huấn luyện:
 ```bash
 .venv/bin/python src/ai/train.py --help
 ```
+
+Pipeline train và đánh giá trên dataset gộp nằm trong `src/ai/`:
+
+```bash
+.venv/bin/python -m src.ai.expanded_train_experiment --help
+```
+
+Dataset `train_data/da_vien_1h_2026-10-15_expanded_train_o24/` được giữ trong Git.
+Builder là `src.ai.build_expanded_train_dataset`; helper dataset và báo cáo nằm
+trong `src/ai/hourly_dataset.py` và `src/ai/expanded_train_report.py`.
+Dataset này gộp train+validation cũ để train, dùng test cũ làm validation;
+không có test độc lập. Thay vị trí code không thay checkpoint production.
 
 Khởi động MLflow sau khi đã cài các dependencies phục vụ huấn luyện:
 

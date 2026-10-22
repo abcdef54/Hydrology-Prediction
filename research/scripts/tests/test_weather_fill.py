@@ -2,8 +2,8 @@
 from unittest import TestCase
 import numpy as np
 import pandas as pd
-from research.weather_forecast.fill_missing import fill_from_older
-from research.weather_forecast.analyze_dataset_readiness import WINDOWS
+from research.scripts.fill_missing_weather import fill_from_older
+from research.scripts.weather_dataset_readiness import WINDOWS
 
 
 class FillTests(TestCase):
