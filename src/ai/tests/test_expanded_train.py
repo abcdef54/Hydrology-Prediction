@@ -13,16 +13,15 @@ import numpy as np
 import pandas as pd
 import torch
 
-from research.build_expanded_train_dataset import build
-from research.build_expanded_train_dataset import DEFAULT_OUTPUT
-from research.build_output24_dataset import COMMON, TARGETS, read_frame
-from research.build_rain_station_dataset import DEFAULT_POOL
-from research.expanded_train_experiment import (
+from src.ai.build_expanded_train_dataset import build
+from src.ai.build_expanded_train_dataset import DEFAULT_OUTPUT
+from src.ai.hourly_dataset import COMMON, TARGETS, DEFAULT_POOL, read_frame
+from src.ai.expanded_train_experiment import (
     build_trainer, configure_run_directories, parser, prepare_data, prediction_metrics, run_training, validate_args,
 )
 from src.ai.comparison import load_candidate
 import joblib
-from research.expanded_train_report import write_comparison_report
+from src.ai.expanded_train_report import write_comparison_report
 from src.ai.sampling import EventBalancedSampler
 
 
@@ -243,7 +242,7 @@ class ExpandedTrainingTests(TestCase):
         trainer.epochs_without_improvement = 0
         trainer.best_checkpoint_epoch = 1
         logger = Mock()
-        with patch("research.expanded_train_experiment.compare_references", return_value={}) as compare, \
+        with patch("src.ai.expanded_train_experiment.compare_references", return_value={}) as compare, \
                 redirect_stdout(io.StringIO()):
             run_training(args, None, trainer, None, logger)
         trainer.train.assert_not_called()

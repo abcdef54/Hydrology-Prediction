@@ -23,9 +23,9 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 
-from research.build_expanded_train_dataset import DEFAULT_OUTPUT
-from research.build_output24_dataset import COMMON, read_frame
-from research.expanded_train_report import write_comparison_report
+from src.ai.build_expanded_train_dataset import DEFAULT_OUTPUT
+from src.ai.hourly_dataset import COMMON, read_frame
+from src.ai.expanded_train_report import write_comparison_report
 from src.ai.comparison import evaluation_dataset, load_candidate, predict
 from src.ai.dataset import HydrologyDataset
 from src.ai.losses import HorizonWeightedTailLoss
@@ -40,7 +40,7 @@ from src.backend.prediction.config import StationModelRegistry
 from src.backend.prediction.inference import ResidualLSTMRuntime
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 
 def prepare_data(directory, rain_stations="hong_thai+nham", sequence_length=96):

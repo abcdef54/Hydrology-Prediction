@@ -9,8 +9,7 @@ import shutil
 import numpy as np
 import pandas as pd
 
-from research.build_output24_dataset import COMMON, TARGETS, add_targets, read_frame
-from research.build_rain_station_dataset import DEFAULT_POOL
+from src.ai.hourly_dataset import COMMON, TARGETS, DEFAULT_POOL, add_targets, read_frame
 from src.ai.comparison import comparison_observations_source
 
 
