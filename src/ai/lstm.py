@@ -47,7 +47,7 @@ class LSTM(torch.nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 2:
-            x = x.unsqueeze(1)
+            x = x.unsqueeze(0)
         x = self.input_dropout_layer(x.transpose(1, 2)).transpose(1, 2)
         sequence_output, _ = self.lstm(x)
 
@@ -106,7 +106,7 @@ class ResidualLSTM(LSTM):
 
     def persistence(self, x: torch.Tensor) -> torch.Tensor:
         if x.dim() == 2:
-            x = x.unsqueeze(1)
+            x = x.unsqueeze(0)
         current_level = x[:, -1, self.level_feature_index].unsqueeze(-1)
         return current_level * self.persistence_scale + self.persistence_offset
 
