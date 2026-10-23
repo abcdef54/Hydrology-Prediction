@@ -33,6 +33,7 @@ from src.backend.cache.latest import LatestObservationCache
 from src.backend.db.session import build_engine
 from src.backend.ingestion.startup import SyncWorkerProcess
 from src.backend.prediction.config import StationModelRegistry
+from src.backend.prediction.device import resolve_prediction_device
 from src.backend.security.config import SecuritySettings
 from src.backend.security.middleware import PublicApiMiddleware
 from src.backend.security.rate_limit import RequestRateLimiter
@@ -78,7 +79,7 @@ def create_app(
     Production reads DATABASE_URL, optional MODEL_ARTIFACT_ROOT/MODEL_CONFIG_PATH,
     and INPUT_STALE_AFTER_MINUTES (default 120). Only an engine owned by this app
     is disposed at shutdown. Prediction runtimes load lazily per station; form
-    requests never load weights. PREDICTION_DEVICE defaults to cpu.
+    requests never load weights. PREDICTION_DEVICE defaults to auto (CUDA or CPU).
 
     Args:
         engine: Existing SQLAlchemy engine for tests/embedding; None creates an
@@ -142,7 +143,9 @@ def create_app(
             application.state.latest_observation_cache.client,
             application.state.latest_observation_cache.ttl_seconds,
         )
-        application.state.prediction_device = os.environ.get("PREDICTION_DEVICE", "cpu")
+        application.state.prediction_device = resolve_prediction_device(
+            os.environ.get("PREDICTION_DEVICE", "auto")
+        )
         application.state.prediction_services = {}
         application.state.prediction_service_lock = Lock()
         application.state.security_settings = configured_security

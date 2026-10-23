@@ -1,0 +1,14 @@
+# Loaded by docker/up.sh only after Docker GPU access has been verified.
+services:
+  backend:
+    image: hydrology-backend:cuda
+    build:
+      args:
+        PYTORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

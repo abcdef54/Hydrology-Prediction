@@ -536,8 +536,11 @@ curl 'http://127.0.0.1:8000/api/v1/predictions' \
   Mô hình khác trạm không dùng chung trọng số. Request tiếp theo kiểm tra SHA-256
   checkpoint/scaler; nếu file bị thay thế thì tải lại runtime. Khi đổi code/config,
   khởi động lại backend và cập nhật model version. Redis chưa được triển khai.
-- `PREDICTION_DEVICE` mặc định `cpu`; có thể đặt `cuda` nếu máy hỗ trợ. Hiện đã
-  kiểm chứng trên CPU. Model chạy eval/inference mode, dropout tắt và không có
+- `PREDICTION_DEVICE` mặc định `auto`: kiểm tra CUDA bằng phép tính thực tế,
+  dùng GPU nếu chạy được và dùng CPU nếu không. Có thể đặt `cpu` hoặc `cuda`
+  để chọn rõ thiết bị. Với Docker, dùng `bash docker/up.sh` để tự chọn image
+  CPU/CUDA và cấp quyền GPU khi khả dụng; Compose thông thường vẫn dùng image CPU.
+  Model chạy eval/inference mode, dropout tắt và không có
   correction penalty, optimizer hoặc training.
 
 Response giữ các mốc thời gian và model/schema version, có `unit="mm"`,
