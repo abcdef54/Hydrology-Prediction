@@ -129,3 +129,27 @@ class ResidualLSTM(LSTM):
         return result.squeeze(0) if two_dimensional else result
 
 
+class RegionalResidualLSTM(ResidualLSTM):
+    def __init__(
+            self,
+            *args,
+            num_stations: int,
+            dynamic_input_size: int,
+            station_embedding_size: int = 8,
+            **kwargs
+    ) -> None:
+        super().__init__(input_size=dynamic_input_size+station_embedding_size, *args, **kwargs)
+        self.station_embedding = nn.Embedding(num_embeddings=num_stations, embedding_dim=station_embedding_size)
+
+    def forward(self, x: torch.Tensor, station_ids: torch.Tensor) -> torch.Tensor:
+        if x.ndim != 3:
+            raise ValueError("Expected input shape [batch, time, feature]")
+
+        if station_ids.shape != x.shape[0]:
+            raise ValueError("Expected one station ID per sample")
+
+        station_features = self.station_embedding(station_ids)
+        repeated_station_features = station_features.unsqueeze(1).expand(-1, x.shape[1], -1)
+        conditioned_inputs = torch.cat([x, repeated_station_features], dim=-1)
+
+        return super().forward(conditioned_inputs)
