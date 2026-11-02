@@ -9,6 +9,10 @@ import pandas as pd
 from googlehydrology.modelzoo.mean_embedding_forecast_lstm import MeanEmbeddingForecastLSTM
 from src.ai.utils import select_feature_columns
 from src.ai.lstm import LSTM, ResidualLSTM
+from src.ai.residual_sequence import (
+    ResidualGRU, ResidualTCN, ResidualCNNGRU,
+    ResidualGRULateFusion, ResidualTCNLateFusion, ResidualCNNGRULateFusion,
+)
 
 
 class WaterLevelPredictionModel(Protocol):

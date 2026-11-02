@@ -195,6 +195,7 @@ def get_dataloader(
     rain_stations: str | None = None,
     outputs: int | None = None,
     target_horizons: list[int] | None = None,
+    use_weather_forecast: bool | None = None,
 ):
     train_df, eval_df, test_df = load_dataset(horizon, dataset_dir)
     feature_set = normalize_feature_set(feature_set)
@@ -220,6 +221,9 @@ def get_dataloader(
             raise ValueError(f"Requested {num_rain_station} rain stations but only {len(ranking)} have valid train correlations")
         rain_station_ids = [row["station_id"] for row in ranking[:num_rain_station]]
     feature_cols = select_feature_columns(train_df.columns, feature_set, rain_station_ids)
+    if use_weather_forecast is False:
+        candidates = feature_cols if feature_cols is not None else [c for c in train_df if not c.startswith(('target_', 'timestamp'))]
+        feature_cols = [c for c in candidates if not c.startswith('weather_forecast_')]
     target_cols = None
     if target_horizons is not None:
         if outputs is not None:

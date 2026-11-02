@@ -57,18 +57,20 @@ class HorizonWeightedTailLoss(HorizonWeightedMSE):
         self.threshold_mm = float(threshold_mm)
         self.transition_mm = float(transition_mm)
 
-    def components(self, predictions, targets):
+    def components(self, predictions, targets, target_scales=None):
         mse = super().forward(predictions, targets)
-        scales = self.target_scales.to(device=predictions.device, dtype=predictions.dtype)
+        scales = (self.target_scales if target_scales is None else target_scales).to(device=predictions.device, dtype=predictions.dtype)
+        if scales.shape not in (predictions.shape, predictions.shape[-1:]) or not torch.isfinite(scales).all() or not (scales > 0).all():
+            raise ValueError('Target scales must match horizons or batch/horizon shape')
         error_mm = (predictions - targets).abs() * scales
         penalty = self.reduce_per_horizon(torch.nn.functional.softplus(
             (error_mm - self.threshold_mm) / self.transition_mm))
         return mse, penalty
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets, target_scales=None):
         if self.strength == 0:
             return super().forward(predictions, targets)
-        mse, penalty = self.components(predictions, targets)
+        mse, penalty = self.components(predictions, targets, target_scales)
         return mse + self.strength * penalty
 
 

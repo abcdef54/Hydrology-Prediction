@@ -111,7 +111,7 @@ class TailCheckpointTests(TestCase):
         root=Path(__file__).resolve().parents[3]
         with tempfile.TemporaryDirectory() as directory:
             argv=['train','--mlflow-ex-name','tail-test','--horizon','1h','--train-method','residual_lstm',
-                '--dataset-dir',str(root/'train_data/da_vien_1h_2026-10-15_forecast_mask'),
+                '--dataset-dir',str(root/'train_data/da_vien_1h_2026-10-15_forecast_mask_o24'), '--outputs', '5',
                 '--feature-set','water_level+rain+flood_season+weather_forecast',
                 '--num-rain-station','2','--device','cpu','--num-worker','0',
                 '--lstm-seq-len','96','--lstm-hidden-size','2','--lstm-num-layers','1',

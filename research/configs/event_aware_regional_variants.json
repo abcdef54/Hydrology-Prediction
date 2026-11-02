@@ -1,0 +1,25 @@
+{
+  "description": "Manual-only controlled regional Transformer variants. Training commands are documented in reports/model_training/event_aware_implementation_20261102.md; this file does not launch jobs.",
+  "common": {
+    "dataset_dir": "train_data/hue_regional_20261015_h6_h12_fixed_split_v1",
+    "train_method": "transformer-late-fusion", "regional_fold": "fixed", "target_horizons": [6, 12],
+    "rain_station": "hong_thai+bach_ma+phu_bai", "use_weather_forecast": true, "time_features": "all",
+    "sequence_length": 96, "batch_size": 512, "seed": 42, "hidden_size": 32, "num_layers": 3,
+    "transformer_heads": 4, "transformer_ff_size": 128, "head_mode": "station-mlp", "station_mlp_hidden_size": 32,
+    "encoder_dropout": 0.3, "input_dropout": 0.2, "head_dropout": 0.2,
+    "adamw_lr": 0.0009, "weight_decay": 0.001, "scheduler": "step", "epochs": 60,
+    "early_stopping": 30, "change_loss": "station-balanced", "scale_floor_mm": 200,
+    "large_rise_threshold_mm": 200, "threshold_rule": "strict greater than", "checkpoint_metric": "unweighted-regression val_loss",
+    "skip_test": true
+  },
+  "variants": {
+    "baseline": {"event_aware": false, "rise_event_weight": 0},
+    "A": {"event_aware": true, "rise_classification_weight": 0.1, "rise_positive_weight": 1, "rise_event_weight": 0},
+    "B_0.5": {"event_aware": false, "rise_event_weight": 0.5},
+    "B_1": {"event_aware": false, "rise_event_weight": 1},
+    "B_2": {"event_aware": false, "rise_event_weight": 2},
+    "C_0.5": {"event_aware": true, "rise_classification_weight": 0.1, "rise_positive_weight": 1, "rise_event_weight": 0.5},
+    "C_1": {"event_aware": true, "rise_classification_weight": 0.1, "rise_positive_weight": 1, "rise_event_weight": 1},
+    "C_2": {"event_aware": true, "rise_classification_weight": 0.1, "rise_positive_weight": 1, "rise_event_weight": 2}
+  }
+}

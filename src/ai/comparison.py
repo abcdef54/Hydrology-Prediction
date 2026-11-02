@@ -36,7 +36,7 @@ def evaluation_dataset(frame, saved):
     )
 
 
-def comparison_observations_source(test_csv):
+def comparison_observations_source(test_csv, required_columns=None):
     """Follow dataset ancestry to the explicit serving-observation source.
 
     Derived datasets can add/remove predictors without carrying the original
@@ -46,10 +46,17 @@ def comparison_observations_source(test_csv):
     test_csv = Path(test_csv)
     directory = test_csv.parent.resolve()
     visited = set()
-    while (directory / "manifest.json").is_file():
+    while True:
         if directory in visited:
             raise ValueError("Cycle in dataset parent metadata")
         visited.add(directory)
+        source_csv = directory / test_csv.name
+        if required_columns is not None and source_csv.is_file():
+            columns = pd.read_csv(source_csv, nrows=0).columns
+            if set(required_columns).issubset(columns):
+                return source_csv, None
+        if not (directory / "manifest.json").is_file():
+            break
         spec = json.loads((directory / "manifest.json").read_text())
         observations_dir = spec.get("comparison_observations_dir")
         if observations_dir:
@@ -103,8 +110,12 @@ def paired_metrics(frame, candidate, candidate_saved, serving, serving_saved,
     if (source_positions < 0).any():
         raise ValueError("Serving observations must contain all candidate test timestamps")
     for target in common_targets:
-        if not np.allclose(frame[target].to_numpy(), serving_frame[target].iloc[source_positions].to_numpy(),
-                           rtol=0, atol=1e-9, equal_nan=True):
+        actual = frame[target].to_numpy(dtype=float)
+        reference_actual = serving_frame[target].iloc[source_positions].to_numpy(dtype=float)
+        # A paired subset may deliberately mask otherwise-observed labels to
+        # preserve O24 eligibility. Never restore those candidate labels.
+        observed = np.isfinite(actual)
+        if not np.allclose(actual[observed], reference_actual[observed], rtol=0, atol=1e-9):
             raise ValueError("Candidate and serving observations have different target values")
     app_ds = evaluation_dataset(serving_frame, serving_saved)
     candidate_times = pd.DatetimeIndex(timestamps)
@@ -162,6 +173,25 @@ def paired_metrics(frame, candidate, candidate_saved, serving, serving_saved,
         assessment = "Kết quả đánh đổi: một chỉ số tổng hợp tốt hơn, chỉ số kia kém hơn."
     summaries.update(delta_mean_rmse_mm=delta_rmse, delta_above_200_percentage_points=delta_tail,
                      assessment=assessment, automatic_promotion=False)
+    new, reference = summaries["candidate"], summaries["serving"]
+    candidate_score = (new["above_200"], new["pooled_rmse_mm"])
+    reference_score = (reference["above_200"], reference["pooled_rmse_mm"])
+    verdict = "tốt hơn" if candidate_score < reference_score else (
+        "kém hơn" if candidate_score > reference_score else "ngang bằng"
+    )
+    summaries.update(
+        better_than_reference=candidate_score < reference_score,
+        delta_above_200_count=new["above_200"] - reference["above_200"],
+        delta_pooled_rmse_mm=new["pooled_rmse_mm"] - reference["pooled_rmse_mm"],
+        above_200_reduction_pct=(
+            100 * (reference["above_200"] - new["above_200"]) / reference["above_200"]
+            if reference["above_200"] else None
+        ),
+        selection_assessment=(
+            f"Model mới {verdict} model tham chiếu theo tiêu chí ít lỗi >200 mm nhất; "
+            "nếu bằng nhau thì chọn RMSE gộp thấp hơn."
+        ),
+    )
     coverage = dict(total_test_rows=len(frame), candidate_eligible=len(new_ds),
                     serving_eligible=len(app_ds), common_anchors=len(indices),
                     candidate_step_hours=steps.iloc[0].total_seconds() / 3600,
@@ -177,6 +207,9 @@ def paired_metrics(frame, candidate, candidate_saved, serving, serving_saved,
 def load_candidate(checkpoint_bytes, saved, device):
     """Reconstruct existing LSTM/ResidualLSTM architecture from state for standalone use."""
     state = torch.load(BytesIO(checkpoint_bytes), map_location="cpu", weights_only=True)
+    if saved.get('model_spec') is not None:
+        from src.ai.sequence_checkpoint import load_model_state
+        return load_model_state(state, saved, device)
     layers = [k for k in state if re.fullmatch(r"lstm.weight_ih_l\d+", k)]
     options = dict(input_size=len(saved["feature_columns"]), output_size=len(saved["target_columns"]),
                    hidden_size=state["lstm.weight_hh_l0"].shape[1], num_layers=len(layers), dropout=0.)
@@ -204,23 +237,25 @@ def load_candidate(checkpoint_bytes, saved, device):
     return model.to(device).eval()
 
 
-def write_report(out, metrics, summary, coverage):
-    lines = ["# So sánh model mới với model cấu hình trong app", "",
+def write_report(out, metrics, summary, coverage, reference_name="App"):
+    lines = [f"# So sánh model mới với {reference_name}", "",
              f"Mốc đầu vào: **{coverage['first_anchor_vietnam']} → {coverage['last_anchor_vietnam']}**.",
              f"Số mốc đầu vào chung: **{coverage['common_anchors']}**. Đơn vị mực nước/sai số: **mm**.", "",
-             "| Horizon | Số mẫu | RMSE app | RMSE mới | Mới − app | >200 mm app | >200 mm mới |",
+             f"| Horizon | Số mẫu | RMSE {reference_name} | RMSE mới | Mới − tham chiếu | >200 mm tham chiếu | >200 mm mới |",
              "|---|---:|---:|---:|---:|---:|---:|"]
     for minutes, group in metrics.groupby("horizon_minutes", sort=True):
         group = group.set_index("model")
         app, new = group.loc["serving"], group.loc["candidate"]
         lines.append(f"| +{minutes / 60:g} giờ | {int(new.n)} | {app.rmse_mm:.2f} | {new.rmse_mm:.2f} | {new.rmse_mm-app.rmse_mm:+.2f} | {int(app.above_200)} ({app.above_200_pct:.2f}%) | {int(new.above_200)} ({new.above_200_pct:.2f}%) |")
     lines += ["", "## Tổng hợp", "",
-              "| Model | Trung bình RMSE các horizon | RMSE gộp mọi dự báo | MAE | Tỷ lệ >200 mm |",
-              "|---|---:|---:|---:|---:|"]
-    for name, label in (("serving", "App"), ("candidate", "Mới")):
+              "| Model | Trung bình RMSE các horizon | RMSE gộp mọi dự báo | MAE | Số lỗi >200 mm | Tỷ lệ >200 mm |",
+              "|---|---:|---:|---:|---:|---:|"]
+    for name, label in (("serving", reference_name), ("candidate", "Mới")):
         row = summary[name]
-        lines.append(f"| {label} | {row['mean_horizon_rmse_mm']:.2f} | {row['pooled_rmse_mm']:.2f} | {row['mae_mm']:.2f} | {row['above_200_pct']:.2f}% |")
-    lines += ["", summary["assessment"], "",
+        lines.append(f"| {label} | {row['mean_horizon_rmse_mm']:.2f} | {row['pooled_rmse_mm']:.2f} | {row['mae_mm']:.2f} | {row['above_200']} | {row['above_200_pct']:.2f}% |")
+    lines += ["", summary["selection_assessment"], "", summary["assessment"], "",
+              f"Chênh lệch số lỗi >200 mm (mới − tham chiếu): **{summary['delta_above_200_count']:+d}**; "
+              f"chênh lệch RMSE gộp: **{summary['delta_pooled_rmse_mm']:+.2f} mm**.", "",
               "Trung bình RMSE = trung bình cộng RMSE của các horizon chung; RMSE gộp = căn trung bình bình phương tất cả sai số. Đây là hai phép tính khác nhau.",
               "Ngưỡng lỗi lớn là |dự báo − thực tế| >200 mm, không bao gồm đúng 200 mm. Tỷ lệ tính trên số dự báo có thực tế tại từng horizon; một anchor có nhiều horizon là nhiều dự báo.",
               "Mỗi model dùng đúng scaler/feature order riêng, không fit lại. So sánh trên giao các mẫu hợp lệ sau warmup và lọc nhãn; báo cáo độ phủ trong manifest.json. Actual lấy trực tiếp từ cùng test.csv.",
@@ -233,7 +268,7 @@ def write_report(out, metrics, summary, coverage):
 
 def compare_checkpoint(checkpoint, test_csv, out, station_id="0074647403",
                        registry_path=DEFAULT_REGISTRY, device="cpu", batch_size=128, candidate=None,
-                       candidate_run_id=None):
+                       candidate_run_id=None, model_id=None):
     """Save an immutable comparison snapshot; candidate may be the just-trained model."""
     from src.backend.prediction.config import StationModelRegistry
     from src.backend.prediction.inference import ResidualLSTMRuntime
@@ -249,11 +284,7 @@ def compare_checkpoint(checkpoint, test_csv, out, station_id="0074647403",
     frame = pd.read_csv(BytesIO(test_bytes))
     registry_bytes = Path(registry_path).read_bytes()
     # Load the same captured registry bytes used for its checksum below.
-    entries = json.loads(registry_bytes)
-    match = [e for e in entries if e["station_id"] == station_id]
-    if len(match) != 1:
-        raise ValueError(f"Expected exactly one app model for station {station_id}")
-    config = StationModelRegistry.from_json(registry_path, artifact_root=ROOT).get(station_id)
+    config = StationModelRegistry.from_json(registry_path, artifact_root=ROOT).get(station_id, model_id)
     if Path(registry_path).read_bytes() != registry_bytes:
         raise ValueError("Registry changed while comparison was loading")
     runtime = ResidualLSTMRuntime(config, device=str(device))
@@ -270,7 +301,8 @@ def compare_checkpoint(checkpoint, test_csv, out, station_id="0074647403",
             raise ValueError("Local checkpoint differs from just-trained model; refusing misleading provenance")
     serving_frame = None
     observations_sha = None
-    observations_file, expected = comparison_observations_source(test_csv)
+    required_columns = ["timestamp_utc", *serving_saved["feature_columns"], *serving_saved["target_columns"]]
+    observations_file, expected = comparison_observations_source(test_csv, required_columns)
     if observations_file is not None:
         observations_bytes = observations_file.read_bytes()
         observations_sha = sha256(observations_bytes).hexdigest()
@@ -293,6 +325,7 @@ def compare_checkpoint(checkpoint, test_csv, out, station_id="0074647403",
                     candidate_checkpoint=str(checkpoint.resolve()), candidate_sha256=sha256(model_bytes).hexdigest(),
                     candidate_preprocessing_sha256=sha256(preprocessing_bytes).hexdigest(),
                     serving_model_version=config.model_version, serving_checkpoint=str(config.model_path),
+                    reference_model_id=config.model_id, reference_model_name=config.name,
                     serving_sha256=runtime.artifact_hashes[0], serving_preprocessing_sha256=runtime.artifact_hashes[1],
                     registry_sha256=sha256(registry_bytes).hexdigest(), test_csv=str(test_csv.resolve()),
                     test_csv_sha256=sha256(test_bytes).hexdigest(), device=str(device), coverage=coverage,
@@ -300,29 +333,43 @@ def compare_checkpoint(checkpoint, test_csv, out, station_id="0074647403",
                     candidate_sequence_length=saved["sequence_length"], serving_sequence_length=config.sequence_length,
                     threshold_mm=200, threshold_comparison="strict greater than", automatic_promotion=False)
     (out / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n")
-    write_report(out, metrics, summary, coverage)
-    print("\nSo sánh model mới với app (cùng mẫu, đơn vị mm):")
+    reference_name = "Model B" if config.model_id == "model_b" else (config.name or config.model_id)
+    write_report(out, metrics, summary, coverage, reference_name=reference_name)
+    print(f"\nSo sánh model mới với {reference_name} (cùng mẫu, đơn vị mm):")
     print(metrics.round(3).to_string(index=False))
+    for name, label in (("serving", reference_name), ("candidate", "Model mới")):
+        row = summary[name]
+        print(f"{label}: {row['above_200']}/{row['n_predictions']} lỗi >200 mm "
+              f"({row['above_200_pct']:.2f}%); RMSE gộp {row['pooled_rmse_mm']:.2f} mm; "
+              f"MAE {row['mae_mm']:.2f} mm")
+    print(summary["selection_assessment"])
+    print(f"Chênh lệch: {summary['delta_above_200_count']:+d} lỗi >200 mm; "
+          f"RMSE gộp {summary['delta_pooled_rmse_mm']:+.2f} mm (mới − tham chiếu).")
     print(summary["assessment"])
     print(f"Báo cáo: {out / 'comparison.md'}")
     return dict(status="completed", output_dir=out, metrics=metrics, summary=summary)
 
 
 def run_post_training_comparison(trainer, test_csv, run_id, station_id="0074647403",
-                                 registry_path=DEFAULT_REGISTRY, output_root=DEFAULT_OUTPUT):
+                                 registry_path=DEFAULT_REGISTRY, output_root=DEFAULT_OUTPUT,
+                                 model_id="model_b"):
     """A comparison failure is explicit but does not invalidate completed training."""
     out = Path(output_root) / f"{run_id}_{uuid4().hex[:8]}"
     try:
         return compare_checkpoint(trainer.checkpoint_path, test_csv, out, station_id,
                                   registry_path, trainer.device, candidate=trainer.model,
-                                  candidate_run_id=run_id)
+                                  candidate_run_id=run_id, model_id=model_id)
     except Exception as exc:
-        out.mkdir(parents=True, exist_ok=True)
         error = dict(status="failed", error_type=type(exc).__name__, error=str(exc),
                      candidate_checkpoint=str(trainer.checkpoint_path), automatic_promotion=False)
-        (out / "comparison_error.json").write_text(json.dumps(error, ensure_ascii=False, indent=2) + "\n")
         print(f"Đã train xong nhưng so sánh chưa hoàn tất: {type(exc).__name__}: {exc}")
-        print(f"Chi tiết: {out / 'comparison_error.json'}")
+        try:
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "comparison_error.json").write_text(json.dumps(error, ensure_ascii=False, indent=2) + "\n")
+        except OSError as report_error:
+            print(f"Không ghi được báo cáo lỗi: {report_error}. Checkpoint training vẫn được giữ.")
+        else:
+            print(f"Chi tiết: {out / 'comparison_error.json'}")
         return dict(status="failed", output_dir=out, metrics=None, summary=None)
 
 
@@ -336,6 +383,12 @@ def mlflow_comparison_metrics(result):
     for name in ("candidate", "serving"):
         values[f"comparison/{name}/mean_horizon_rmse_mm"] = result["summary"][name]["mean_horizon_rmse_mm"]
         values[f"comparison/{name}/above_200_pct"] = result["summary"][name]["above_200_pct"]
+        values[f"comparison/{name}/above_200_count"] = result["summary"][name]["above_200"]
+        values[f"comparison/{name}/pooled_rmse_mm"] = result["summary"][name]["pooled_rmse_mm"]
+    for key in ("delta_above_200_count", "delta_pooled_rmse_mm", "above_200_reduction_pct"):
+        if result["summary"][key] is not None:
+            values[f"comparison/{key}"] = result["summary"][key]
+    values["comparison/better_than_reference"] = int(result["summary"]["better_than_reference"])
     return values
 
 
@@ -346,11 +399,12 @@ def main():
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--station-id", default="0074647403")
     parser.add_argument("--registry", type=Path, default=DEFAULT_REGISTRY)
+    parser.add_argument("--reference-model-id", default="model_b")
     parser.add_argument("--device", default="cpu")
     args = parser.parse_args()
     torch.set_num_threads(2)
     compare_checkpoint(args.checkpoint, args.dataset_dir / "test.csv", args.output_dir,
-                       args.station_id, args.registry, args.device)
+                       args.station_id, args.registry, args.device, model_id=args.reference_model_id)
 
 
 if __name__ == "__main__":

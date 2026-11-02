@@ -13,7 +13,8 @@ import torch
 from sklearn.preprocessing import StandardScaler
 
 from src.ai.comparison import (
-    comparison_observations_source, paired_metrics, run_post_training_comparison, write_report,
+    compare_checkpoint, comparison_observations_source, paired_metrics,
+    run_post_training_comparison, write_report,
 )
 
 
@@ -51,6 +52,105 @@ def example():
 
 
 class ComparisonTests(TestCase):
+    def test_verdict_prioritizes_large_errors_then_pooled_rmse(self):
+        frame, new, app = example()
+        _, summary, _, _ = paired_metrics(
+            frame, LastLevel(new, [199., 199.]), new,
+            LastLevel(app, [0., 201.]), app,
+        )
+        self.assertTrue(summary["better_than_reference"])
+        self.assertEqual(summary["delta_above_200_count"], -3)
+        self.assertGreater(summary["delta_pooled_rmse_mm"], 0)
+        self.assertEqual(summary["above_200_reduction_pct"], 100)
+        _, tied, _, _ = paired_metrics(
+            frame, LastLevel(new, [2., 2.]), new,
+            LastLevel(app, [1., 1.]), app,
+        )
+        self.assertEqual(tied["delta_above_200_count"], 0)
+        self.assertFalse(tied["better_than_reference"])
+
+    def test_masked_subset_labels_are_not_restored_from_reference(self):
+        frame, new, app = example()
+        subset = frame.copy()
+        subset.loc[5, new["target_columns"]] = np.nan
+        _, summary, points, coverage = paired_metrics(
+            subset, LastLevel(new, [0., 0.]), new,
+            LastLevel(app, [0., 0.]), app, serving_frame=frame,
+        )
+        self.assertEqual(coverage["common_anchors"], 2)
+        self.assertNotIn(5, pd.to_datetime(points.anchor_utc).dt.hour.tolist())
+        self.assertIsNone(summary["above_200_reduction_pct"])
+
+    def test_reference_selection_uses_model_id_and_parent_targets(self):
+        import joblib
+        from src.ai.lstm import ResidualLSTM
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            parent, subset = root / "o24", root / "o2"
+            parent.mkdir()
+            subset.mkdir()
+            features = ["water_level_depth", "water_level_missing", "flood_season"]
+            targets = [f"target_water_level_plus_{h * 60}m" for h in (1, 3, 6, 12, 24)]
+            selected = targets[2:4]
+            frame = pd.DataFrame({
+                "timestamp_utc": pd.date_range("2026-01-01", periods=8, freq="h", tz="UTC"),
+                "water_level_depth": np.arange(100., 108.),
+                "water_level_missing": 0., "flood_season": 0.,
+            })
+            for target in targets:
+                frame[target] = frame.water_level_depth
+            frame.to_csv(parent / "test.csv", index=False)
+            projected = frame[["timestamp_utc", *features, *selected]].copy()
+            projected.loc[6:, selected] = np.nan
+            projected.to_csv(subset / "test.csv", index=False)
+            (subset / "manifest.json").write_text(json.dumps({"parent_dataset": "../o24"}))
+            fs = StandardScaler().fit(frame[features].to_numpy())
+
+            def artifact(path, columns):
+                ts = StandardScaler().fit(frame[columns].to_numpy())
+                model = ResidualLSTM(
+                    input_size=3, hidden_size=3, num_layers=1, output_size=len(columns),
+                    dropout=0., level_feature_index=0,
+                    persistence_scale=(fs.scale_[0] / ts.scale_).tolist(),
+                    persistence_offset=((fs.mean_[0] - ts.mean_) / ts.scale_).tolist(),
+                )
+                torch.save(model.state_dict(), path)
+                joblib.dump(dict(feature_columns=features, target_columns=columns,
+                                 feature_scaler=fs, target_scaler=ts, sequence_length=2,
+                                 missing_scaled_value=0.), path.with_suffix(".preprocessing.joblib"))
+
+            reference = root / "reference.pt"
+            candidate = root / "candidate.pt"
+            artifact(reference, targets)
+            artifact(candidate, selected)
+            entries = []
+            for model_id in ("legacy", "model_b", "three_station"):
+                entries.append(dict(
+                    station_id="water", model_id=model_id, name=model_id,
+                    is_default=model_id == "legacy", model_type="residual_lstm",
+                    model_version=model_id, model_path=str(reference),
+                    preprocessing_path=str(reference.with_suffix(".preprocessing.joblib")),
+                    sequence_length=2, rain_station_ids=[], water_lags_hours=[],
+                    forecast_horizons_minutes=[60, 180, 360, 720, 1440],
+                    feature_schema_version="test", model_parameters=dict(
+                        hidden_size=3, num_layers=1, dropout=0., input_dropout=0., head_dropout=0.),
+                ))
+            registry = root / "registry.json"
+            registry.write_text(json.dumps(entries))
+            result = compare_checkpoint(candidate, subset / "test.csv", root / "report",
+                                        station_id="water", registry_path=registry, model_id="model_b")
+            self.assertEqual(result["status"], "completed")
+            manifest = json.loads((root / "report/manifest.json").read_text())
+            self.assertEqual(manifest["reference_model_id"], "model_b")
+            self.assertEqual(manifest["coverage"]["common_anchors"], 5)
+            self.assertEqual(manifest["coverage"]["common_targets"], selected)
+            self.assertIn("Model B", (root / "report/comparison.md").read_text())
+            self.assertEqual(result["summary"]["candidate"]["above_200"], 0)
+            with self.assertRaises(KeyError):
+                compare_checkpoint(candidate, subset / "test.csv", root / "unknown",
+                                   station_id="water", registry_path=registry, model_id="unknown")
+
     def test_mixed_cadences_compare_timestamps_using_each_models_own_history(self):
         frame, new, app = example()
         hourly = pd.concat([frame] * 12, ignore_index=True)
@@ -156,6 +256,14 @@ class ComparisonTests(TestCase):
             self.assertEqual(result["status"], "failed")
             self.assertFalse(json.loads((result["output_dir"] / "comparison_error.json").read_text())["automatic_promotion"])
 
+    def test_report_write_failure_does_not_raise_after_training(self):
+        with tempfile.TemporaryDirectory() as directory:
+            trainer = SimpleNamespace(checkpoint_path=Path(directory) / "best.pt", device="cpu", model=None)
+            with patch("src.ai.comparison.compare_checkpoint", side_effect=ValueError("missing reference")), \
+                 patch.object(Path, "mkdir", side_effect=PermissionError("read-only reports")):
+                result = run_post_training_comparison(trainer, "test.csv", "run1", output_root=directory)
+            self.assertEqual(result["status"], "failed")
+
     def test_training_entrypoint_calls_comparison_after_training(self):
         from src.ai import train
 
@@ -179,6 +287,7 @@ class ComparisonTests(TestCase):
             def compare(*a, **kw):
                 order.append("compare")
                 self.assertEqual(a[1], root / "test.csv")
+                self.assertEqual(kw["model_id"], "model_b")
                 return dict(status="failed", output_dir=root, metrics=None, summary=None)
 
             with patch.object(train.parser, "parse_args", return_value=args), \

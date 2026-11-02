@@ -1,0 +1,123 @@
+{
+  "0074647402": {
+    "station_index": 0,
+    "name": "Cảng Cá Thuận An",
+    "cluster": 1,
+    "latitude": 16.554968,
+    "longitude": 107.63527,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "coastal_lagoon",
+    "measured_quantity": "unknown"
+  },
+  "0074647403": {
+    "station_index": 1,
+    "name": "Dã Viên",
+    "cluster": 1,
+    "latitude": 16.458944,
+    "longitude": 107.571361,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "river",
+    "measured_quantity": "unknown"
+  },
+  "0074647404": {
+    "station_index": 2,
+    "name": "Trạm Tứ Phú (Sông Bồ)",
+    "cluster": 1,
+    "latitude": 16.524389,
+    "longitude": 107.483889,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "river",
+    "measured_quantity": "unknown"
+  },
+  "0074647606": {
+    "station_index": 3,
+    "name": "Cầu Huỳnh Liên-Văn Trạch Hòa(Sông Ô Lâu)",
+    "cluster": 0,
+    "latitude": 16.576556,
+    "longitude": 107.347889,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "river",
+    "measured_quantity": "unknown"
+  },
+  "0074647705": {
+    "station_index": 4,
+    "name": "Trạm Ngã Ba Sình (Sông Hương)",
+    "cluster": 1,
+    "latitude": 16.528167,
+    "longitude": 107.574,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "river_confluence",
+    "measured_quantity": "unknown"
+  },
+  "0074648201": {
+    "station_index": 5,
+    "name": "Cảng Tư Hiền",
+    "cluster": 1,
+    "latitude": 16.351933,
+    "longitude": 107.911435,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "coastal_lagoon",
+    "measured_quantity": "unknown"
+  },
+  "0097203841": {
+    "station_index": 6,
+    "name": "Cầu Hòa Xuân 1(Sông Ô Lâu)",
+    "cluster": 2,
+    "latitude": 16.673889,
+    "longitude": 107.417806,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "river",
+    "measured_quantity": "unknown"
+  },
+  "750043": {
+    "station_index": 7,
+    "name": "Phú Xuân",
+    "cluster": 0,
+    "latitude": 16.480762,
+    "longitude": 107.567045,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "inundation_tower_provisional",
+    "measured_quantity": "unknown"
+  },
+  "750044": {
+    "station_index": 8,
+    "name": "An Cựu",
+    "cluster": 2,
+    "latitude": 16.461126,
+    "longitude": 107.607593,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "inundation_tower_provisional",
+    "measured_quantity": "unknown"
+  },
+  "751117": {
+    "station_index": 9,
+    "name": "Thôn Trung Làng, xã Quảng Thái",
+    "cluster": 2,
+    "latitude": 16.638889,
+    "longitude": 107.429722,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "inundation_tower_provisional",
+    "measured_quantity": "unknown"
+  },
+  "751118": {
+    "station_index": 10,
+    "name": "Thôn Phò Nam A, xã Quảng Thọ",
+    "cluster": 0,
+    "latitude": 16.54,
+    "longitude": 107.520278,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "inundation_tower_provisional",
+    "measured_quantity": "unknown"
+  }
+}

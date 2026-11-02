@@ -1,0 +1,78 @@
+{
+  "status": "complete",
+  "format_version": 2,
+  "created_at": "2026-10-27T08:18:22.724741+00:00",
+  "sequence_length": 96,
+  "output_size": 2,
+  "horizons_hours": [
+    6,
+    12
+  ],
+  "station_count": 11,
+  "rain_station_count": 55,
+  "sample_count": 82861,
+  "hourly_rows": 8031,
+  "default_fold": "fixed",
+  "default_rain_stations": "nham+bach_ma+ho_hoa_my+hong_thai",
+  "default_input_size": 68,
+  "default_time_features": "none",
+  "time_feature_modes": [
+    "none",
+    "hour",
+    "day_of_year",
+    "all"
+  ],
+  "stored_calendar_features": [
+    "flood_season",
+    "hour_sin",
+    "hour_cos",
+    "day_sin",
+    "day_cos"
+  ],
+  "cutoff": "2026-09-15T00:00:00+07:00",
+  "test_status": "exploratory; post-cutoff data have been examined previously",
+  "weather_grid_id": "ecmwf_ifs:16.274164:107.264960",
+  "forecast_release_lag_hours": 6,
+  "max_forecast_age_hours": 24,
+  "forecast_availability": "retrospective assumed availability +6h unless observed operational evidence exists; hindcasts stay labelled",
+  "observation_availability": "retrospective hourly observations; receipt by anchor not proven for all observations",
+  "selection": "EDA1 clustered and Stage4 eligible; groups derived before cutoff but not before every inner validation fold",
+  "source_sha256": {
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/feature_ablation/comprehensive_v2/execution_manifest.json": "ed3604a67ba7e6abbfebb1dfe62cb75880e9fcacf6673de7628be3e3ea2c53cc",
+    "/home/my_ubuntu/projects/hydrology/reports/station_analysis/tables/cluster_assignments.csv": "d3402f1191b2acae31fb11d65a54a385b97dcb7fe8f733c042be745e9149764d",
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/inventory/tables/observation_availability.parquet": "094c4acca1ddcec040a90ec2e8fb2d2d4573a090f031caa3fd89767e208fb038",
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/rainfall/tables/hourly_rainfall_standard.parquet": "1b5dde12903302a9393e6474121b409d03479bdfa3291011bc15969b0abe4a9c",
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/rainfall/tables/hourly_rainfall_strict.parquet": "a9e16c504f7bdc9b7b1c2b481fde3221282a3f987d9ca220c62effce92fb8db4",
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/inventory/snapshots/20261026T035126Z_7f98ea8a/stations.parquet": "e4cb7e128eb49adb0a3c322f2a70dbf28659d5dc217268628312d5b5d81fb645",
+    "/home/my_ubuntu/projects/hydrology/reports/station_analysis/phase2/stage3b_spatial_weather/20261027T015904Z_c19c0805/stage4_spatial_ablation_spec.json": "c5f7c88962bcd67ffd06429c61bc774b24d2273018fdbd87db4fa6cbdea779f3",
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/spatial_weather/analyses/20261027T015904Z_c19c0805/tables/forecast_run_integrity.parquet": "ff44461b7c89a0b4d89a0b0579b64dee1029c996997a20686382daf8a94a28fe",
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/spatial_weather/analyses/20261027T015904Z_c19c0805/points.parquet": "d831aa6e803e54ae9c50b5678dd855c7785855b609fa54cdcef8d8b84fb894a9",
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/feature_ablation/comprehensive_v2/eligibility.json": "2f9614e737b37930e18d342a679d88bbcdcdcdbbccfcdf6f98553238d0d06639"
+  },
+  "source_code_sha256": {
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/__init__.py": "46efa8c3116588dfc1c048e8a2b953118f6aa33a2247e01b6f135794c40883f1",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/reader.py": "fe6eaedf1e91582c46f754cdb1e2c750138d759942498ae67762c7011b79eb50",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/preprocessing.py": "5b6f230ef1cf4d77382e959cf42a25fbdf4b7f8c6c4bafc892d1771ca5ef69d5",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/builder.py": "5a8ae9e0135039493ebe1e74a0995dc2dacdcacc70ee188144667729f62e38ed",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/validation.py": "fec51ffea024eb548286161b55f939bc62b4a4970776edbc9bb3f11883c74c6f"
+  },
+  "artifact_sha256": {
+    "REPORT.md": "5d7f8daed65d40e6aa7f53064573907285677356c2660f144bbac740543f5c69",
+    "calendar.parquet": "31ddea952f210a56f64971f1f702f32a68bec467e4dd69daa4485b78a49e1d0f",
+    "config.json": "eb9ba43cfb94b8338d7f15f53a24ee2ad0af8360665ccef1715e091834c926a6",
+    "eda1_station_groups.csv": "f0dccec418c87cf19d5c42a202a037c6c7932f94b3afef2fb04c66513e1ee5f0",
+    "feature_schema.json": "359e519ecf445ebc87f682e95e0bad9467ebdbd15e6da0466b58281a161f2434",
+    "normalizers.json": "abebf030d430a87be70ea84d3ca05e800992da076bdf851e6b374855ef8478fa",
+    "rain_station_catalog.parquet": "7c8d64359b472abcda514ffa4ea4e6f6c4f389ddd8149950c94964935630fee6",
+    "rain_summary.csv": "b0d1f882eb46a37a89c704b0804f5f0cc90a2a0d65f9aaf1f95d4408889b59ab",
+    "rainfall.parquet": "7746a991809b21d968e7c3b210be4f1a18870d658e9d1b1f45731c424be6a3d6",
+    "rainfall_hourly_standard.parquet": "8d3c44d24fb33b560c0a1da812b84ac6e6027a131939f5f9a7cb609e5d0a894d",
+    "rainfall_hourly_strict.parquet": "bad9e8c3986c9a3ec54df1fd52efd7c6fb86a30d2a9e6d123e5a9319f060526a",
+    "samples.parquet": "7f340abaaeac8a1378ca5010164796c2520f4f0d55d06f651a7f920e2c23e4de",
+    "station_mapping.json": "faea38ec1a1bf019ddb6b087971d33d00ce6049dccf262938ec62764c3e53b62",
+    "station_summary.csv": "62a47f18aef70b2f3a4aaafb62327b1ad59a6f44f60f3c804258a8963e74f1ad",
+    "validation.json": "7a528964e5d90c20a06b514cce2ec43458cbb90b9fdb750d900e2f225a130d0b",
+    "water.parquet": "32e7194e30025825b2628845da8c2fa99f66350776acae5f099fb05416b84a2f",
+    "weather.parquet": "5402becdfe3e18636846920dfdb22750caf2e6f96d28ea5a6be672ba5a7784ef"
+  }
+}

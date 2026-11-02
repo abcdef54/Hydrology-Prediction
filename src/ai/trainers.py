@@ -1,6 +1,7 @@
 """Training and evaluation for the sequence forecasting models."""
 
 import math
+import json
 from pathlib import Path
 from typing import Protocol
 import joblib
@@ -14,8 +15,13 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from src.ai.losses import HorizonWeightedMSE, HorizonWeightedTailLoss, validate_correction_penalty
+from src.ai.change_objective import ChangeRiskLoss
+from src.ai.change_diagnostics import ChangeDiagnostics
 from src.ai.metrics import evaluate_all
 from src.ai.models import LSTM, MeanEmbeddingForecastLSTMWithAdapter, ResidualLSTM
+from src.ai.residual_sequence import ResidualSequence
+from src.ai.sequence_checkpoint import model_spec, save_model_metadata
+from src.ai.evaluation_summary import station_error_table
 
 
 class SequenceTrainer(Protocol):
@@ -46,12 +52,16 @@ class LSTMTrainer:
         checkpoint_metric: str = "val_loss",
         validation_threshold_mm: float = 200.0,
         gradient_clip: float = 1.0,
+        dynamics=None,
+        skip_test: bool = False,
     ) -> None:
         if gradient_accumulation < 1:
             raise ValueError("gradient_accumulation must be at least 1")
         if not math.isfinite(gradient_clip) or gradient_clip <= 0:
             raise ValueError("gradient_clip must be finite and positive")
         self.gradient_clip = gradient_clip
+        self.dynamics = dynamics
+        self.skip_test = skip_test
 
         if checkpoint_metric not in ("val_loss", "large_error_rate", "rmse"):
             raise ValueError("Unknown checkpoint metric")
@@ -108,11 +118,13 @@ class LSTMTrainer:
         self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
         self.print_settings()
         self.prepare_checkpoint()
+        if self.dynamics is not None:
+            self.dynamics.run(self, 0)
 
         epoch = self.train_epochs()
         self.restore_best_checkpoint()
         self.save_preprocessing()
-        results = self.test()
+        results = None if self.skip_test else self.test()
         mlflow.log_metrics(
             {
                 "epochs_completed": epoch,
@@ -125,6 +137,9 @@ class LSTMTrainer:
                         for key, value in getattr(self, "best_validation_metrics", {}).items()}
         if best_metrics:
             mlflow.log_metrics(best_metrics)
+        if self.skip_test:
+            mlflow.set_tag('test/status', 'skipped_by_request')
+            return self.model
         run_name = f"{self.checkpoint_name}_{self.horizon}_{self.feature_set}"
         metrics = {}
         for target_name, target_metrics in results.iterrows():
@@ -144,29 +159,39 @@ class LSTMTrainer:
             raise ValueError("Training requires at least one epoch")
         final_epoch = start_epoch + num_epochs - 1
         for epoch in tqdm(range(start_epoch, final_epoch + 1), desc=f"Training {type(self.model).__name__}"):
+            epoch_lr = self.optimizer.param_groups[0]['lr'] if isinstance(self.optimizer, Optimizer) else None
             train_loss = self.train_epoch(epoch)
             val_loss = self.evaluate_loss(self.eval_dataloader)
             print(f"Epoch {epoch}/{final_epoch} - Train Loss: {train_loss:.4f} - Val Loss: {val_loss:.4f}")
             metrics = {"train_loss": train_loss, "val_loss": val_loss}
+            metrics.update(getattr(self, 'last_train_components', {}))
+            if epoch_lr is not None:
+                metrics['learning_rate_epoch'] = epoch_lr
             metrics.update(getattr(self, "last_validation_metrics", {}))
             if self.last_validation_metrics:
                 print(f"Validation >{self.validation_threshold_mm:g} mm: "
                       f"{self.last_validation_metrics['val/large_error_count']:.0f} "
                       f"({self.last_validation_metrics['val/large_error_pct']:.2f}%); "
-                      f"RMSE: {self.last_validation_metrics['val/rmse_mm']:.2f} mm")
+                      f"RMSE: {self.last_validation_metrics['val/rmse_mm']:.2f} mm"
+                      + (f"; MAE: {self.last_validation_metrics['val/mae_mm']:.2f} mm"
+                         if 'val/mae_mm' in self.last_validation_metrics else ''))
             if stage is not None:
                 metrics["training_stage"] = stage
             mlflow.log_metrics(metrics, step=epoch)
             self.record_validation(epoch, val_loss)
+            if getattr(self, 'dynamics', None) is not None:
+                stopping = bool(self.early_stopping and self.epochs_without_improvement >= self.early_stopping)
+                if epoch % self.dynamics.every == 0 or epoch == final_epoch or stopping:
+                    self.dynamics.run(self, epoch)
             if self.early_stopping and self.epochs_without_improvement >= self.early_stopping:
                 print(f"Early stopping triggered after epoch {epoch}.")
                 break
         return epoch
 
-    def save_preprocessing(self) -> Path:
+    def save_preprocessing(self, checkpoint=None, *, announce=True) -> Path:
         """Keep preprocessing beside the local checkpoint; no model upload to MLflow."""
         dataset = self.train_dataloader.dataset
-        preprocessing_path = self.checkpoint_path.with_suffix(".preprocessing.joblib")
+        preprocessing_path = Path(checkpoint or self.checkpoint_path).with_suffix(".preprocessing.joblib")
         preprocessing_path.parent.mkdir(parents=True, exist_ok=True)
         joblib.dump(
             {
@@ -180,11 +205,117 @@ class LSTMTrainer:
                 "raw_missing_value": getattr(dataset.feature_scaler, "hydrology_raw_missing_value_", None),
                 "rain_station_ids": getattr(dataset, "rain_station_ids", []),
                 "rain_station_combination": getattr(dataset, "rain_station_combination", ""),
+                "model_spec": model_spec(self.model),
+                "regional": getattr(dataset, 'regional_metadata', None),
+                "forecast_history_policy": getattr(self.model, 'forecast_history_policy', 'all_timesteps'),
             },
             preprocessing_path,
         )
-        print(f"Local preprocessing: {preprocessing_path}")
+        if announce:
+            print(f"Local preprocessing: {preprocessing_path}")
         return preprocessing_path
+
+    def save_checkpoint(self, checkpoint=None):
+        checkpoint = Path(checkpoint or self.checkpoint_path)
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        torch.save(self.model.state_dict(), checkpoint)
+        save_model_metadata(self.model, checkpoint)
+        if isinstance(self.loss_func, ChangeRiskLoss):
+            spec = self.loss_func.specification()
+            if getattr(self.model, 'event_aware', False):
+                spec['rise_classification'] = dict(loss='BCEWithLogitsLoss',
+                    weight=self.rise_classification_weight, positive_weight=self.rise_positive_weight,
+                    threshold_mm=self.loss_func.threshold_mm, comparison='strict_greater_than')
+            metadata = getattr(self.train_dataloader.dataset, 'regional_metadata', {})
+            spec['training_provenance'] = {key: metadata[key] for key in
+                ('dataset_path', 'dataset_manifest_sha256', 'fold', 'station_mapping',
+                 'target_horizons', 'training_selection') if key in metadata}
+            checkpoint.with_suffix('.loss.json').write_text(json.dumps(spec, indent=2))
+
+    def prepare_batch(self, batch, dataset, *, need_physical=True, need_mean=True):
+        if isinstance(batch, dict):
+            inputs = {'x': batch['x'].to(self.device, non_blocking=True)}
+            if getattr(self.model, 'num_stations', 0):
+                inputs['station_ids'] = batch['station_ids'].to(self.device, non_blocking=True)
+                if isinstance(self.model, ResidualSequence) and getattr(dataset, 'station_ids_validated', False):
+                    inputs['_validate_station_ids'] = False
+            scale = batch['target_scale'].to(self.device, non_blocking=True) if need_physical else None
+            mean = batch['target_mean'].to(self.device, non_blocking=True) if need_mean else None
+            return inputs, batch['y'].to(self.device, non_blocking=True), scale, mean
+        inputs, targets = batch
+        scaler = getattr(dataset, 'target_scaler', None)
+        scale = None if scaler is None else torch.as_tensor(scaler.scale_, device=self.device, dtype=torch.float64)
+        mean = None if scaler is None else torch.as_tensor(getattr(scaler, 'mean_', torch.zeros_like(scale)), device=self.device, dtype=torch.float64)
+        return inputs.to(self.device, non_blocking=True), targets.to(self.device, non_blocking=True), scale, mean
+
+    @staticmethod
+    def predict_batch(predictor, inputs):
+        return predictor(**inputs) if isinstance(inputs, dict) else predictor(inputs)
+
+    def data_loss(self, predictions, targets, scales, inputs=None, *, apply_rise_weight=True):
+        if isinstance(self.loss_func, ChangeRiskLoss):
+            if not isinstance(inputs, dict) or 'station_ids' not in inputs:
+                raise ValueError('Change loss requires station IDs')
+            baseline = self.predict_batch(self.model.persistence, inputs)
+            return self.loss_func(predictions, targets, baseline, inputs['station_ids'],
+                                  apply_rise_weight=apply_rise_weight)
+        if isinstance(self.loss_func, HorizonWeightedTailLoss):
+            return self.loss_func(predictions, targets, target_scales=scales)
+        return self.loss_func(predictions, targets)
+
+    def rise_classification_loss(self, logits, targets, scales, inputs):
+        baseline = self.predict_batch(self.model.persistence, inputs)
+        labels = (((targets-baseline.detach())*scales) > self.loss_func.threshold_mm).to(logits.dtype)
+        pos = torch.as_tensor(self.rise_positive_weight, dtype=logits.dtype, device=logits.device)
+        cells = torch.nn.functional.binary_cross_entropy_with_logits(logits, labels, pos_weight=pos, reduction='none')
+        return self.loss_func.reduce_per_horizon(cells)
+
+    def new_change_diagnostics(self, dataset):
+        if (not getattr(dataset, 'regional_metadata', None) or not hasattr(self.model, 'persistence')
+                or not getattr(self.model, 'num_stations', 0)):
+            return None
+        return ChangeDiagnostics(len(dataset.regional_metadata['station_mapping']),
+            dataset.num_targets, self.device,
+            getattr(self.loss_func, 'threshold_mm', self.validation_threshold_mm))
+
+    def update_change_diagnostics(self, meter, predictions, targets, scales, inputs, *, apply_rise_weight=True):
+        if meter is None:
+            return
+        baseline = self.predict_batch(self.model.persistence, inputs)
+        elements = None
+        if isinstance(self.loss_func, ChangeRiskLoss):
+            elements = self.loss_func.elements(predictions, targets, baseline, inputs['station_ids'],
+                                               apply_rise_weight=apply_rise_weight)
+            elements = elements*self.loss_func.weights.to(elements)
+        meter.update(predictions, targets, baseline, scales, inputs['station_ids'], elements)
+
+    def save_change_diagnostics(self, meter, dataset, prefix):
+        if meter is None:
+            return
+        table = meter.table(dataset.regional_metadata['station_mapping'], dataset.target_cols)
+        self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        table.to_csv(self.checkpoint_path.with_suffix(f'.{prefix}_change_metrics.csv'), index=False)
+        metrics = {}
+        fields = ('rmse_mm', 'mae_mm', 'persistence_skill', 'extreme_rmse_mm',
+                  'extreme_pred_abs_mm', 'extreme_actual_abs_mm', 'rise_bias_mm',
+                  'rise_under_rate', 'rise_recall', 'rise_false_alarm_ratio',
+                  'normalized_sse_share', 'objective_share', 'large_errors',
+                  'correction_abs_mm', 'actual_abs_change_mm', 'rise_false_positive_rate')
+        for _, row in table.iterrows():
+            for field in fields:
+                value = float(row[field])
+                if math.isfinite(value):
+                    metrics[f'{prefix}/{row.station_id}/{row.target}/{field}'] = value
+        # Integrate with existing epoch-level MLflow logging; retain readable CSV.
+        if prefix == 'val':
+            self.last_validation_metrics.update(metrics)
+        elif mlflow.active_run():
+            mlflow.log_metrics(metrics)
+        if prefix in ('val', 'test'):
+            print(f'Change diagnostics ({prefix}):')
+            print(table[['station', 'target', 'rmse_mm', 'persistence_skill',
+                'extreme_actual_abs_mm', 'extreme_pred_abs_mm', 'rise_recall',
+                'rise_false_alarm_ratio']].to_string(index=False, float_format=lambda x: f'{x:.3f}'))
 
     def print_settings(self) -> None:
         dataset = self.train_dataloader.dataset
@@ -228,27 +359,45 @@ class LSTMTrainer:
     def train_epoch(self, epoch: int) -> float:
         self.model.train()
         batch_losses = []
-        for batch_number, (inputs, targets) in enumerate(
+        regression_losses, classification_losses = [], []
+        meter = self.new_change_diagnostics(self.train_dataloader.dataset)
+        for batch_number, batch in enumerate(
             tqdm(self.train_dataloader, desc=f"Epoch {epoch}", leave=False)
         ):
-            inputs, targets = inputs.to(self.device), targets.to(self.device)
+            inputs, targets, scales, _ = self.prepare_batch(batch, self.train_dataloader.dataset,
+                need_physical=isinstance(self.loss_func, (HorizonWeightedTailLoss, ChangeRiskLoss)) or meter is not None, need_mean=False)
             if batch_number % self.gradient_accumulation == 0:
                 self.optimizer.zero_grad()
 
-            predictions = self.model(inputs)
-            data_loss = self.loss_func(predictions, targets)
+            if getattr(self.model, 'event_aware', False):
+                predictions, aux = self.model(**inputs, return_diagnostics=True)
+            else:
+                predictions, aux = self.predict_batch(self.model, inputs), None
+            data_loss = self.data_loss(predictions, targets, scales, inputs)
             objective = self.training_loss(predictions, inputs, data_loss)
+            if aux is not None:
+                classification = self.rise_classification_loss(aux['rise_logits'], targets, scales, inputs)
+                objective = objective + self.rise_classification_weight*classification
+                regression_losses.append(data_loss.detach())
+                classification_losses.append(classification.detach())
             (objective / self.gradient_accumulation).backward()
-            batch_losses.append(data_loss.item())
+            batch_losses.append(objective.detach())
+            with torch.no_grad():
+                self.update_change_diagnostics(meter, predictions.detach(), targets, scales, inputs)
 
             last_batch = batch_number + 1 == len(self.train_dataloader)
             if (batch_number + 1) % self.gradient_accumulation == 0 or last_batch:
                 nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=getattr(self, "gradient_clip", 1.0))
                 self.optimizer.step()
 
+        self.save_change_diagnostics(meter, self.train_dataloader.dataset, 'train')
         if self.scheduler is not None:
             self.scheduler.step()
-        return sum(batch_losses) / max(1, len(batch_losses))
+        self.last_train_components = {}
+        if regression_losses:
+            self.last_train_components = {'train/regression_loss': torch.stack(regression_losses).double().mean().item(),
+                                          'train/rise_classification_loss': torch.stack(classification_losses).double().mean().item()}
+        return torch.stack(batch_losses).double().mean().item() if batch_losses else 0.
 
     def evaluate_loss(self, dataloader: DataLoader, predictor=None) -> float:
         """Score the same validation objective for a learned model or persistence."""
@@ -256,54 +405,71 @@ class LSTMTrainer:
         predictor = self.model if predictor is None else predictor
         loss_sum, element_count, row_count = 0.0, 0, 0
         squared = None
+        meter = self.new_change_diagnostics(dataloader.dataset)
         physical_squared = None
+        physical_absolute = None
         physical_bad = None
         base_sum, tail_sum = 0.0, 0.0
+        classification_sum, classification_n = 0., 0
         scaler = getattr(dataloader.dataset, "target_scaler", None)
         threshold = getattr(self, "validation_threshold_mm", 200.0)
         with torch.inference_mode():
-            for inputs, targets in dataloader:
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
-                predictions = predictor(inputs)
-                loss = self.loss_func(predictions, targets)
-                if not torch.isfinite(loss):
-                    raise ValueError("Validation loss is non-finite")
-                loss_sum += loss.item() * targets.numel()
+            for batch in dataloader:
+                inputs, targets, scales, _ = self.prepare_batch(batch, dataloader.dataset, need_mean=False)
+                if predictor is self.model and getattr(self.model, 'event_aware', False):
+                    predictions, aux = self.model(**inputs, return_diagnostics=True)
+                    classification_sum += self.rise_classification_loss(aux['rise_logits'], targets, scales, inputs).double()*len(targets)
+                    classification_n += len(targets)
+                else:
+                    predictions = self.predict_batch(predictor, inputs)
+                loss = self.data_loss(predictions, targets, scales, inputs, apply_rise_weight=False)
+                self.update_change_diagnostics(meter, predictions, targets, scales, inputs, apply_rise_weight=False)
+                loss_sum = loss_sum+loss.double()*targets.numel()
                 element_count += targets.numel()
                 row_count += len(targets)
                 errors = predictions.double() - targets.double()
-                batch_squared = errors.square().sum(dim=0).cpu()
+                batch_squared = errors.square().sum(dim=0)
                 squared = batch_squared if squared is None else squared + batch_squared
                 if isinstance(self.loss_func, HorizonWeightedTailLoss):
-                    base, tail = self.loss_func.components(predictions, targets)
-                    base_sum += base.item() * targets.numel()
-                    tail_sum += tail.item() * targets.numel()
-                if scaler is not None:
-                    scales = torch.as_tensor(scaler.scale_, device=self.device, dtype=torch.float64)
+                    base, tail = self.loss_func.components(predictions, targets, target_scales=scales)
+                    base_sum = base_sum+base.double()*targets.numel()
+                    tail_sum = tail_sum+tail.double()*targets.numel()
+                if scales is not None:
                     error_mm = errors * scales
-                    sq = error_mm.square().sum(dim=0).cpu()
-                    bad = (error_mm.abs() > threshold).sum(dim=0).cpu()
+                    sq = error_mm.square().sum(dim=0)
+                    absolute = error_mm.abs().sum(dim=0)
+                    bad = (error_mm.abs() > threshold).sum(dim=0)
                     physical_squared = sq if physical_squared is None else physical_squared + sq
+                    physical_absolute = absolute if physical_absolute is None else physical_absolute + absolute
                     physical_bad = bad if physical_bad is None else physical_bad + bad
         if element_count == 0:
             raise ValueError("Evaluation dataset has no eligible sequences")
-        self.last_validation_mse = squared / row_count
+        if not torch.isfinite(loss_sum):
+            raise ValueError('Validation loss is non-finite')
+        self.last_validation_mse = squared.cpu() / row_count
         self.last_validation_metrics = {}
+        if classification_n:
+            self.last_validation_metrics['val/rise_classification_loss'] = (classification_sum/classification_n).item()
         if physical_squared is not None:
-            self.last_validation_metrics = {
+            physical_squared, physical_bad = physical_squared.cpu(), physical_bad.cpu()
+            physical_absolute = physical_absolute.cpu()
+            self.last_validation_metrics.update({
                 "val/large_error_count": int(physical_bad.sum()),
                 "val/large_error_pct": 100 * physical_bad.sum().item() / element_count,
                 "val/rmse_mm": math.sqrt(physical_squared.sum().item() / element_count),
-            }
-            for name, sq, bad in zip(dataloader.dataset.target_cols, physical_squared, physical_bad):
+                "val/mae_mm": physical_absolute.sum().item() / element_count,
+            })
+            for name, sq, absolute, bad in zip(dataloader.dataset.target_cols, physical_squared, physical_absolute, physical_bad):
                 self.last_validation_metrics[f"val/{name}/rmse_mm"] = math.sqrt(sq.item() / row_count)
+                self.last_validation_metrics[f"val/{name}/mae_mm"] = absolute.item() / row_count
                 self.last_validation_metrics[f"val/{name}/large_error_pct"] = 100 * bad.item() / row_count
         elif getattr(self, "checkpoint_metric", "val_loss") in ("large_error_rate", "rmse"):
             raise ValueError("Physical-unit checkpoint selection requires the train-fitted target scaler")
         if isinstance(self.loss_func, HorizonWeightedTailLoss):
-            self.last_validation_metrics.update({"val/base_weighted_mse": base_sum / element_count,
-                                                  "val/tail_penalty": tail_sum / element_count})
-        return loss_sum / element_count
+            self.last_validation_metrics.update({"val/base_weighted_mse": base_sum.item() / element_count,
+                                                  "val/tail_penalty": tail_sum.item() / element_count})
+        self.save_change_diagnostics(meter, dataloader.dataset, 'val')
+        return loss_sum.item() / element_count
 
     def validation_score(self, val_loss):
         if getattr(self, "checkpoint_metric", "val_loss") == "rmse":
@@ -331,16 +497,20 @@ class LSTMTrainer:
             self.best_checkpoint_score = score
             self.best_validation_metrics = dict(getattr(self, "last_validation_metrics", {}))
             self.best_checkpoint_epoch = epoch
-            torch.save(self.model.state_dict(), self.checkpoint_path)
+            self.save_checkpoint()
             print(f"New best validation score: {score} (saving to {self.checkpoint_path})")
         elif self.best_checkpoint_epoch == 0 and self.epochs_without_improvement == 0:
-            print("Validation improved, but persistence is still the best checkpoint.")
+            initial = ("the initial event-aware model" if getattr(self.model, 'event_aware', False) else
+                       "the initial direct model" if getattr(self.model, 'prediction_mode', 'residual') == 'direct' else "persistence")
+            print(f"Validation improved, but {initial} is still the best checkpoint.")
 
     def restore_best_checkpoint(self, purpose: str = "testing") -> None:
         if self.best_checkpoint_epoch is None:
             raise ValueError("No checkpoint was selected; train for at least one epoch")
         if self.best_checkpoint_epoch == 0:
-            print("Best checkpoint: initial persistence baseline (no trained epoch beat it).")
+            initial = ("initial event-aware model" if getattr(self.model, 'event_aware', False) else
+                       "initial direct model" if getattr(self.model, 'prediction_mode', 'residual') == 'direct' else "initial persistence baseline")
+            print(f"Best checkpoint: {initial} (no trained epoch beat it).")
         else:
             print(f"Best checkpoint: epoch {self.best_checkpoint_epoch}.")
         print(f"\nLoading best checkpoint from {self.checkpoint_path} for {purpose}...")
@@ -351,11 +521,25 @@ class LSTMTrainer:
         self.model.eval()
         predictions = []
         targets = []
+        predicted_physical, actual_physical, event_outputs = [], [], []
+        meter = self.new_change_diagnostics(self.test_dataloader.dataset)
         with torch.inference_mode():
-            for inputs, batch_targets in tqdm(self.test_dataloader, desc="Testing LSTM"):
-                inputs = inputs.to(self.device)
-                predictions.append(self.model(inputs).cpu())
-                targets.append(batch_targets)
+            for batch in tqdm(self.test_dataloader, desc="Testing sequence model"):
+                inputs, batch_targets, scale, mean = self.prepare_batch(batch, self.test_dataloader.dataset)
+                if getattr(self.model, 'event_aware', False):
+                    output, aux = self.model(**inputs, return_diagnostics=True)
+                    event_outputs.append(torch.stack([aux['rise_logits'], aux['rise_probability'],
+                        aux['base_delta_normalized']*scale, aux['amplitude_normalized']*scale,
+                        aux['correction_normalized']*scale], dim=-1).cpu())
+                else:
+                    output = self.predict_batch(self.model, inputs)
+                self.update_change_diagnostics(meter, output, batch_targets, scale, inputs, apply_rise_weight=False)
+                predictions.append(output.cpu())
+                targets.append(batch_targets.cpu())
+                if isinstance(batch, dict):
+                    predicted_physical.append((output.double()*scale.double()+mean.double()).cpu())
+                    actual_physical.append((batch_targets.double()*scale.double()+mean.double()).cpu())
+        self.save_change_diagnostics(meter, self.test_dataloader.dataset, 'test')
         if not targets:
             raise ValueError("Test dataset has no eligible sequences")
 
@@ -367,10 +551,35 @@ class LSTMTrainer:
         print(f"Test Loss (MSE): {mse:.4f}")
 
         dataset = self.test_dataloader.dataset
-        predicted = dataset.target_scaler.inverse_transform(predicted_scaled)
-        observed = dataset.target_scaler.inverse_transform(target_scaled)
+        predicted = (torch.cat(predicted_physical).numpy() if predicted_physical
+                     else dataset.target_scaler.inverse_transform(predicted_scaled))
+        observed = (torch.cat(actual_physical).numpy() if actual_physical
+                    else dataset.target_scaler.inverse_transform(target_scaled))
+        if event_outputs:
+            meta = dataset.view.samples
+            horizons = dataset.target_horizons
+            event = torch.cat(event_outputs).numpy().reshape(-1, 5)
+            report = pd.DataFrame(dict(station_id=np.repeat(meta.station_id.to_numpy(),len(horizons)),
+                anchor_utc=np.repeat(meta.anchor_utc.to_numpy(),len(horizons)),
+                horizon_hours=np.tile(horizons,len(meta)), predicted_mm=predicted.ravel(),
+                actual_mm=observed.ravel(), current_mm=np.repeat(meta.water_now_mm.to_numpy(),len(horizons))))
+            for index, name in enumerate(('rise_logit','rise_probability','base_delta_mm','amplitude_mm','correction_mm')):
+                report[name] = event[:, index]
+            report.to_parquet(self.checkpoint_path.with_suffix('.test_predictions.parquet'), index=False)
         summaries = []
         for target_index, target_name in enumerate(dataset.target_cols):
+            if getattr(dataset, 'regional_metadata', None):
+                station_ids = dataset.view.samples.station_id.to_numpy()
+                for sid in sorted(set(station_ids)):
+                    mask = station_ids == sid
+                    metrics = evaluate_all(observed[mask, target_index], predicted[mask, target_index],
+                                           timestamps=dataset.timestamps.loc[mask])
+                    metrics['target'] = f'{sid}/{target_name}'
+                    summaries.append(metrics)
+                error = predicted[:, target_index]-observed[:, target_index]
+                summaries.append(dict(target=f'pooled/{target_name}', rmse=float((error**2).mean()**.5),
+                    mae=float(abs(error).mean()), n200=int((abs(error) > self.validation_threshold_mm).sum())))
+                continue
             metrics = evaluate_all(
                 observed[:, target_index],
                 predicted[:, target_index],
@@ -385,7 +594,33 @@ class LSTMTrainer:
             "peak_timing_error_minutes",
         )
         print("\n" + "=" * 45 + " TEST EVALUATION " + "=" * 45)
-        print(summary[[name for name in displayed_metrics if name in summary]].to_string())
+        if getattr(dataset, 'regional_metadata', None):
+            station_table = station_error_table(observed, predicted, dataset.view.samples.station_id.to_numpy(),
+                dataset.regional_metadata['station_mapping'], dataset.target_cols)
+            print('RMSE / MAE in mm for every station; all = both horizons pooled within that station.')
+            displayed = station_table.reset_index().drop(columns='station_id').set_index('name')
+            displayed.index.name = 'Station'
+            print(displayed.to_string(float_format=lambda value: f'{value:.3f}'))
+            print('Mean across stations = arithmetic mean of station metrics, with equal station weights.')
+            print('Pooled metrics below use all prediction errors together and are different from that mean.')
+            pooled = summary.loc[summary.index.str.startswith('pooled/'), ['rmse', 'mae']].copy()
+            pooled.index = [f"+{int(name.rsplit('_', 1)[-1][:-1])/60:g}h" for name in pooled.index]
+            print(pooled.to_string())
+            for target_name in dataset.target_cols:
+                hours = f"{int(target_name.rsplit('_', 1)[-1][:-1])/60:g}"
+                summary.loc[f'mean_across_stations/{target_name}', ['rmse', 'mae']] = [
+                    station_table.loc['mean_across_stations', f'rmse_h{hours}_mm'],
+                    station_table.loc['mean_across_stations', f'mae_h{hours}_mm']]
+            summary.loc['mean_across_stations/all_horizons', ['rmse', 'mae']] = [
+                station_table.loc['mean_across_stations', 'rmse_all_mm'],
+                station_table.loc['mean_across_stations', 'mae_all_mm']]
+            self.station_test_metrics = station_table
+            output = self.checkpoint_path.with_suffix('.test_station_metrics.csv')
+            station_table.to_csv(output)
+            summary.to_csv(self.checkpoint_path.with_suffix('.test_metrics.csv'))
+            print(f'Saved station metrics: {output}')
+        else:
+            print(summary[[name for name in displayed_metrics if name in summary]].to_string())
         print("=" * 107 + "\n")
         return summary
 
@@ -407,15 +642,18 @@ class VanillaLSTMTrainer(LSTMTrainer):
 
 
 class ResidualLSTMTrainer(LSTMTrainer):
-    def __init__(self, model: ResidualLSTM, correction_penalty: float = 0.0, **kwargs) -> None:
-        if not isinstance(model, ResidualLSTM):
+    def __init__(self, model: ResidualLSTM, correction_penalty: float = 0.0,
+                 rise_classification_weight: float = 0., rise_positive_weight: float = 1., **kwargs) -> None:
+        if not isinstance(model, (ResidualLSTM, ResidualSequence)):
             raise TypeError("ResidualLSTMTrainer requires a ResidualLSTM model")
         validate_correction_penalty(correction_penalty, kwargs["loss_func"], model.output_size)
         super().__init__(model=model, **kwargs)
         self.correction_penalty = correction_penalty
+        self.rise_classification_weight = rise_classification_weight
+        self.rise_positive_weight = rise_positive_weight
 
     def model_settings(self) -> dict[str, object]:
-        return {
+        settings = {
             "Layers": self.model.num_layers,
             "Hidden size": self.model.hidden_size,
             "LSTM dropout": self.model.dropout,
@@ -423,18 +661,42 @@ class ResidualLSTMTrainer(LSTMTrainer):
             "Head dropout": self.model.head_dropout,
             "Correction penalty": self.correction_penalty,
         }
+        if isinstance(self.model, ResidualSequence):
+            settings['Encoder dropout'] = settings.pop('LSTM dropout')
+            settings['Architecture'] = self.model.architecture_config['architecture']
+            settings['Prediction mode'] = self.model.prediction_mode
+            settings['Fusion'] = 'late' if self.model.late_fusion else 'early'
+            settings['Station count'] = self.model.num_stations
+            if self.model.head_mode != 'shared':
+                settings['Head sharing'] = self.model.head_mode
+            if self.model.head_mode == 'station-mlp':
+                settings['Station MLP hidden layers'] = 3
+                settings['Station MLP hidden size'] = self.model.architecture_config['station_mlp_hidden_size']
+            if self.model.horizon_decoder_mode != 'none':
+                settings['Horizon decoder'] = self.model.horizon_decoder_mode
+            settings['TCN channels'] = self.model.architecture_config['tcn_channels']
+            settings['CNN channels'] = self.model.architecture_config['cnn_channels']
+            settings['Forecast MLP hidden size'] = self.model.architecture_config['forecast_hidden_size']
+            if 'transformer_heads' in self.model.architecture_config:
+                settings['Attention heads'] = self.model.architecture_config['transformer_heads']
+                settings['Transformer feed-forward size'] = self.model.architecture_config['transformer_ff_size']
+        return settings
 
     def prepare_checkpoint(self) -> None:
         baseline_loss = self.evaluate_loss(self.eval_dataloader, predictor=self.model.persistence)
         print(f"Validation persistence loss ({type(self.loss_func).__name__}): {baseline_loss:.4f}")
         for name, mse in zip(self.eval_dataloader.dataset.target_cols, self.last_validation_mse):
             print(f"  {name}: {mse:.4f}")
-        self.best_val_loss = baseline_loss
-        self.best_checkpoint_score = self.validation_score(baseline_loss)
+        initial_model = getattr(self.model, 'prediction_mode', 'residual') == 'direct' or getattr(self.model, 'event_aware', False)
+        initial_loss = self.evaluate_loss(self.eval_dataloader) if initial_model else baseline_loss
+        if initial_model:
+            print(f"Initial model validation loss ({type(self.loss_func).__name__}): {initial_loss:.4f}")
+        self.best_val_loss = initial_loss
+        self.best_checkpoint_score = self.validation_score(initial_loss)
         self.best_validation_metrics = dict(self.last_validation_metrics)
         self.best_checkpoint_epoch = 0
-        torch.save(self.model.state_dict(), self.checkpoint_path)
-        print(f"Saved initial persistence checkpoint to {self.checkpoint_path}")
+        self.save_checkpoint()
+        print(f"Saved initial {'model' if initial_model else 'persistence'} checkpoint to {self.checkpoint_path}")
 
     def training_loss(
         self,
@@ -442,7 +704,9 @@ class ResidualLSTMTrainer(LSTMTrainer):
         inputs: torch.Tensor,
         data_loss: torch.Tensor,
     ) -> torch.Tensor:
-        correction = predictions - self.model.persistence(inputs)
+        if self.correction_penalty == 0:
+            return data_loss
+        correction = predictions - self.predict_batch(self.model.persistence, inputs)
         return data_loss + self.correction_penalty * correction.square().mean()
 
 

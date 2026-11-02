@@ -2,7 +2,9 @@
 
 import os
 import math
+import json
 import sys
+import warnings
 from pathlib import Path
 from dataclasses import asdict
 
@@ -22,7 +24,9 @@ import torch
 from torch import nn
 from torch import optim
 
+from src.ai.change_objective import from_training_dataset
 from src.ai.losses import HorizonWeightedMSE, HorizonWeightedTailLoss
+from src.ai.lr_schedules import warmup_cosine
 from src.ai.comparison import (
     DEFAULT_REGISTRY, mlflow_comparison_metrics, run_post_training_comparison,
 )
@@ -32,6 +36,8 @@ from src.ai.models import (
     ResidualLSTM, XGBoost, XGBoostSettings,
 )
 from src.ai.trainers import LSTMTrainer, MEFLSTMAdapterTrainer, ResidualLSTMTrainer, VanillaLSTMTrainer
+from src.ai.residual_sequence import NEW_METHODS, residual_model
+from src.ai.regional_training_data import regional_loaders, regional_persistence
 from src.ai.utils import (
     FEATURE_SETS, dataset_directory, get_dataloader, load_dataset,
     load_mef_backbone, normalize_feature_set, set_seed,
@@ -71,7 +77,54 @@ parser.add_argument("--comparison-station-id", default="0074647403",
                     help="App registry station to compare after sequence training (default Da Vien)")
 parser.add_argument("--comparison-registry", type=Path, default=DEFAULT_REGISTRY,
                     help="App model registry used for automatic post-training comparison")
-parser.add_argument("--train-method", required=True, choices=["xgb", "lgbm", "lstm", "residual_lstm", "lstm_adapter"])
+parser.add_argument("--comparison-model-id", default="model_b",
+                    help="Reference model ID for post-training comparison (default: model_b)")
+parser.add_argument("--train-method", required=True, choices=["xgb", "lgbm", "lstm", "residual_lstm", "vanilla_lstm", "lstm_adapter", *NEW_METHODS],
+                    help='lstm is a residual baseline; vanilla_lstm retains the previous non-residual training option')
+parser.add_argument('--rain-station', dest='rain_stations', help='Alias of --rain-stations')
+parser.add_argument('--water-station', help='Train one station from a regional pool; omitted uses all stations with embeddings')
+parser.add_argument('--regional-fold', default=None, choices=['fixed', 'rainy', 'winter', 'spring', 'summer'],
+                    help='Optional override for legacy research datasets; normally use the split saved in the dataset')
+parser.add_argument('--time-features', default='none', choices=['none', 'hour', 'day_of_year', 'all'])
+def boolean(value):
+    if value.lower() not in ('true', 'false'):
+        raise argparse.ArgumentTypeError('Use true or false')
+    return value.lower() == 'true'
+parser.add_argument('--use-weather-forecast', type=boolean, default=None)
+parser.add_argument('--mlflow-tracking-uri', help='Override the default MLflow tracking server')
+parser.add_argument('--tcn-channels', type=int, nargs='+', default=[32]*5)
+parser.add_argument('--tcn-kernel-size', type=int, default=3)
+parser.add_argument('--cnn-channels', type=int, nargs='+', default=[32, 32])
+parser.add_argument('--cnn-kernel-size', type=int, default=3)
+parser.add_argument('--forecast-hidden-size', type=int, default=32)
+parser.add_argument('--station-embedding-size', type=int, default=8)
+parser.add_argument('--transformer-heads', type=int, default=4,
+                    help='Attention heads; must divide --lstm-hidden-size for Transformer models')
+parser.add_argument('--transformer-ff-size', type=int, default=128,
+                    help='Transformer feed-forward width; hidden size/layers/dropout use --lstm-* flags')
+parser.add_argument('--head-mode', choices=['shared', 'station', 'station-mlp'], default='shared',
+                    help='Regional correction head: shared, per-station linear, or per-station 3-layer MLP')
+parser.add_argument('--prediction-mode', choices=['residual', 'direct'], default='residual',
+                    help='Predict a correction to persistence or the normalized water level directly')
+parser.add_argument('--event-aware', action='store_true', help='Enable supervised rise probability and positive correction heads')
+parser.add_argument('--rise-classification-weight', type=float, default=0.1)
+parser.add_argument('--rise-positive-weight', type=float, default=1.0)
+parser.add_argument('--rise-event-weight', type=float, default=0., help='Extra regression weight for observed rises > threshold')
+parser.add_argument('--station-mlp-hidden-size', type=int, default=32,
+                    help='Hidden width of each of the three station MLP layers (default: 32)')
+parser.add_argument('--horizon-decoder', choices=['none', 'transformer'], default='none',
+                    help='Optional Transformer horizon-query decoder for regional late-fusion station heads')
+parser.add_argument('--diagnose-change-dynamics', action='store_true',
+                    help='Save epoch snapshots, eval-mode train/validation regimes and validation predictions')
+parser.add_argument('--dynamics-every', type=int, default=1, help='Diagnostic epoch interval; also evaluate epoch 0 and final epoch')
+parser.add_argument('--diagnose-station-gradients', action='store_true',
+                    help='Probe encoder gradients on fixed, train-only stratified samples; requires dynamics')
+parser.add_argument('--gradient-probe-samples', type=int, default=32, help='Maximum fixed train anchors per station for gradient diagnostics')
+parser.add_argument('--lr-scheduler', choices=['step', 'warmup-cosine'], default='step',
+                    help='Sequence learning-rate schedule; step preserves the existing schedule')
+parser.add_argument('--lr-warmup-epochs', type=int, default=3)
+parser.add_argument('--lr-min', type=float, default=1e-6)
+parser.add_argument('--skip-test', action='store_true', help='Do not run test or post-training model comparison')
 parser.add_argument("--batch-size", type=int, default=64)
 parser.add_argument("--num-worker", type=int, default=0)
 parser.add_argument("--num-epochs", type=int, default=100)
@@ -95,9 +148,9 @@ parser.add_argument("--mef-backbone-lr", type=float, default=1e-5,
 parser.add_argument("--mef-adapter-lr", type=float, default=1e-4,
                     help="Stage-two learning rate for the adapter and output head")
 parser.add_argument("--lstm-output-size", type=int, default=3)
-parser.add_argument("--lstm-hidden-size", type=int, default=128)
-parser.add_argument("--lstm-num-layers", type=int, default=2)
-parser.add_argument("--lstm-drop-out", type=float, default=0.2)
+parser.add_argument("--lstm-hidden-size", '--hidden-size', type=int, default=128)
+parser.add_argument("--lstm-num-layers", '--num-layers', type=int, default=2)
+parser.add_argument("--lstm-drop-out", '--dropout', type=float, default=0.2)
 parser.add_argument("--lstm-input-dropout", type=float, default=0.0)
 parser.add_argument("--lstm-head-dropout", type=float, default=0.0)
 parser.add_argument(
@@ -154,7 +207,75 @@ lgbm_args.add_argument("--lgbm-n-jobs", type=int, default=lgbm_defaults.n_jobs)
 lgbm_args.add_argument("--lgbm-verbose", type=int, default=lgbm_defaults.verbose)
 
 
+parser.add_argument('--change-loss', choices=['baseline', 'station-balanced', 'event-weighted', 'asymmetric', 'combined', 'large-error-count', 'large-error-primary'], default='baseline')
+parser.add_argument('--change-scale-floor-mm', type=float, default=200.)
+parser.add_argument('--change-event-weight', type=float, default=1.)
+parser.add_argument('--change-under-weight', type=float, default=1.)
+parser.add_argument('--change-threshold-mm', type=float, default=200.)
+parser.add_argument('--large-error-penalty', type=float, default=0.2,
+                    help='Strength of the smooth prediction-error count penalty')
+parser.add_argument('--large-error-threshold-mm', type=float, default=200.)
+parser.add_argument('--large-error-transition-mm', type=float, default=20.,
+                    help='Smoothing width in mm around the large-error threshold')
+
+
+def is_regional_dataset(args):
+    return args.dataset_dir is not None and (args.dataset_dir/'samples.parquet').is_file()
+
+
 def validate_args(args: argparse.Namespace) -> None:
+    regional = is_regional_dataset(args)
+    if args.event_aware and (not regional or args.water_station is not None or args.train_method != 'transformer-late-fusion'
+                             or args.prediction_mode != 'residual' or args.horizon_decoder != 'none'
+                             or args.change_loss != 'station-balanced'):
+        parser.error('--event-aware requires station-conditioned residual transformer-late-fusion and station-balanced loss')
+    if (not math.isfinite(args.rise_classification_weight) or args.rise_classification_weight < 0
+            or not math.isfinite(args.rise_positive_weight) or args.rise_positive_weight <= 0
+            or not math.isfinite(args.rise_event_weight) or args.rise_event_weight < 0):
+        parser.error('Rise weights must be finite; classification/event weights nonnegative and positive weight positive')
+    if args.rise_event_weight and args.change_loss != 'station-balanced':
+        parser.error('--rise-event-weight requires station-balanced loss')
+    if args.lr_scheduler == 'warmup-cosine':
+        if args.train_method in ('xgb', 'lgbm') or args.mef_two_stage:
+            parser.error('--lr-scheduler warmup-cosine requires single-stage sequence training')
+        if args.lr_warmup_epochs < 1 or args.num_epochs < args.lr_warmup_epochs + 2:
+            parser.error('Warmup-cosine requires at least one warmup and two decay epochs')
+        if (not math.isfinite(args.lr_min) or not math.isfinite(args.lstm_lr)
+                or args.lr_min < 0 or args.lstm_lr <= 0 or args.lr_min > args.lstm_lr):
+            parser.error('Warmup-cosine requires 0 <= --lr-min <= a positive --lstm-lr')
+    if args.prediction_mode == 'direct' and (not regional or args.water_station is not None):
+        parser.error('--prediction-mode direct currently requires a regional station-conditioned model')
+    if args.prediction_mode == 'direct' and args.lstm_correction_penalty != 0:
+        parser.error('--prediction-mode direct requires --lstm-correction-penalty 0')
+    if args.skip_test and args.train_method in ('xgb','lgbm'):
+        parser.error('--skip-test is currently supported for sequence models only')
+    if args.head_mode != 'shared' and (not regional or args.water_station is not None):
+        parser.error('Station heads require regional station conditioning')
+    if args.head_mode == 'station-mlp' and args.train_method not in (*NEW_METHODS, 'lstm', 'residual_lstm'):
+        parser.error('--head-mode station-mlp requires a supported residual sequence model')
+    if args.station_mlp_hidden_size < 1:
+        parser.error('--station-mlp-hidden-size must be positive')
+    if args.head_mode != 'station-mlp' and args.station_mlp_hidden_size != 32:
+        parser.error('--station-mlp-hidden-size requires --head-mode station-mlp')
+    if args.horizon_decoder == 'transformer' and (args.head_mode != 'station' or not args.train_method.endswith('-late-fusion')):
+        parser.error('--horizon-decoder transformer requires late fusion and --head-mode station')
+    if args.diagnose_change_dynamics:
+        if not regional or args.water_station is not None:
+            parser.error('--diagnose-change-dynamics requires regional station conditioning')
+        if args.lstm_tail_penalty or args.lstm_correction_penalty:
+            parser.error('Dynamics diagnostics require zero tail/correction penalties')
+    if args.dynamics_every < 1 or args.gradient_probe_samples < 2:
+        parser.error('Diagnostic interval must be positive and probe samples must be at least 2')
+    if args.diagnose_station_gradients and not args.diagnose_change_dynamics:
+        parser.error('--diagnose-station-gradients requires --diagnose-change-dynamics')
+    if args.change_loss in ('station-balanced', 'large-error-count', 'large-error-primary') and (args.change_event_weight or args.change_under_weight):
+        warnings.warn(f'{args.change_loss} ignores event/under weights; use combined to activate them. '
+                      'Set both weights to 0 for the B1 control.', UserWarning)
+    if args.change_loss != 'baseline':
+        if not regional or args.water_station is not None:
+            parser.error('--change-loss requires regional station-conditioned training')
+        if args.lstm_tail_penalty != 0 or args.lstm_correction_penalty != 0:
+            parser.error('For change-loss ablations, tail and correction penalties must be zero')
     if args.target_horizons is not None:
         if args.outputs is not None:
             parser.error("Use --target-horizons or --outputs, not both")
@@ -180,7 +301,33 @@ def validate_args(args: argparse.Namespace) -> None:
             parser.error("--num-rain-station requires rain in --feature-set")
     if args.checkpoint_dir is not None and args.train_method in {"xgb", "lgbm"}:
         parser.error("--checkpoint-dir currently supports sequence models only")
-    if args.dataset_dir is not None:
+    if regional:
+        if args.regional_fold is not None:
+            available = json.loads((args.dataset_dir/'normalizers.json').read_text())
+            if args.regional_fold not in available:
+                parser.error(f'Dataset has splits {list(available)}; omit --regional-fold to use its saved fixed split')
+        if args.train_method not in (*NEW_METHODS, 'lstm', 'residual_lstm'):
+            parser.error('Regional datasets require a residual sequence model')
+        if args.outputs is not None:
+            parser.error('For regional datasets, select hours with --target-horizons')
+        if args.target_horizons is not None:
+            args.target_horizons = sorted(args.target_horizons)
+        if args.lstm_seq_len is not None and args.lstm_seq_len < 1:
+            parser.error('--lstm-seq-len must be positive')
+        if (args.target_horizons is not None and args.lstm_horizon_weights is not None
+                and len(args.lstm_horizon_weights) != len(args.target_horizons)):
+            parser.error(f'{len(args.target_horizons)} target horizons require {len(args.target_horizons)} horizon weights; use --lstm-horizon-weights '+ ' '.join(['1']*len(args.target_horizons)))
+        if args.num_rain_station is not None:
+            parser.error('Select explicit shared rain stations for regional training')
+        if args.horizon != '1h':
+            parser.error('Regional hourly datasets require --horizon 1h')
+        if args.feature_set != 'all' and not {'water_level', 'flood_season'}.issubset(args.feature_set.split('+')):
+            parser.error('Regional feature sets retain water_level and flood_season; select rain/weather with their groups or dedicated flags')
+    elif args.water_station is not None:
+        parser.error('--water-station requires a regional dataset pool')
+    elif args.time_features != 'none':
+        parser.error('--time-features requires a regional dataset with stored cyclic features')
+    if args.dataset_dir is not None and not regional:
         for split in ("train", "val", "test"):
             if not (args.dataset_dir / f"{split}.csv").is_file():
                 parser.error(f"Dataset split not found: {args.dataset_dir / (split + '.csv')}")
@@ -210,9 +357,9 @@ def validate_args(args: argparse.Namespace) -> None:
         parser.error("Tail loss and checkpoint metric require a sequence model")
     if not math.isfinite(args.lstm_correction_penalty) or args.lstm_correction_penalty <= -1:
         parser.error("--lstm-correction-penalty must be finite and > -1; weighted MSE may require a stricter bound")
-    if args.lstm_correction_penalty and args.train_method != "residual_lstm":
+    if args.lstm_correction_penalty and args.train_method not in (*NEW_METHODS, 'lstm', 'residual_lstm') and not regional:
         parser.error("--lstm-correction-penalty requires --train-method residual_lstm")
-    if args.train_method == "residual_lstm":
+    if args.train_method in (*NEW_METHODS, 'lstm', 'residual_lstm'):
         groups = args.feature_set.split("+")
         if args.feature_set != "all" and "water_level" not in groups:
             parser.error("residual_lstm requires water_level in --feature-set")
@@ -222,6 +369,15 @@ def validate_args(args: argparse.Namespace) -> None:
         for path in (args.pretrained_model, args.pretrained_config):
             if not Path(path).is_file():
                 parser.error(f"MEF file not found: {path}")
+
+    if any(n < 1 for n in [*args.tcn_channels, *args.cnn_channels, args.tcn_kernel_size, args.cnn_kernel_size,
+                           args.forecast_hidden_size, args.station_embedding_size, args.lstm_hidden_size, args.lstm_num_layers]):
+        parser.error('Architecture sizes and kernel sizes must be positive')
+    if args.train_method.removesuffix('-late-fusion') == 'transformer' or args.horizon_decoder == 'transformer':
+        if args.transformer_heads < 1 or args.transformer_ff_size < 1:
+            parser.error('Transformer heads and feed-forward size must be positive')
+        if args.lstm_hidden_size % args.transformer_heads:
+            parser.error('--lstm-hidden-size must be divisible by --transformer-heads')
 
     if args.train_method == "xgb":
         if args.xgb_n_estimators < 1 or args.xgb_early_stopping_rounds < 0:
@@ -368,6 +524,12 @@ def train_tabular(args: argparse.Namespace) -> None:
 
 
 def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
+    regional = is_regional_dataset(args)
+    if args.change_loss != 'baseline':
+        if not regional or args.water_station is not None:
+            raise ValueError('Change loss currently requires regional station-conditioned training')
+        if args.lstm_tail_penalty != 0 or args.lstm_correction_penalty != 0:
+            raise ValueError('Isolate change loss: set tail and correction penalties to zero')
     default_sequence_lengths = {"10min": 144, "30min": 48, "1h": 24, "12h": 9, "24h": 5}
     sequence_length = (
         default_sequence_lengths[args.horizon]
@@ -378,7 +540,18 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         args.feature_set == "all"
         or "water_level" in args.feature_set.split("+")
     )
-    train_loader, eval_loader, test_loader = get_dataloader(
+    if regional:
+        groups = args.feature_set.split('+')
+        rain = (args.rain_stations or 'nham+bach_ma+ho_hoa_my+hong_thai') if args.feature_set == 'all' or 'rain' in groups else 'none'
+        weather = (args.feature_set == 'all' or 'weather_forecast' in groups) if args.use_weather_forecast is None else args.use_weather_forecast
+        train_loader, eval_loader, test_loader = regional_loaders(args.dataset_dir,
+            batch_size=args.batch_size, num_workers=args.num_worker, seed=args.seed,
+            fold=args.regional_fold, rain_stations=rain,
+            use_weather_forecast=weather,
+            time_features=args.time_features, station_id=args.water_station,
+            sequence_length=args.lstm_seq_len, target_horizons=args.target_horizons)
+    else:
+        train_loader, eval_loader, test_loader = get_dataloader(
         args.horizon,
         args.batch_size,
         args.num_worker,
@@ -397,7 +570,8 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         rain_stations=args.rain_stations,
         outputs=args.outputs,
         target_horizons=args.target_horizons,
-    )
+        use_weather_forecast=args.use_weather_forecast,
+        )
     input_size = train_loader.dataset.num_features
     output_size = train_loader.dataset.num_targets
     if args.lstm_horizon_weights is not None and len(args.lstm_horizon_weights) != output_size:
@@ -427,7 +601,32 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
             head_dropout=args.lstm_head_dropout,
             output_size=output_size,
         )
-        if args.train_method == "residual_lstm":
+        if regional or args.train_method in (*NEW_METHODS, 'lstm'):
+            dataset = train_loader.dataset
+            level_index = dataset.feature_cols.index('water_level_depth')
+            weather = [i for i, col in enumerate(dataset.feature_cols) if col.startswith('weather_forecast_')]
+            masks = [i for i in weather if dataset.feature_cols[i].endswith('_missing')]
+            if regional:
+                scale, offset, station_count = regional_persistence(dataset, regional=args.water_station is None)
+                mask_values = [1.]*len(masks)
+            else:
+                fs, ts = dataset.feature_scaler, dataset.target_scaler
+                scale, offset = (fs.scale_[level_index]/ts.scale_).tolist(), ((fs.mean_[level_index]-ts.mean_)/ts.scale_).tolist()
+                station_count = 0
+                mask_values = ((1.-fs.mean_[masks])/fs.scale_[masks]).tolist()
+            model = residual_model('lstm' if args.train_method == 'residual_lstm' else args.train_method,
+                **model_options, level_feature_index=level_index, persistence_scale=scale, persistence_offset=offset,
+                weather_feature_indices=weather, weather_mask_indices=masks, weather_mask_values=mask_values,
+                forecast_history_policy='anchor_only', num_stations=station_count,
+                station_embedding_size=args.station_embedding_size, forecast_hidden_size=args.forecast_hidden_size,
+                tcn_channels=args.tcn_channels, tcn_kernel_size=args.tcn_kernel_size,
+                cnn_channels=args.cnn_channels, cnn_kernel_size=args.cnn_kernel_size,
+                transformer_heads=args.transformer_heads, transformer_ff_size=args.transformer_ff_size,
+                head_mode=args.head_mode, horizon_decoder=args.horizon_decoder,
+                station_mlp_hidden_size=args.station_mlp_hidden_size, prediction_mode=args.prediction_mode,
+                event_aware=args.event_aware)
+            trainer_class = ResidualLSTMTrainer
+        elif args.train_method == 'residual_lstm':
             dataset = train_loader.dataset
             level_index = dataset.feature_cols.index("water_level_depth")
             level_mean = dataset.feature_scaler.mean_[level_index]
@@ -447,14 +646,25 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         parameters = model.parameters()
 
     optimizer = optim.AdamW(parameters, lr=args.lstm_lr, weight_decay=args.lstm_weight_decay)
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
+    scheduler = (optim.lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.9)
+                 if args.lr_scheduler == 'step' else
+                 warmup_cosine(optimizer, total_epochs=args.num_epochs,
+                               warmup_epochs=args.lr_warmup_epochs, min_lr=args.lr_min))
     loss_func = (HorizonWeightedMSE(args.lstm_horizon_weights)
                  if args.lstm_horizon_weights is not None else nn.MSELoss())
     if args.lstm_tail_penalty > 0:
         loss_func = HorizonWeightedTailLoss(
             args.lstm_horizon_weights or [1.0] * output_size,
-            train_loader.dataset.target_scaler.scale_, strength=args.lstm_tail_penalty,
+            [1.]*output_size if regional else train_loader.dataset.target_scaler.scale_, strength=args.lstm_tail_penalty,
             threshold_mm=args.lstm_tail_threshold_mm, transition_mm=args.lstm_tail_transition_mm)
+    if args.change_loss != 'baseline':
+        loss_func = from_training_dataset(train_loader.dataset,
+            weights=args.lstm_horizon_weights or [1.]*output_size, mode=args.change_loss,
+            scale_floor_mm=args.change_scale_floor_mm, event_weight=args.change_event_weight,
+            under_weight=args.change_under_weight, threshold_mm=args.change_threshold_mm,
+            large_error_penalty=args.large_error_penalty,
+            large_error_threshold_mm=args.large_error_threshold_mm,
+            large_error_transition_mm=args.large_error_transition_mm, rise_event_weight=args.rise_event_weight)
     trainer_options = dict(
         model=model,
         horizon=args.horizon,
@@ -470,13 +680,31 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         early_stopping=args.early_stopping,
         gradient_accumulation=args.gradient_accumulation,
         device=args.device,
+        skip_test=args.skip_test,
     )
     checkpoint_root = args.checkpoint_dir
     if checkpoint_root is None:
         checkpoint_root = (Path("model") / args.dataset_dir.resolve().name
                            if args.dataset_dir is not None else Path("model"))
+    if regional or args.train_method in (*NEW_METHODS, 'lstm'):
+        checkpoint_root /= args.train_method
     if args.num_rain_station is not None or args.rain_stations is not None:
         checkpoint_root /= "rain_" + "-".join(sorted(train_loader.dataset.rain_station_ids))
+    if regional:
+        checkpoint_root /= f"seq{train_loader.dataset.seq_len}"
+    if args.head_mode != 'shared':
+        head_folder = f'head_{args.head_mode}'
+        if args.head_mode == 'station-mlp' and args.station_mlp_hidden_size != 32:
+            head_folder += f'_width{args.station_mlp_hidden_size}'
+        checkpoint_root /= head_folder
+    if args.prediction_mode != 'residual':
+        checkpoint_root /= f'prediction_{args.prediction_mode}'
+    if args.event_aware:
+        checkpoint_root /= f'event_aware_alpha{args.rise_classification_weight:g}_pos{args.rise_positive_weight:g}'
+    if args.rise_event_weight:
+        checkpoint_root /= f'rise_weight{args.rise_event_weight:g}'
+    if args.horizon_decoder != 'none':
+        checkpoint_root /= f'decoder_{args.horizon_decoder}'
     if args.outputs is not None:
         checkpoint_root /= f"o{args.outputs}"
     if args.target_horizons is not None:
@@ -484,9 +712,19 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
     if args.lstm_tail_penalty > 0 or args.lstm_checkpoint_metric != "val_loss":
         checkpoint_root /= (f"tail_{args.lstm_tail_penalty:g}_threshold_{args.lstm_tail_threshold_mm:g}"
                             f"_transition_{args.lstm_tail_transition_mm:g}_{args.lstm_checkpoint_metric}")
+    if args.change_loss != 'baseline':
+        checkpoint_root /= f'change_{args.change_loss}_floor{args.change_scale_floor_mm:g}_event{args.change_event_weight:g}_under{args.change_under_weight:g}_threshold{args.change_threshold_mm:g}'
+        if args.change_loss in ('large-error-count', 'large-error-primary'):
+            checkpoint_root /= f'large_error_weight{args.large_error_penalty:g}_threshold{args.large_error_threshold_mm:g}_transition{args.large_error_transition_mm:g}'
     trainer_options["checkpoint_dir"] = checkpoint_root
+    if args.diagnose_change_dynamics:
+        from src.ai.change_dynamics import ChangeDynamics
+        trainer_options['dynamics'] = ChangeDynamics(every=args.dynamics_every,
+            gradients=args.diagnose_station_gradients, probe_samples=args.gradient_probe_samples)
     if trainer_class is ResidualLSTMTrainer:
-        return ResidualLSTMTrainer(**trainer_options, correction_penalty=args.lstm_correction_penalty)
+        return ResidualLSTMTrainer(**trainer_options, correction_penalty=args.lstm_correction_penalty,
+            rise_classification_weight=args.rise_classification_weight if args.event_aware else 0.,
+            rise_positive_weight=args.rise_positive_weight)
     if trainer_class is MEFLSTMAdapterTrainer:
         return MEFLSTMAdapterTrainer(
             **trainer_options, two_stage=args.mef_two_stage,
@@ -502,6 +740,8 @@ def main() -> None:
     validate_args(args)
     set_seed(args.seed)
     print(f"Seed: {args.seed}")
+    if args.mlflow_tracking_uri:
+        mlflow.set_tracking_uri(args.mlflow_tracking_uri)
     mlflow.set_experiment(args.mlflow_ex_name)
     print(f"MLflow experiment: {args.mlflow_ex_name}")
     if args.train_method in ("xgb", "lgbm"):
@@ -535,6 +775,14 @@ def main() -> None:
                     "rain_station_combination": args.rain_stations or "",
                     "target_horizons_hours": args.target_horizons or "dataset",
                     "checkpoint_path": str(trainer.checkpoint_path),
+                    "change_loss": args.change_loss,
+                    "change_scale_floor_mm": args.change_scale_floor_mm,
+                    "change_event_weight": args.change_event_weight,
+                    "change_under_weight": args.change_under_weight,
+                    "change_threshold_mm": args.change_threshold_mm,
+                    "large_error_penalty": args.large_error_penalty if args.change_loss in ('large-error-count', 'large-error-primary') else 0.,
+                    "large_error_threshold_mm": args.large_error_threshold_mm,
+                    "large_error_transition_mm": args.large_error_transition_mm,
                     "seed": args.seed,
                     "batch_size": args.batch_size,
                     "num_epochs": args.num_epochs,
@@ -544,6 +792,9 @@ def main() -> None:
                     "input_size": dataset.num_features,
                     "output_size": dataset.num_targets,
                     "learning_rate": trainer.optimizer.defaults["lr"],
+                    "lr_scheduler": args.lr_scheduler,
+                    "lr_warmup_epochs": args.lr_warmup_epochs if args.lr_scheduler == 'warmup-cosine' else 0,
+                    "lr_min": args.lr_min if args.lr_scheduler == 'warmup-cosine' else 0.,
                     "weight_decay": trainer.optimizer.defaults["weight_decay"],
                     "device": str(trainer.device),
                     "loss_function": type(trainer.loss_func).__name__,
@@ -552,6 +803,21 @@ def main() -> None:
                     "tail_threshold_mm": args.lstm_tail_threshold_mm,
                     "tail_transition_mm": args.lstm_tail_transition_mm,
                     "checkpoint_metric": args.lstm_checkpoint_metric,
+                    "time_features": args.time_features,
+                    "head_mode": args.head_mode,
+                    "prediction_mode": args.prediction_mode,
+                    "event_aware": args.event_aware,
+                    "rise_classification_weight": args.rise_classification_weight if args.event_aware else 0.,
+                    "rise_positive_weight": args.rise_positive_weight,
+                    "rise_event_weight": args.rise_event_weight,
+                    "horizon_decoder": args.horizon_decoder,
+                    "diagnose_change_dynamics": args.diagnose_change_dynamics,
+                    "dynamics_every": args.dynamics_every,
+                    "diagnose_station_gradients": args.diagnose_station_gradients,
+                    "gradient_probe_samples": args.gradient_probe_samples,
+                    "skip_test": args.skip_test,
+                    "change_event_weight_effective": args.change_event_weight if args.change_loss in ('event-weighted','combined') else 0.,
+                    "change_under_weight_effective": args.change_under_weight if args.change_loss in ('asymmetric','combined') else 0.,
                     "target_columns": dataset.target_cols,
                     **trainer.model_settings()
                 }
@@ -562,12 +828,21 @@ def main() -> None:
                                  "water_change_horizon_hours": 12,
                                  "stations": dataset.rain_station_ranking}, "rain_station_ranking.json")
             trainer.train()
+            if args.skip_test:
+                mlflow.set_tag('comparison/status', 'skipped_with_test')
+                return
+            if is_regional_dataset(args):
+                mlflow.set_tag('comparison/status', 'regional_evaluation_in_test_metrics')
+                mlflow.set_tag('evaluation/scope', 'post_cutoff_exploratory')
+                return
             comparison = run_post_training_comparison(
                 trainer, dataset_directory(args.horizon, args.dataset_dir) / "test.csv",
                 active_run.info.run_id, station_id=args.comparison_station_id,
                 registry_path=args.comparison_registry,
+                model_id=args.comparison_model_id,
             )
             mlflow.set_tags({"comparison/status": comparison["status"],
+                             "comparison/reference_model_id": args.comparison_model_id,
                              "comparison/report_dir": str(comparison["output_dir"])})
             if comparison["status"] == "completed":
                 mlflow.log_metrics(mlflow_comparison_metrics(comparison))

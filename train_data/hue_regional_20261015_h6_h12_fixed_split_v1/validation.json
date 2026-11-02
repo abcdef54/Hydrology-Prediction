@@ -1,0 +1,26 @@
+{
+  "status": "PASS",
+  "samples": 82861,
+  "stations": 11,
+  "rain_stations": 55,
+  "exact_targets_checked": 165722,
+  "forecast_anchors_reconstructed": 8031,
+  "source_hashes_checked": 10,
+  "checks": [
+    "station boundary",
+    "hourly continuity",
+    "exact timestamp targets",
+    "no target interpolation",
+    "shared feature identity",
+    "feature toggle preserves anchors",
+    "local-month flood season",
+    "optional local-hour and leap-year-aware day-of-year channels",
+    "rain window and estimated masks",
+    "single-vintage forecast windows",
+    "forecast availability and provenance",
+    "chronological purge",
+    "all fold scalers fit on train only",
+    "station-specific persistence coefficients",
+    "finite reader output"
+  ]
+}
