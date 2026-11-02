@@ -22,7 +22,7 @@ def sha(path):
     return digest.hexdigest()
 
 
-def make_rain_groups(standard, strict, windows):
+def make_rain_groups(standard, strict, windows, resolution_minutes=60):
     if not standard.index.equals(strict.index) or list(standard) != list(strict):
         raise ValueError('Standard/strict rainfall grids differ')
     columns, groups, values = {}, {}, []
@@ -30,7 +30,12 @@ def make_rain_groups(standard, strict, windows):
         block = []
         for hours in windows:
             name = f'rain_{sid}_sum_{hours}h'
-            series = standard[sid].rolling(hours, min_periods=hours).sum()
+            if 60 % resolution_minutes:
+                raise ValueError('Resolution must divide one hour')
+            stride = 60 // resolution_minutes
+            series = standard[sid].copy()
+            for offset in range(stride):
+                series.iloc[offset::stride] = standard[sid].iloc[offset::stride].rolling(hours, min_periods=hours).sum().to_numpy()
             columns[name] = series
             columns[name+'_missing'] = series.isna().astype('uint8')
             block.extend([name, name+'_missing'])
@@ -49,7 +54,8 @@ def build_dataset(output, *, level, rain_standard, rain_strict, weather, station
         raise FileExistsError(f'Refuse to overwrite {output}; select a new directory')
     output.mkdir(parents=True)
     write_json(output/'BUILDING.json', {'status': 'incomplete'})
-    check_hourly(level.index)
+    resolution_minutes = config.get('resolution_minutes', 60)
+    check_hourly(level.index, resolution_minutes)
     if not level.index.equals(rain_standard.index) or not level.index.equals(weather.index):
         raise ValueError('Water, rainfall and weather must share the same complete hourly grid')
     if list(level) != list(stations):
@@ -63,7 +69,7 @@ def build_dataset(output, *, level, rain_standard, rain_strict, weather, station
         raise ValueError('All three EDA1 groups are required')
     if np.isinf(level.to_numpy()).any() or np.isinf(rain_standard.to_numpy()).any():
         raise ValueError('Infinite source values')
-    rain, groups, rain_values = make_rain_groups(rain_standard, rain_strict, config['rain_windows'])
+    rain, groups, rain_values = make_rain_groups(rain_standard, rain_strict, config['rain_windows'], resolution_minutes)
     calendar = calendar_features(level.index)
     rain_ids = list(rain_standard)
     aliases = {station_alias(r['name']): str(r['station_id']) for r in rain_catalog.to_dict('records')}
@@ -100,7 +106,7 @@ def build_dataset(output, *, level, rain_standard, rain_strict, weather, station
         units={'water': 'mm relative to station-specific unverified datum', 'rain': 'mm', 'age': 'hours'},
         physical_datum_warning='Do not equate station zero, DEM elevation or public alarm thresholds')
     samples = make_samples(level, stations, config['folds'], config['cutoff'], config['sequence_length'],
-        config['minimum_water_history_fraction'], config['purge_hours'])
+        config['minimum_water_history_fraction'], config['purge_hours'], resolution_minutes)
     normalizers = fit_normalizers(samples, level, rain, weather, schema, config['folds'], config['sequence_length'])
     default = config['folds'][-1]['id']
     constant_target_stations = []
@@ -140,7 +146,7 @@ def build_dataset(output, *, level, rain_standard, rain_strict, weather, station
     rain_summary['train_anchor_missing_pct'] = rain_summary.station_id.map(rain_standard.iloc[train_positions].isna().mean()*100)
     rain_summary.to_csv(output/'rain_summary.csv', index=False)
     manifest = dict(status='complete', format_version=2, created_at=pd.Timestamp.now(tz='UTC').isoformat(),
-        sequence_length=config['sequence_length'], output_size=2, horizons_hours=[6, 12],
+        sequence_length=config['sequence_length'], resolution_minutes=resolution_minutes, output_size=2, horizons_hours=[6, 12],
         station_count=len(stations), rain_station_count=len(groups), sample_count=len(samples),
         hourly_rows=len(level), default_fold=default, default_rain_stations='nham+bach_ma+ho_hoa_my+hong_thai',
         default_input_size=3+sum(len(groups[s]) for s in ['750007', '750041', '682816', '750062'])+len(weather_columns),

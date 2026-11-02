@@ -1,0 +1,65 @@
+{
+  "status": "complete",
+  "format_version": 2,
+  "created_at": "2026-11-02T05:55:14.359777+00:00",
+  "sequence_length": 96,
+  "resolution_minutes": 30,
+  "output_size": 2,
+  "horizons_hours": [
+    6,
+    12
+  ],
+  "station_count": 11,
+  "rain_station_count": 55,
+  "sample_count": 166737,
+  "hourly_rows": 16061,
+  "default_fold": "fixed",
+  "default_rain_stations": "nham+bach_ma+ho_hoa_my+hong_thai",
+  "default_input_size": 68,
+  "default_time_features": "none",
+  "time_feature_modes": [
+    "none",
+    "hour",
+    "day_of_year",
+    "all"
+  ],
+  "stored_calendar_features": [
+    "flood_season",
+    "hour_sin",
+    "hour_cos",
+    "day_sin",
+    "day_cos"
+  ],
+  "cutoff": "2026-09-15T00:00:00+07:00",
+  "test_status": "exploratory; post-cutoff data have been examined previously",
+  "weather_grid_id": "ecmwf_ifs:16.274164:107.264960",
+  "forecast_release_lag_hours": 6,
+  "max_forecast_age_hours": 24,
+  "forecast_availability": "retrospective assumed availability +6h unless observed operational evidence exists; hindcasts stay labelled",
+  "observation_availability": "retrospective hourly observations; receipt by anchor not proven for all observations",
+  "selection": "EDA1 clustered and Stage4 eligible; groups derived before cutoff but not before every inner validation fold",
+  "constant_training_target_stations": [],
+  "source_sha256": {
+    "/home/my_ubuntu/projects/hydrology/data/processed/station_analysis/phase2/inventory/snapshots/20261026T035126Z_7f98ea8a/observations.parquet": "2ff62614f248971ed72dc2ab91f80f740fcb415b9b542c27f3e6f7849c82ad7f",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/manifest.json": "fa64cb513cca743ee15309e31df2be43c83373a61e9ce967fcb4bc9b4b532e6c",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/station_mapping.json": "faea38ec1a1bf019ddb6b087971d33d00ce6049dccf262938ec62764c3e53b62",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/weather.parquet": "5402becdfe3e18636846920dfdb22750caf2e6f96d28ea5a6be672ba5a7784ef",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/rain_station_catalog.parquet": "7c8d64359b472abcda514ffa4ea4e6f6c4f389ddd8149950c94964935630fee6",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/eda1_station_groups.csv": "f0dccec418c87cf19d5c42a202a037c6c7932f94b3afef2fb04c66513e1ee5f0",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/config.json": "eb9ba43cfb94b8338d7f15f53a24ee2ad0af8360665ccef1715e091834c926a6"
+  },
+  "source_code_sha256": {
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/__init__.py": "46efa8c3116588dfc1c048e8a2b953118f6aa33a2247e01b6f135794c40883f1",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/reader.py": "854504e7940cd1eac128e45f58f6a3f64b4d7bab65272216fbf9738f34f50ca3",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/training_selection.py": "23cbad8f4a946fd2532022ec1efa3a01d894dcbdd64c5caf71537814289fc0b7",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/preprocessing.py": "9a297e0b85bb9c831f1e14d08fbd03b0f7d75cc496bd844a35b1c335c63ea364",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/builder.py": "982cc0d02bdf322dc779794bec4220b97256f84435eb4211118667d9768ad64b",
+    "/home/my_ubuntu/projects/hydrology/src/ai/regional_data/validation.py": "fec51ffea024eb548286161b55f939bc62b4a4970776edbc9bb3f11883c74c6f"
+  },
+  "observation_interval": "30min",
+  "water_aggregation": "mean observed finite 10-minute records in (t-30min,t]; duplicate timestamps invalidate bucket",
+  "weather_half_hour_policy": "previous hourly anchor vector; forecast intervals offset 30 min at :30; no interpolation; forecast ages updated",
+  "rainfall_policy": "1-hour totals at each 30-minute anchor, from 6/6 or 5/6 10-minute values; multihour uses 1-hour spaced windows",
+  "source_dataset": "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1",
+  "history_span_hours": 47.5
+}

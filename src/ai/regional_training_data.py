@@ -56,7 +56,7 @@ class RegionalTrainingDataset(Dataset):
         self.rain_station_ranking = []
         self.rain_station_combination = '+'.join(self.rain_station_ids)
         self.feature_set = 'water_level'+('+rain' if self.rain_station_ids else '')+'+flood_season'+('+weather_forecast' if use_weather_forecast else '')
-        self.resolution_minutes = 60
+        self.resolution_minutes = self.view.manifest.get('resolution_minutes', 60)
         self.feature_scaler = self.target_scaler = None
         self.timestamps = self.view.samples.anchor_utc
         self.regional_metadata = dict(dataset_path=str(self.view.path.resolve()), fold=self.view.fold,

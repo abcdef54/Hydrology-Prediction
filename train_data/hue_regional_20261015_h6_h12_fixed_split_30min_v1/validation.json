@@ -1,0 +1,31 @@
+{
+  "status": "passed",
+  "sample_count": 166737,
+  "splits": {
+    "train": 126026,
+    "validation": 23760,
+    "test_exploratory": 15895,
+    "purged": 1056
+  },
+  "timestamps_checked": 16061,
+  "stations": 11,
+  "target_horizons_hours": [
+    6,
+    12
+  ],
+  "sequence_length": 96,
+  "resolution_minutes": 30,
+  "rain_forecast_rule": "At :30 use previous hourly-anchor forecast vector, shifted relative to current anchor; availability retrospective",
+  "checks": [
+    "all samples exact water and future labels",
+    "independent direct 10-minute rainfall window sampling",
+    "train/validation purge",
+    "raw-observation reconstruction",
+    "30-minute grid and calendars",
+    "rain 1/3/6/12/24/48h masks and totals",
+    "as-of forecast and age",
+    "train-only normalizers",
+    "source hashes",
+    "training adapter synthetic inspection"
+  ]
+}

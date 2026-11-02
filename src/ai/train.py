@@ -319,8 +319,11 @@ def validate_args(args: argparse.Namespace) -> None:
             parser.error(f'{len(args.target_horizons)} target horizons require {len(args.target_horizons)} horizon weights; use --lstm-horizon-weights '+ ' '.join(['1']*len(args.target_horizons)))
         if args.num_rain_station is not None:
             parser.error('Select explicit shared rain stations for regional training')
-        if args.horizon != '1h':
-            parser.error('Regional hourly datasets require --horizon 1h')
+        regional_manifest = json.loads((args.dataset_dir/'manifest.json').read_text())
+        resolution = regional_manifest.get('resolution_minutes', 60)
+        expected_horizon = {60: '1h', 30: '30min'}.get(resolution)
+        if expected_horizon is None or args.horizon != expected_horizon:
+            parser.error(f'Regional dataset resolution is {resolution} minutes; expected --horizon {expected_horizon}')
         if args.feature_set != 'all' and not {'water_level', 'flood_season'}.issubset(args.feature_set.split('+')):
             parser.error('Regional feature sets retain water_level and flood_season; select rain/weather with their groups or dedicated flags')
     elif args.water_station is not None:

@@ -3,16 +3,16 @@ import numpy as np
 import pandas as pd
 
 
-def check_hourly(index):
+def check_hourly(index, resolution_minutes=60):
     index = pd.DatetimeIndex(index)
     if (index.tz is None or index.has_duplicates or not index.is_monotonic_increasing
-            or not index.equals(pd.date_range(index.min(), index.max(), freq='h'))):
-        raise ValueError('Require a unique, timezone-aware complete hourly index')
+            or not index.equals(pd.date_range(index.min(), index.max(), freq=f'{resolution_minutes}min'))):
+        raise ValueError('Require a unique, timezone-aware complete time grid')
 
 
 def calendar_features(index):
     local = index.tz_convert('Asia/Ho_Chi_Minh')
-    hour_angle = 2*np.pi*local.hour.to_numpy()/24
+    hour_angle = 2*np.pi*(local.hour.to_numpy()+local.minute.to_numpy()/60)/24
     days_in_year = np.where(local.is_leap_year, 366, 365)
     day_angle = 2*np.pi*(local.dayofyear.to_numpy()-1)/days_in_year
     return pd.DataFrame(dict(
@@ -22,9 +22,9 @@ def calendar_features(index):
 
 
 def make_samples(level, station_mapping, folds, cutoff, sequence_length=96,
-                 minimum_coverage=.8, purge_hours=24):
+                 minimum_coverage=.8, purge_hours=24, resolution_minutes=60):
     """Window validity is independent of rain selection and weather availability."""
-    check_hourly(level.index)
+    check_hourly(level.index, resolution_minutes)
     result = []
     for sid, station in station_mapping.items():
         h = level[sid]
