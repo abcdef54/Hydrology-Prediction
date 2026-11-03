@@ -67,6 +67,81 @@ class RegionalSelectionTests(unittest.TestCase):
         loss(p,batch['y'],torch.zeros_like(p),batch['station_ids']).backward()
         self.assertTrue(torch.isfinite(p.grad).all())
 
+    def test_hourly_24_targets_alignment_split_scalers_and_models(self):
+        horizons = list(range(1, 25))
+        train, val, test = regional_loaders(self.path, batch_size=4, num_workers=0, seed=17,
+            sequence_length=96, target_horizons=horizons)
+        data = train.dataset
+        self.assertEqual(data.target_horizons, horizons)
+        self.assertEqual(val.dataset.view.normalizers, data.view.normalizers)
+        self.assertEqual(test.dataset.view.normalizers, data.view.normalizers)
+        self.assertEqual(data.num_targets, 24)
+        config = self.config
+        for loader in (train, val, test):
+            d = loader.dataset
+            for _, row in d.view.samples.iterrows():
+                for h in horizons:
+                    self.assertEqual(row[f'target_h{h}_utc'], row.anchor_utc + pd.Timedelta(hours=h))
+                    self.assertAlmostEqual(row[f'target_h{h}_mm'], d.view.water[row.station_id].loc[row[f'target_h{h}_utc']])
+            for i in (0, len(d)-1):
+                sample, row = d[i], d.view.samples.iloc[i]
+                raw = sample['y'] * sample['target_scale'] + sample['target_mean']
+                np.testing.assert_allclose(raw.numpy(), [row[f'target_h{h}_mm'] for h in horizons], atol=1e-3)
+            if d.split in ('train', 'validation'):
+                fold = config['folds'][0]
+                boundary = pd.Timestamp(fold['validation_start' if d.split == 'train' else 'validation_end'])
+                self.assertTrue((d.view.samples.target_h24_utc < boundary).all())
+        batch = next(iter(train))
+        scale, offset, count = regional_persistence(data)
+        weather = [i for i, c in enumerate(data.feature_cols) if c.startswith('weather_forecast_')]
+        masks = [i for i in weather if data.feature_cols[i].endswith('_missing')]
+        for method, head in [('gru-late-fusion', 'station'), ('transformer-late-fusion', 'station-mlp')]:
+            model = residual_model(method, input_size=data.num_features, output_size=24, hidden_size=8,
+                num_layers=1, dropout=0., num_stations=count, persistence_scale=scale, persistence_offset=offset,
+                weather_feature_indices=weather, weather_mask_indices=masks, weather_mask_values=[1.]*len(masks),
+                transformer_heads=4, transformer_ff_size=16, head_mode=head)
+            model.eval()
+            output = model(batch['x'], batch['station_ids'])
+            self.assertEqual(tuple(output.shape), (len(batch['y']), 24))
+            loss = from_training_dataset(data, weights=[1]*24, mode='station-balanced')
+            value = loss(output, batch['y'], model.persistence(batch['x'], batch['station_ids']), batch['station_ids'])
+            self.assertTrue(torch.isfinite(value))
+
+    def test_regional_outputs_24_shorthand(self):
+        from src.ai.train import parser, validate_args
+        args = parser.parse_args(['--dataset-dir', str(self.path), '--train-method', 'gru-late-fusion',
+                                  '--horizon', '1h', '--mlflow-ex-name', 'test', '--outputs', '24'])
+        validate_args(args)
+        self.assertEqual(args.target_horizons, list(range(1, 25)))
+        self.assertIsNone(args.outputs)
+
+    def test_o24_trainer_checkpoint_runtime_for_both_selected_architectures(self):
+        from src.ai.train import parser, validate_args, build_sequence_trainer
+        from src.ai.sequence_checkpoint import SequenceRuntime
+        for method, head in [('gru-late-fusion', 'station'), ('transformer-late-fusion', 'station-mlp')]:
+            args = parser.parse_args(['--dataset-dir', str(self.path), '--train-method', method,
+                '--horizon', '1h', '--mlflow-ex-name', 'test', '--outputs', '24', '--device', 'cpu',
+                '--head-mode', head, '--lstm-hidden-size', '8', '--lstm-num-layers', '1',
+                '--transformer-heads', '4', '--transformer-ff-size', '16', '--batch-size', '4',
+                '--rain-station', 'nham+hong_thai+bach_ma', '--lstm-seq-len', '96',
+                '--change-loss', 'station-balanced', '--change-event-weight', '0', '--change-under-weight', '0',
+                '--checkpoint-dir', str(self.path.parent/'o24-checkpoints')])
+            validate_args(args)
+            trainer = build_sequence_trainer(args)
+            batch = next(iter(trainer.eval_dataloader))
+            inputs, y, scales, _ = trainer.prepare_batch(batch, trainer.eval_dataloader.dataset)
+            trainer.model.eval()
+            with torch.no_grad():
+                pred = trainer.predict_batch(trainer.model, inputs)
+                expected = (pred*batch['target_scale']+batch['target_mean']).numpy()
+                self.assertTrue(torch.isfinite(trainer.data_loss(pred, y, scales, inputs)))
+            trainer.save_preprocessing()
+            trainer.save_checkpoint()
+            runtime = SequenceRuntime(trainer.checkpoint_path)
+            actual = runtime.predict_mm(batch['x'], batch['station_ids'])
+            self.assertEqual(actual.shape, (len(y), 24))
+            np.testing.assert_allclose(actual, expected, atol=1e-3, rtol=1e-5)
+
     def test_scalers_ignore_validation_values(self):
         original_read = pd.read_parquet
         baseline = RegionalTrainingDataset(self.path, split='train', target_horizons=[3, 18])

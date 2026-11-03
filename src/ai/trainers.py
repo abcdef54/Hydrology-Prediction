@@ -595,9 +595,11 @@ class LSTMTrainer:
         )
         print("\n" + "=" * 45 + " TEST EVALUATION " + "=" * 45)
         if getattr(dataset, 'regional_metadata', None):
+            current = dataset.view.samples.get('water_now_mm')
             station_table = station_error_table(observed, predicted, dataset.view.samples.station_id.to_numpy(),
-                dataset.regional_metadata['station_mapping'], dataset.target_cols)
-            print('RMSE / MAE in mm for every station; all = both horizons pooled within that station.')
+                dataset.regional_metadata['station_mapping'], dataset.target_cols,
+                current_levels=current.to_numpy() if current is not None else None)
+            print('RMSE / MAE in mm for every station; all = all selected horizons pooled within that station.')
             displayed = station_table.reset_index().drop(columns='station_id').set_index('name')
             displayed.index.name = 'Station'
             print(displayed.to_string(float_format=lambda value: f'{value:.3f}'))

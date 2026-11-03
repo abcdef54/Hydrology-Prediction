@@ -276,6 +276,16 @@ def validate_args(args: argparse.Namespace) -> None:
             parser.error('--change-loss requires regional station-conditioned training')
         if args.lstm_tail_penalty != 0 or args.lstm_correction_penalty != 0:
             parser.error('For change-loss ablations, tail and correction penalties must be zero')
+    # Regional datasets build targets from their saved hourly observation pool.
+    # Treat the O24 shorthand exactly like an explicit 1..24 selection, so all
+    # subsequent validation, checkpoint metadata and loss sizing use that order.
+    if regional and args.outputs is not None:
+        if args.target_horizons is not None:
+            parser.error('Use --target-horizons or --outputs, not both')
+        if args.outputs != 24:
+            parser.error('Regional datasets support --outputs 24; use --target-horizons for other selections')
+        args.target_horizons = list(range(1, 25))
+        args.outputs = None
     if args.target_horizons is not None:
         if args.outputs is not None:
             parser.error("Use --target-horizons or --outputs, not both")

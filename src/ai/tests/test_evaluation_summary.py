@@ -13,6 +13,18 @@ from src.ai.evaluation_summary import station_error_table
 
 
 class StationSummaryTests(unittest.TestCase):
+    def test_persistence_and_error_counts_for_all_horizons(self):
+        observed = np.array([[0., 300.], [200., 200.]])
+        predicted = np.array([[201., 0.], [0., 200.]])
+        table = station_error_table(observed, predicted, np.array(['a', 'a']), {'a': {'name': 'A'}},
+                                    ['target_water_level_plus_60m', 'target_water_level_plus_120m'],
+                                    current_levels=np.array([100., 200.]))
+        self.assertEqual(table.loc['a', 'n200_h1'], 1)
+        self.assertEqual(table.loc['a', 'n200_h2'], 1)
+        self.assertEqual(table.loc['a', 'n200_all'], 2)
+        self.assertAlmostEqual(table.loc['a', 'persistence_mae_h1_mm'], 50.)
+        self.assertAlmostEqual(table.loc['a', 'persistence_mae_h2_mm'], 100.)
+
     def test_macro_mean_gives_equal_station_weight_with_unequal_counts(self):
         actual = np.zeros((3, 2))
         predicted = np.array([[3., 4.], [0., 0.], [0., 0.]])
