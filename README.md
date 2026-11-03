@@ -2,28 +2,64 @@
 
 Water-level forecasting and hydrology monitoring for Huế, Vietnam. The application
 predicts **hourly mean water levels** at **Dã Viên (`0074647403`)** at **+1, +3,
-+6, +12 and +24 hours**, in **millimetres**.
++6, +12, and +24 hours**, in **millimetres**. A regional model (11 stations,
++6/+12 h) is the current best research model; the serving backend still runs the
+three registered Dã Viên ResidualLSTM models.
 
 The research objective is to reduce forecasts with **absolute error >200 mm**,
 especially at +12/+24 hours during rapid rises and falls.
 
-## Application
+## Current best model — regional ResidualGRULateFusion
 
-- Interactive station map, latest observations, hourly history and reservoir-operation data.
-- Selectable production models, single-anchor forecasts and forecasts over a date range.
-- Charts comparing forecasts with observations; missing values remain visible as gaps.
-- Saved forecasts identified by model/pipeline version; edited inputs produce unsaved scenario forecasts.
-- Scheduled observation and ECMWF rainfall-forecast ingestion, PostgreSQL storage and Redis caching.
+The best model so far is a **ResidualGRULateFusion** (`gru-late-fusion`)
+regional checkpoint in [model/selected/gru_high_precision/](model/selected/gru_high_precision/).
 
-**Stack:** PyTorch, FastAPI, SQLAlchemy/Alembic, PostgreSQL, Redis, React/Vite,
-MapLibre and Nginx. Forecasting is currently enabled for Dã Viên; other stations
-supply observations or appear in the monitoring interface.
+- **11 stations**, including Dã Viên, Thuận An, Tư Hiền, Tứ Phú, Ngã Ba Sình,
+  Sông Ô Lâu, Phú Xuân and An Cựu. Trained on the fixed regional pool
+  `train_data/hue_regional_20261015_h6_h12_fixed_split_v1` (see
+  [TRAINING_REGIONAL.md](TRAINING_REGIONAL.md)).
+- **Two outputs: +6 h and +12 h** (not the full five-horizon set).
+- Stacked GRU history encoder (**hidden size 64, 3 layers, 96-hour input**),
+  station embeddings (size 8), per-station persistence coefficients and a
+  zero-initialized correction head.
+- **Late fusion of the ECMWF forecast**: all forecast columns are removed from
+  the history encoder and only the forecast vector at the prediction anchor
+  enters a separate MLP. Inputs are the `water_level+rain+flood_season+weather_forecast`
+  feature set (42 inputs).
+- Station-balanced loss with a 200 mm target-scale floor; checkpoint selected on
+  validation `val_loss` at **epoch 7**.
 
-## Production models
+Validation is the fixed regional split **July 31 – September 14, 2026**
+(1,080 anchors per station per horizon; 11 × 2 × 1,080 = **23,760 predictions**):
+
+| Scope | RMSE (mm) | MAE (mm) | Errors >200 mm | Rate |
+|---|---:|---:|---:|---:|
+| Pooled, all stations and horizons | 93.08 | 36.47 | 380 | 1.60% |
+| All stations, +6 h | 79.56 | 32.58 | 170 | 1.43% |
+| All stations, +12 h | 104.88 | 40.36 | 210 | 1.77% |
+| Dã Viên, +6 h | 63.64 | 45.34 | 18 | 1.67% |
+| Dã Viên, +12 h | 73.68 | 54.04 | 19 | 1.76% |
+
+This selection is high-precision on rise alarms: pooled +6 h rise recall
+**0.62** with false-alarm ratio **0.102**. Dã Viên rise precision at +6 h is
+higher (12 hits, 1 false alarm) at the cost of lower recall (0.48).
+
+Caveats, inherited from the research process and kept deliberately:
+
+- This validation period has been inspected repeatedly during the architecture
+  study; the September 15 – October 15 test period remains unused. Results are
+  therefore **exploratory until an untouched holdout confirms them**.
+- The checkpoint is **not registered** in
+  [src/backend/prediction/model_configs.json](src/backend/prediction/model_configs.json);
+  no model has been promoted or deployed. The live app is still a
+  single-station contract, and live regional API input assembly is future work.
+
+## Production (serving) models
 
 The [model registry](src/backend/prediction/model_configs.json) defines three
-independent, selectable **ResidualLSTM** models. They are not an ensemble.
-Each has its own checkpoint, fitted preprocessing and feature order in [model/](model/README.md).
+independent, selectable **ResidualLSTM** models for Dã Viên. They are not an
+ensemble. Each has its own checkpoint, fitted preprocessing and feature order in
+[model/](model/README.md).
 
 | Model ID | Rain gauges | Inputs | ECMWF forecast | Selection |
 |---|---|---:|---|---|
@@ -40,11 +76,14 @@ totals, missingness flags and flood-season indicators. Weather-enabled models
 share an ECMWF grid associated with Nhâm, using rainfall over 0–3, 3–6, 6–12 and
 12–24 future hours, missingness flags and forecast age.
 
-## Recorded results
+### Recorded comparison (Dã Viên, five horizons)
 
-Comparison on **592 common anchors**, from **19 September 2026, 23:00** through
-**14 October 2026, 14:00 (UTC+7)**: 5 horizons × 592 anchors = **2,960 forecasts**.
-RMSE below is **pooled across all predictions**, not the mean of horizon RMSEs.
+On **592 common anchors**, from **19 September 2026, 23:00** through
+**14 October 2026, 14:00 (UTC+7)**: 5 horizons × 592 anchors = **2,960
+forecasts**. RMSE below is **pooled across all predictions**, not the mean of
+horizon RMSEs. Note this comparison covers a different period, targets and
+anchor set from the regional GRU results above; the two tables are not directly
+comparable.
 
 | Model | Deployment | RMSE (mm) | MAE (mm) | Errors >200 mm | Rate |
 |---|---|---:|---:|---:|---:|
@@ -53,21 +92,22 @@ RMSE below is **pooled across all predictions**, not the mean of horizon RMSEs.
 | Three-station, seed 42 | Production | 77.04 | 58.11 | 50 | 1.69% |
 | Expanded-train three-station, hidden size 16 | Experimental | **72.30** | **54.03** | **32** | **1.08%** |
 
-Large errors by horizon:
+The best expanded candidate (uniform sampling, seed 42, correction penalty −0.2,
+checkpoint epoch 86, run `seq96_h16_large_error_rate_20261022T061755947891Z_b872679c`)
+is **not deployed**; it has no independent test set. All models in this table
+are Dã Viên-only; none uses the 11-station regional training of the GRU.
 
-| Horizon | Legacy | Model B | Production three-station | Expanded candidate |
-|---|---:|---:|---:|---:|
-| +1h | 0 | 0 | 0 | 0 |
-| +3h | 0 | 0 | 0 | 0 |
-| +6h | 41 | 5 | 10 | 10 |
-| +12h | 25 | 16 | 11 | 7 |
-| +24h | 31 | 27 | 29 | 15 |
+## Application
 
-The best expanded candidate uses uniform sampling, seed 42, correction penalty -0.2
-and checkpoint epoch 86 (run `seq96_h16_large_error_rate_20261022T061755947891Z_b872679c`).
-It is **not deployed**. Results are exploratory: this period has been examined
-repeatedly and, for expanded training, is validation used for checkpoint selection.
-There is **no independent test set for the expanded experiment**.
+- Interactive station map, latest observations, hourly history and reservoir-operation data.
+- Selectable production models, single-anchor forecasts and forecasts over a date range.
+- Charts comparing forecasts with observations; missing values remain visible as gaps.
+- Saved forecasts identified by model/pipeline version; edited inputs produce unsaved scenario forecasts.
+- Scheduled observation and ECMWF rainfall-forecast ingestion, PostgreSQL storage and Redis caching.
+
+**Stack:** PyTorch, FastAPI, SQLAlchemy/Alembic, PostgreSQL, Redis, React/Vite,
+MapLibre and Nginx. Forecasting is currently enabled for Dã Viên; other stations
+supply observations or appear in the monitoring interface.
 
 ## Repository layout
 
@@ -75,39 +115,49 @@ There is **no independent test set for the expanded experiment**.
 .
 ├── src/
 │   ├── ai/
-│   │   ├── lstm.py                      # LSTM and ResidualLSTM
-│   │   ├── train.py                     # General training entry point
-│   │   ├── expanded_train_experiment.py # Expanded training and reference inference
-│   │   ├── build_expanded_train_dataset.py
-│   │   ├── expanded_train_report.py     # Paired comparison reports
+│   │   ├── lstm.py                       # Original ResidualLSTM
+│   │   ├── residual_sequence.py          # GRU/TCN/CNN-GRU/Transformer residual wrappers
+│   │   ├── train.py                      # Training entry point (local and regional pools)
+│   │   ├── regional_training_data.py     # Regional pool dataset adapter
+│   │   ├── sequence_checkpoint.py        # Inference runtime for regional checkpoints
+│   │   ├── RESIDUAL_ARCHITECTURES.md     # Architecture reference
+│   │   ├── expanded_train_experiment.py  # Expanded Dã Viên training and reference inference
+│   │   ├── event_evaluation.py           # Rise-alarm evaluation for validation snapshots
 │   │   └── tests/
 │   ├── backend/
-│   │   ├── main.py                     # FastAPI entry point
-│   │   ├── api/                        # Station, observation and forecast routes
-│   │   ├── prediction/                 # Registry, preprocessing and inference
-│   │   ├── ingestion/                  # Observation, facility and weather collectors
-│   │   ├── db/                         # SQLAlchemy models and Alembic migrations
-│   │   ├── cache/                      # Redis and input/forecast caching
-│   │   └── security/                   # CORS and request/inference limits
-│   └── frontend/                       # React/Vite interface and frontend tests
+│   │   ├── main.py                       # FastAPI entry point
+│   │   ├── api/                          # Station, observation and forecast routes
+│   │   ├── prediction/                   # Registry, preprocessing and inference
+│   │   ├── ingestion/                    # Observation, facility and weather collectors
+│   │   ├── db/                           # SQLAlchemy models and Alembic migrations
+│   │   ├── cache/                        # Redis and input/forecast caching
+│   │   └── security/                     # CORS and request/inference limits
+│   └── frontend/                         # React/Vite interface and frontend tests
 ├── research/
-│   ├── scripts/                        # Offline experiments and dataset utilities
-│   ├── notebooks/                      # Correlation, seasonal and model analyses
+│   ├── station_analysis/                 # DEM, read-only station EDA and exploratory grouping
+│   ├── scripts/                          # Offline experiments and dataset utilities
+│   ├── notebooks/                        # Correlation, seasonal and model analyses
 │   └── README.md
 ├── train_data/
-│   ├── da_vien_1h_2026-10-15_forecast_mask_o24/
-│   └── da_vien_1h_2026-10-15_expanded_train_o24/
-├── model/                              # Serving checkpoints and preprocessing
-├── docker/                             # Nginx, automatic startup and GPU override
-├── Dockerfile                          # Backend/frontend targets; Python installs use uv
+│   ├── da_vien_1h_2026-10-15_*           # Fixed Dã Viên snapshots (see below)
+│   └── hue_regional_*                    # Fixed regional pools (11-station experiments)
+├── model/
+│   ├── *.pt + *_preprocessing.joblib     # Registered serving checkpoints (Dã Viên)
+│   ├── selected/gru_high_precision/      # Current best: regional GRU late-fusion candidate
+│   ├── selected/                         # Other selected regional candidates
+│   └── experiments/                      # Local experiment checkpoints (not served)
+├── docker/                               # Nginx, automatic startup and GPU override
+├── Dockerfile                            # Backend/frontend targets; Python installs use uv
 ├── docker-compose.yaml
-├── requirements.txt                    # Research/training dependencies
+├── requirements.txt                      # Research/training dependencies
+├── TRAINING_REGIONAL.md                  # How to train the 11-station regional models
 └── .env.example
 ```
 
-Serving artifacts and the two datasets above are versioned. Raw data, database
-contents, experimental checkpoints, MLflow artifacts, `reports/` and archives
-are local/ignored. **Cloning does not restore the operational database.**
+Serving artifacts and the Dã Viên snapshot datasets above are versioned. Raw
+data, database contents, experimental checkpoints, MLflow artifacts, `reports/`
+and archives are local/ignored. **Cloning does not restore the operational
+database.**
 
 ## Run with Docker Compose
 
@@ -136,32 +186,33 @@ docker compose --profile ingestion down
 ```
 
 Compose provides Nginx/frontend, backend and Redis; **PostgreSQL is external**.
-The launcher builds the CPU image, checks NVIDIA access inside Docker, then builds
-and checks a CUDA 12.8 backend image when GPU access is available. GPU use requires
-a compatible NVIDIA driver and Docker GPU support (NVIDIA Container Toolkit on
-Linux, or GPU-enabled Docker Desktop with WSL2). It sets `PREDICTION_DEVICE=auto`,
-including when an older `.env` explicitly requests CUDA. The selected device is
-logged at backend startup. CUDA images take more disk space than CPU images.
+The launcher builds the CPU image, checks NVIDIA access inside Docker, then
+builds and checks a CUDA 12.8 backend image when GPU access is available. GPU use
+requires a compatible NVIDIA driver and Docker GPU support (NVIDIA Container
+Toolkit on Linux, or GPU-enabled Docker Desktop with WSL2). It sets
+`PREDICTION_DEVICE=auto`, including when an older `.env` explicitly requests
+CUDA. The selected device is logged at backend startup. CUDA images take more
+disk space than CPU images.
 
 Plain `docker compose --profile ingestion up --build -d` remains available and
 uses the CPU image without GPU access; set `PREDICTION_DEVICE=auto` or `cpu` in
 `.env` for that command. Re-run `bash docker/up.sh` to detect GPU support again.
 
-The backend uses one process, with serving artifacts mounted
-read-only. Without the `ingestion` profile, automatic collection is off. Its worker
-collects observations, facilities and recent ECMWF runs; weather status appears
-under `weather`. Set `WEATHER_SYNC_ENABLED=false` to disable weather collection.
+The backend uses one process, with serving artifacts mounted read-only. Without
+the `ingestion` profile, automatic collection is off. Its worker collects
+observations, facilities and recent ECMWF runs; weather status appears under
+`weather`. Set `WEATHER_SYNC_ENABLED=false` to disable weather collection.
 
 Change `HTTP_PORT`/`HTTP_BIND_ADDRESS` and matching `CORS_ORIGINS` when changing
 the frontend address. Migration, when required, is explicit:
-`docker compose --profile tools run --rm migrate`; it does not restore historical
-data. Container health checks API liveness, not database readiness.
+`docker compose --profile tools run --rm migrate`; it does not restore
+historical data. Container health checks API liveness, not database readiness.
 
 ## Local development
 
 Python 3.14 is used by Docker. Frontend development requires Node.js 22.12+
-(Docker uses Node 24). PostgreSQL and Redis must be available separately.
-From the repository root:
+(Docker uses Node 24). PostgreSQL and Redis must be available separately. From
+the repository root:
 
 ```bash
 python3 -m venv .venv
@@ -171,41 +222,88 @@ HYDROLOGY_SYNC_AUTOSTART=false .venv/bin/python -m uvicorn src.backend.main:app 
 ```
 
 In separate terminals, run `npm ci && npm run dev` from `src/frontend/`, and
-`.venv/bin/python -m src.backend.ingestion` from the repo root. Avoid an additional
-local worker while Compose ingestion is active. Frontend: **http://localhost:5173**;
-local API/Swagger: **http://127.0.0.1:8000/docs**.
+`.venv/bin/python -m src.backend.ingestion` from the repo root. Avoid an
+additional local worker while Compose ingestion is active. Frontend:
+**http://localhost:5173**; local API/Swagger: **http://127.0.0.1:8000/docs**.
 
 ## Datasets and training
 
-Both datasets are fixed snapshots through **15 October 2026**. Runtime ingestion
-does not update their CSV files.
+The Dã Viên CSV datasets are fixed snapshots through **15 October 2026**.
+Runtime ingestion does not update their CSV files.
 
 | Dataset suffix | Contents | Split |
 |---|---|---|
 | `forecast_mask_o24` | 26 B features; 24 hourly targets (+1…+24h) | Original train/validation/test |
+| `forecast_mask_o2_h6_h12` | Same 26 inputs; only +6/+12h targets | Exact O24 splits and eligible anchors |
+| `forecast_mask_o2_h6_h12_weather12` | 24 inputs: remove forecast rain 12–24h and its mask; same +6/+12h targets | Exact two-output splits and anchors |
+| `o2_h6_h12_weather12_rain_pool` | Pool of 6 rain gauges, 48 inputs; +6/+12h targets and forecast windows through +12h | Original two-output splits and anchors; not expanded train |
+| `o2_h6_h12_weather24_rain_pool` | Matched control: same rain pool and targets, retaining forecast rain 12–24h and its mask (50 inputs) | Same original splits and anchors as weather12 pool |
 | `expanded_train_o24` | Pool of 6 rain gauges, 50 features; 24 targets | Former train+validation → train; former test → validation |
 
-Selecting 2/3/4 rain gauges gives 26/32/38 inputs with water, season and weather
-features. The expanded runner predicts the five standard horizons and uses
-**7,199 training sequences / 592 validation sequences** at sequence length 96.
-Uniform and event-balanced sampling use the same dataset. Historical builders
-may require source snapshots that are no longer retained here.
+The regional experiments additionally use prebuilt Parquet pools such as
+`train_data/hue_regional_20261015_h6_h12_fixed_split_v1` (11 stations,
++6/+12 h, fixed split: validation July 31 – September 14, test September 15 –
+October 15). These datasets are recognized as prepared regional pools; the
+loader does not rebuild them or refit their normalizers. See
+[TRAINING_REGIONAL.md](TRAINING_REGIONAL.md) for a portable training guide.
 
-In the Python environment created above, add the training dependencies and
-GoogleHydrology adapter dependencies imported by the model module:
+Single-station and regional residual architectures (GRU, TCN, CNN-GRU,
+Transformer, and their late-fusion variants) are documented in
+[src/ai/RESIDUAL_ARCHITECTURES.md](src/ai/RESIDUAL_ARCHITECTURES.md). History
+length (`--lstm-seq-len`), target horizons (`--target-horizons`), station
+conditioning and the change-objective losses are shared across all of them.
 
-```bash
-.venv/bin/python -m pip install mlflow optuna tqdm matplotlib xgboost lightgbm \
-  ruamel.yaml more_itertools xarray dask \
-  "git+https://github.com/google-research/flood-forecasting.git"
-```
+### Rebuilding the paired Dã Viên datasets
 
-Use a CUDA-compatible PyTorch installation for GPU training; the Docker backend
-image is for inference. Start MLflow in a separate terminal:
+Rebuild the paired two-output dataset with
+`python -m src.ai.build_horizon_subset_dataset`. It retains sequence length 96,
+the 24-hour purge and all input rows, including forecast rain through +24h.
+Both selected targets are masked to NaN on rows missing any of the original 24
+labels, so reducing outputs never adds eligible anchors: **6,095 / 985 / 592**
+train/validation/test sequences. Retained labels use exact future timestamps.
+`preprocessing.joblib` contains train-only fitted input/target scalers and the
+two persistence coefficients per type. The existing `src.ai.train` loader
+accepts this dataset with `--horizon 1h --lstm-seq-len 96 --target-horizons 6 12`;
+`--outputs` remains restricted to 5 or 24. No model is trained by the builder.
 
-```bash
-.venv/bin/mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
-```
+Build the 24-input feature ablation with
+`python -m src.ai.build_weather_horizon_ablation`. It projects the parent input
+scaler to the retained columns and reuses the target scaler without fitting.
+Historical 24-hour rain sums, forecast age, all remaining masks, target masks,
+weather-vintage selection and forecast-history policy stay unchanged. Metadata
+and `preprocessing.joblib` contain updated feature and weather-mask indices.
+The same training CLI accepts this dataset without architecture or loop changes.
+
+The fixed 24-input dataset contains only Hồng Thái and Nhâm. For other
+combinations, build the pool with
+`python -m src.ai.build_weather_horizon_ablation --rain-stations all
+--output-dir train_data/da_vien_1h_2026-10-15_o2_h6_h12_weather12_rain_pool`.
+It copies matching rain predictors from the retained expanded dataset's hourly
+snapshot, while keeping the original two-output splits and masked labels. Added
+input scales are fitted on the original train split only. Select sources with
+`--rain-stations hong_thai+bach_ma+phu_bai` when training: 2/3/4/6 gauges give
+24/30/36/48 inputs. The original two-station ablation stays unchanged. Use
+`--forecast-hours 24` with a separate output directory to build the matched
+control containing forecast rain through +24h (26/32/38/50 selected inputs).
+
+### Comparison and promotion policy
+
+After `src.ai.train` finishes on a Dã Viên dataset, comparison defaults to
+`--comparison-model-id model_b`. It evaluates only shared horizons on identical
+eligible timestamps, with each model's saved scalers. For the two-output
+experiment, Model B's five-target reference table is resolved from the O24
+parent without restoring masked samples. The console and
+`reports/model_comparisons/<run_id>_<suffix>/comparison.md` show MAE/RMSE and
+errors >200 mm. The verdict prioritizes fewer large errors, then lower pooled
+RMSE; it never promotes a model automatically. Comparison failures are reported
+separately and preserve the completed training checkpoint.
+
+Expanded-train runs likewise compare their selected checkpoint with legacy/B on
+common validation anchors and write reports under
+`reports/model_comparisons/expanded_train/`; MLflow stores settings/metrics
+without model uploads. Training does not promote a model to production. Use
+`--help` for all options, `--check-only` for preparation checks, or `--no-mlflow`
+to train without the tracking server.
 
 Configuration of the expanded three-station run reported above:
 
@@ -222,16 +320,43 @@ Configuration of the expanded three-station run reported above:
   --checkpoint-metric large_error_rate
 ```
 
-Run folders are named automatically. Each completed run reloads its selected
-checkpoint and compares it with legacy/B on common validation anchors. Reports
-are written under `reports/model_comparisons/expanded_train/`; MLflow stores
-settings/metrics without model uploads. Training does not promote a model to
-production. Use `--help` for all options, `--check-only` for preparation checks,
-or `--no-mlflow` to train without the tracking server.
+The 2026-10-23 two-output study completed 36 cases (three configurations, three
+rain combinations, two seeds, two forecast-input windows). On the same 592
+anchors and only +6h/+12h, Model B has 21 errors >200 mm (RMSE 85.69 mm). The
+best new case has 18 (87.49 mm), but its other seed has 38; the existing
+expanded model has 17 (81.10 mm), using a larger training split. Removing the
+12–24h forecast and its mask improves 12 of 18 matched pairs, with six worse.
+These exploratory results do not establish a replacement for production. The
+local detailed report and all case metrics are under
+`reports/model_comparisons/20261023_weather_outputs_matrix/`.
+
+## Station and terrain analysis
+
+The reusable [station analysis pipeline](research/station_analysis/README.md)
+clips the supplied FABDEM/Copernicus rasters to a documented Huế ROI, samples
+100/200/300 m neighborhoods and analyzes exact +6h/+12h water changes. It reads
+PostgreSQL in a read-only transaction and stores derived results in GeoTIFF,
+Parquet and a separate local SQLite file; application tables are unchanged.
+
+The initial run covers 19 catalog stations and 796,846 readings through
+2026-10-21. It flags sensor transitions for review and finds weak exploratory
+clustering (silhouette 0.226). Station datums/physical target definitions remain
+unverified; DEM elevation must not be subtracted from station readings or used
+alone to define regional model groups. No regional model has been trained by
+this pipeline. Local results: `reports/station_analysis/report.md`.
 
 ## Further documentation
+
+The [Phase 2 hydrological EDA extension](research/station_analysis/phase2/README.md)
+follows `EDA2.md`. Its Stage 1 inventories 19 water stations, 55 rain gauges and
+forecast vintages without training or changing source data. Rain accumulation
+semantics and historical forecast availability remain review gates. The local
+report is `reports/station_analysis/phase2/stage1_inventory/report.md`; later
+stages require review before implementation.
 
 [Research](research/README.md) · [Backend/API](src/backend/README.md) ·
 [Prediction contracts](src/backend/prediction/README.md) ·
 [Ingestion](src/backend/ingestion/README.md) · [Database](src/backend/db/README.md) ·
-[Frontend](src/frontend/README.md) · [API limits](src/backend/security/README.md)
+[Frontend](src/frontend/README.md) · [API limits](src/backend/security/README.md) ·
+[Residual architectures](src/ai/RESIDUAL_ARCHITECTURES.md) ·
+[Regional training](TRAINING_REGIONAL.md)
