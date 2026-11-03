@@ -25,6 +25,7 @@ from torch import nn
 from torch import optim
 
 from src.ai.change_objective import from_training_dataset
+from src.ai.dilate import StationBalancedDILATE
 from src.ai.losses import HorizonWeightedMSE, HorizonWeightedTailLoss
 from src.ai.lr_schedules import warmup_cosine
 from src.ai.comparison import (
@@ -207,7 +208,9 @@ lgbm_args.add_argument("--lgbm-n-jobs", type=int, default=lgbm_defaults.n_jobs)
 lgbm_args.add_argument("--lgbm-verbose", type=int, default=lgbm_defaults.verbose)
 
 
-parser.add_argument('--change-loss', choices=['baseline', 'station-balanced', 'event-weighted', 'asymmetric', 'combined', 'large-error-count', 'large-error-primary'], default='baseline')
+parser.add_argument('--change-loss', choices=['baseline', 'station-balanced', 'event-weighted', 'asymmetric', 'combined', 'large-error-count', 'large-error-primary', 'dilate'], default='baseline')
+parser.add_argument('--dilate-alpha', type=float, default=0.5)
+parser.add_argument('--dilate-gamma', type=float, default=0.01)
 parser.add_argument('--change-scale-floor-mm', type=float, default=200.)
 parser.add_argument('--change-event-weight', type=float, default=1.)
 parser.add_argument('--change-under-weight', type=float, default=1.)
@@ -271,6 +274,11 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.change_loss in ('station-balanced', 'large-error-count', 'large-error-primary') and (args.change_event_weight or args.change_under_weight):
         warnings.warn(f'{args.change_loss} ignores event/under weights; use combined to activate them. '
                       'Set both weights to 0 for the B1 control.', UserWarning)
+    if args.change_loss == 'dilate':
+        if not math.isfinite(args.dilate_alpha) or not 0 <= args.dilate_alpha <= 1 or not math.isfinite(args.dilate_gamma) or args.dilate_gamma <= 0:
+            parser.error('DILATE requires 0 <= alpha <= 1 and positive gamma')
+        if args.diagnose_change_dynamics or args.event_aware or args.lstm_horizon_weights is not None:
+            parser.error('DILATE does not support elementwise dynamics, event-aware heads or custom horizon weights')
     if args.change_loss != 'baseline':
         if not regional or args.water_station is not None:
             parser.error('--change-loss requires regional station-conditioned training')
@@ -670,7 +678,7 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
             args.lstm_horizon_weights or [1.0] * output_size,
             [1.]*output_size if regional else train_loader.dataset.target_scaler.scale_, strength=args.lstm_tail_penalty,
             threshold_mm=args.lstm_tail_threshold_mm, transition_mm=args.lstm_tail_transition_mm)
-    if args.change_loss != 'baseline':
+    if args.change_loss not in ('baseline', 'dilate'):
         loss_func = from_training_dataset(train_loader.dataset,
             weights=args.lstm_horizon_weights or [1.]*output_size, mode=args.change_loss,
             scale_floor_mm=args.change_scale_floor_mm, event_weight=args.change_event_weight,
@@ -678,6 +686,14 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
             large_error_penalty=args.large_error_penalty,
             large_error_threshold_mm=args.large_error_threshold_mm,
             large_error_transition_mm=args.large_error_transition_mm, rise_event_weight=args.rise_event_weight)
+    if args.change_loss == 'dilate':
+        if train_loader.dataset.target_horizons != list(range(1, 25)):
+            raise ValueError('DILATE requires consecutive +1h through +24h targets')
+        d = train_loader.dataset
+        import numpy as np
+        counts = np.bincount(d.view.samples.station_index.to_numpy(), minlength=len(d.view.mapping))
+        scales = [[d.view.normalizers['stations'][sid]['targets'][f'h{h}']['scale'] for h in d.target_horizons] for sid in sorted(d.view.mapping, key=lambda s: d.view.mapping[s]['station_index'])]
+        loss_func = StationBalancedDILATE(counts, scales, args.dilate_alpha, args.dilate_gamma, args.change_scale_floor_mm)
     trainer_options = dict(
         model=model,
         horizon=args.horizon,
@@ -727,6 +743,8 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
                             f"_transition_{args.lstm_tail_transition_mm:g}_{args.lstm_checkpoint_metric}")
     if args.change_loss != 'baseline':
         checkpoint_root /= f'change_{args.change_loss}_floor{args.change_scale_floor_mm:g}_event{args.change_event_weight:g}_under{args.change_under_weight:g}_threshold{args.change_threshold_mm:g}'
+        if args.change_loss == 'dilate':
+            checkpoint_root /= f'alpha_{args.dilate_alpha:g}_gamma_{args.dilate_gamma:g}'
         if args.change_loss in ('large-error-count', 'large-error-primary'):
             checkpoint_root /= f'large_error_weight{args.large_error_penalty:g}_threshold{args.large_error_threshold_mm:g}_transition{args.large_error_transition_mm:g}'
     trainer_options["checkpoint_dir"] = checkpoint_root
@@ -789,6 +807,8 @@ def main() -> None:
                     "target_horizons_hours": args.target_horizons or "dataset",
                     "checkpoint_path": str(trainer.checkpoint_path),
                     "change_loss": args.change_loss,
+                    "dilate_alpha": args.dilate_alpha if args.change_loss == "dilate" else 0.,
+                    "dilate_gamma": args.dilate_gamma if args.change_loss == "dilate" else 0.,
                     "change_scale_floor_mm": args.change_scale_floor_mm,
                     "change_event_weight": args.change_event_weight,
                     "change_under_weight": args.change_under_weight,

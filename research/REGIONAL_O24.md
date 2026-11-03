@@ -49,3 +49,11 @@ Transformer R1 (seed 42):
   --diagnose-change-dynamics --diagnose-station-gradients --gradient-probe-samples 32 \
   --checkpoint-dir model/experiments/regional_o24_transformer_r1
 ```
+
+## DILATE objective (opt-in)
+
+Select `--change-loss dilate --dilate-alpha 0.5 --dilate-gamma 0.01`. The sequence shape component is Soft-DTW; temporal distortion is the expected soft alignment path weighted by `(i-j)^2/24^2`. The loss is `alpha*shape + (1-alpha)*temporal`; shape is raw Soft-DTW and may be negative. Following the existing station-balanced objective, each physical level is represented relative to current water level and normalized by the corresponding station/horizon `max(target_scale, 200 mm)`; station sample weights are computed from training counts. Gamma is in squared dimensionless normalized units. It is not a 200 mm error-count loss.
+
+This research implementation uses batched PyTorch dynamic programming with quadratic sequence-length work and a differentiable temporal path. Benchmark memory and runtime before any long training. `--diagnose-change-dynamics`, event-aware heads and custom horizon weights are rejected because DILATE's alignment couples all horizons. Existing per-horizon change diagnostics describe errors, not additive DILATE contributions. The existing training process logs the parameters and stores the loss configuration alongside the checkpoint. GPU testing requires an available CUDA device.
+
+Example (starts training only if executed): take the GRU command above, remove `--diagnose-change-dynamics --diagnose-station-gradients --gradient-probe-samples 32`, replace `--change-loss station-balanced` with `--change-loss dilate --dilate-alpha 0.5 --dilate-gamma 0.01`, and choose a new `--checkpoint-dir`. Add `--mlflow-tracking-uri "sqlite:///$PWD/mlflow_local.db"` if no tracking server is running.
