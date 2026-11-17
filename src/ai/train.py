@@ -98,7 +98,8 @@ parser.add_argument('--tcn-kernel-size', type=int, default=3)
 parser.add_argument('--cnn-channels', type=int, nargs='+', default=[32, 32])
 parser.add_argument('--cnn-kernel-size', type=int, default=3)
 parser.add_argument('--forecast-hidden-size', type=int, default=32)
-parser.add_argument('--station-embedding-size', type=int, default=8)
+parser.add_argument('--station-embedding-size', type=int, default=8,
+                    help='0 = no station embedding (single-station models; needs --head-mode shared)')
 parser.add_argument('--transformer-heads', type=int, default=4,
                     help='Attention heads; must divide --lstm-hidden-size for Transformer models')
 parser.add_argument('--transformer-ff-size', type=int, default=128,
@@ -424,8 +425,10 @@ def validate_args(args: argparse.Namespace) -> None:
                 parser.error(f"MEF file not found: {path}")
 
     if any(n < 1 for n in [*args.tcn_channels, *args.cnn_channels, args.tcn_kernel_size, args.cnn_kernel_size,
-                           args.forecast_hidden_size, args.station_embedding_size, args.lstm_hidden_size, args.lstm_num_layers]):
+                           args.forecast_hidden_size, args.lstm_hidden_size, args.lstm_num_layers]):
         parser.error('Architecture sizes and kernel sizes must be positive')
+    if args.station_embedding_size < 0 or (args.station_embedding_size == 0 and args.head_mode != 'shared'):
+        parser.error('--station-embedding-size must be >= 0; 0 (no station embedding) requires --head-mode shared')
     if args.train_method.removesuffix('-late-fusion') == 'transformer' or args.horizon_decoder == 'transformer':
         if args.transformer_heads < 1 or args.transformer_ff_size < 1:
             parser.error('Transformer heads and feed-forward size must be positive')

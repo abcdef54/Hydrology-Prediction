@@ -303,6 +303,50 @@ MAE (mm), DV lịch sử + NBS dự báo: val 30 / 57 / 71, test 37 / 57 / 61. P
    - Model NBS lại được chọn sau khi xem cả val và test của NBS.
    - Muốn dùng làm đầu vào đúng cách thì phải tạo dự báo NBS **train chéo theo từng đoạn thời gian** (out-of-fold) cho tập train (xem `NOTES.md` A4). Việc này cần train lại model NBS nhiều lần.
 
+## Kế hoạch của người dùng về dự báo NBS (17/11/2026)
+
+- **Không train lại model NBS** để tạo dự báo out-of-fold.
+- Khi train DV: dùng dự báo NBS (`combined_v1`) làm đầu vào, kèm **dropout cho nhóm này** để model không quá phụ thuộc. Code đã có sẵn: `--group-dropout PREFIX:RATE`.
+- Sau khi có model DV: dùng đầu ra DV để train lại một model NBS tốt hơn.
+
+**Rủi ro đã nêu với người dùng:**
+- Dropout làm giảm mức phụ thuộc, nhưng không sửa được việc dự báo NBS trên train là trong mẫu. Ở NBS, kênh `lin_fc` kèm group dropout 0,3 và 0,5 đều cho kết quả kém hơn.
+- Vòng DV → NBS cũng gặp vấn đề tương tự (dự báo DV trên train là trong mẫu). Mô phỏng ở `NOTES.md` A4 cho thấy chỉ vòng đầu có thay đổi.
+
+## Kiến trúc GRU hiện tại (đã kiểm chứng ngày 17/11/2026)
+
+`src/ai/residual_sequence.py`, lớp `ResidualSequence(architecture='gru')`, dùng với `--train-method gru --head-mode station`. Đã nạp hai checkpoint của `combined_v1` và đếm tham số từng phần: khớp `PIPELINE.md` mục 4 và `REPRODUCE.md` (74.955 và 279.435).
+
+Luồng xử lý (x: [B, L, F]):
+1. (chỉ khi train, nếu bật) `--group-dropout` rồi `--history-dropout`;
+2. `Dropout1d(input_dropout)`: mỗi mẫu bỏ nguyên một kênh trên cả cửa sổ, kênh còn lại nhân 1/(1−p). Có thể bỏ cả kênh mực nước, nhưng nhánh persistence không bị ảnh hưởng;
+3. `GRU(F → H, N lớp, dropout giữa lớp)`, lấy trạng thái ẩn ở bước cuối;
+4. ghép với `Embedding(1, 8)` của trạm, rồi `Linear(H + 8 → H)` + ReLU;
+5. `Dropout(head_dropout)`;
+6. `StationCorrectionHead`: W [1, 3, H] và b [1, 3], khởi tạo 0, ra Δ cho từng mốc;
+7. ŷ_h = a_h · x[t, mực nước] + b_h + Δ_h, với a_h = σ_w/σ_h. Ví dụ NBS: σ_w 144,2, σ_h 107,8 / 106,5 / 104,2, nên a_h = 1,337 / 1,354 / 1,384, khớp checkpoint.
+
+**Đã kiểm tra:**
+- model mới khởi tạo cho đầu ra đúng bằng persistence;
+- `Dropout1d` bỏ nguyên kênh;
+- mọi nhóm đầu vào phụ (mưa ECMWF, gió, triều, mực nước biển) được đưa vào GRU ở **mọi bước** của cửa sổ (`weather_feature_indices` rỗng, không có late fusion).
+
+**Station embedding trong model một trạm** (người dùng hỏi, 17/11/2026):
+- Chỉ có 1 trạm, nên `Embedding(1, 8)` là **một vector hằng**, giống nhau cho mọi mẫu. Phần nó đóng góp vào `Linear(H + 8 → H)` (W_e·e) chỉ là một **bias cố định**.
+- Đã kiểm chứng trên hai checkpoint `combined_v1`: gộp W_e·e vào bias của tầng `fusion` rồi đặt embedding = 0 thì đầu ra không đổi (sai khác 2·10⁻⁷).
+- Phần dư thừa: 520 tham số (H = 64) và 1.032 tham số (H = 128).
+- Cùng lý do, `StationCorrectionHead` với 1 trạm chính là một `Linear(H → 3)` khởi tạo 0.
+- **Ảnh hưởng tới kết quả:** không đổi khả năng biểu diễn của model. Nó chỉ làm khác cách tối ưu một chút (bias được biểu diễn bằng nhiều tham số hơn) và làm khác dãy số ngẫu nhiên lúc khởi tạo.
+- **Người dùng quyết định (17/11/2026): giữ nguyên ở các trạm đã train (Thuận An, NBS). Riêng Dã Viên thì BỎ.**
+  - Đã thêm tùy chọn `--station-embedding-size 0`, bắt buộc đi cùng `--head-mode shared`. Khi đó model không có embedding, tầng ghép là `Linear(H → H)`, head là `Linear(H → 3)` khởi tạo 0. Mã trạm vẫn được dùng để lấy hệ số persistence.
+  - Kiểm tra:
+    - test mới `src/ai/tests/test_no_station_embedding.py` (4 test) đạt;
+    - các test liên quan (kiến trúc, group/history dropout, transformer) vẫn chỉ có 2 lỗi cũ do `validate_args`, giống hệt trước khi sửa;
+    - dự báo của `combined_v1` không đổi (sai khác 0,0 trên 24.011 dòng);
+    - dựng thử model DV H64×3 trên `dv_water_only`: 67.523 tham số, a_h = 1,002 / 1,004 / 1,006.
+  - Cờ khi train DV: `--head-mode shared --station-embedding-size 0`, thay cho `--head-mode station`.
+- Nhận định ban đầu của Claude (giữ nguyên ở mọi trạm): bỏ đi không có lợi hiển nhiên. Ngược lại, nó làm thay đổi khởi tạo với cùng seed: kết quả NBS phụ thuộc rất nhiều vào seed và chỉ seed 23 đạt 0 lỗi, nên sẽ không còn tái tạo được. Ngoài ra còn phải sửa `train.py` và `SequenceRuntime`, vì `--head-mode station` yêu cầu có embedding.
+
 ## Ý tưởng (để thảo luận)
 
 Phần này chưa chốt, sẽ cập nhật qua từng buổi thảo luận.

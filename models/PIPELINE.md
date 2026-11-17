@@ -220,6 +220,8 @@ Từ chuỗi `*_previous_day1` theo giờ:
 5. **Dự báo dạng residual**, trong không gian nhãn đã chuẩn hóa: ŷ_h = a_h · x_{t,mực nước} + b_h + Δ_h. Trong đó a_h = σ_w/σ_h và b_h = (μ_w − μ_h)/σ_h, nên a_h·x + b_h = (mực nước tại t − μ_h)/σ_h, chính là **persistence** (giữ nguyên mực nước hiện tại). Khi bắt đầu train, model đúng bằng persistence, rồi học dần phần chênh lệch.
 6. Đổi về mm: ŷ_mm = ŷ_h · σ_h + μ_h.
 
+**Không dùng embedding trạm** (`--head-mode shared --station-embedding-size 0`, dùng cho Dã Viên từ 17/11/2026): bỏ bước 3 và head riêng cho trạm. Với một trạm, embedding chỉ là một hằng số cộng thêm vào tầng ghép. Khi đó tầng ghép là `Linear(H → H)` + ReLU, head là `Linear(H → số mốc)` khởi tạo 0, và mã trạm chỉ còn dùng để lấy a_h, b_h. Số tham số giảm 8 + 8·H. Thuận An và Ngã Ba Sình vẫn giữ cấu hình cũ.
+
 Số tham số: 3·(F·H + H·H + 2H) cho lớp GRU đầu, 3·(2H² + 2H) cho mỗi lớp GRU sau, cộng 8 (embedding), (H + 8)·H + H (fusion) và 3H + 3 (head). Ví dụ: F = 41, H = 32, 3 lớp → 21.291; F = 18, H = 32, 2 lớp → 12.747.
 
 ## 5. Loss: `ChangeRiskLoss`, chế độ `combined` (`--change-loss combined`)

@@ -172,11 +172,17 @@ class ResidualSequence(nn.Module):
         if event_aware and (kind != 'transformer' or prediction_mode != 'residual' or horizon_decoder != 'none'):
             raise ValueError('Event-aware mode requires a residual Transformer without a horizon decoder')
         for name, value in [('input_size', input_size), ('output_size', output_size), ('hidden_size', hidden_size),
-                            ('num_layers', num_layers), ('station_embedding_size', station_embedding_size),
+                            ('num_layers', num_layers),
                             ('forecast_hidden_size', forecast_hidden_size), ('tcn_kernel_size', tcn_kernel_size),
                             ('cnn_kernel_size', cnn_kernel_size)]:
             if not isinstance(value, int) or value < 1:
                 raise ValueError(f'{name} must be a positive integer')
+        # station_embedding_size 0: no station embedding (single-station models, where it would only add a constant
+        # bias to the fusion layer); station IDs are still used to index the persistence coefficients.
+        if not isinstance(station_embedding_size, int) or isinstance(station_embedding_size, bool) or station_embedding_size < 0:
+            raise ValueError('station_embedding_size must be a nonnegative integer')
+        if station_embedding_size == 0 and head_mode != 'shared':
+            raise ValueError('station_embedding_size 0 requires head_mode shared')
         if kind == 'transformer' or horizon_decoder == 'transformer':
             if (not isinstance(transformer_heads, int) or transformer_heads < 1
                     or not isinstance(transformer_ff_size, int) or transformer_ff_size < 1):
@@ -291,11 +297,13 @@ class ResidualSequence(nn.Module):
         self.encoder = SequenceEncoder(kind, len(history), hidden_size, num_layers, dropout,
                                        tcn_channels, tcn_kernel_size, cnn_channels, cnn_kernel_size,
                                        transformer_heads, transformer_ff_size)
-        self.station_embedding = nn.Embedding(num_stations, station_embedding_size) if num_stations else None
+        self.station_embedding = (nn.Embedding(num_stations, station_embedding_size)
+                                  if num_stations and station_embedding_size else None)
         self.forecast_encoder = (nn.Sequential(nn.Dropout(input_dropout), nn.Linear(len(weather), forecast_hidden_size),
             nn.ReLU(), nn.Dropout(head_dropout), nn.Linear(forecast_hidden_size, forecast_hidden_size), nn.ReLU())
             if self.late_fusion and weather else None)
-        head_size = self.encoder.output_size+(station_embedding_size if num_stations else 0)+(forecast_hidden_size if self.forecast_encoder else 0)
+        head_size = (self.encoder.output_size+(station_embedding_size if self.station_embedding is not None else 0)
+                     +(forecast_hidden_size if self.forecast_encoder else 0))
         # Nonlinear fusion allows station identity and forecast to modulate the
         # history response, rather than contributing only additive biases.
         self.fusion = nn.Sequential(nn.Linear(head_size, hidden_size), nn.ReLU())
