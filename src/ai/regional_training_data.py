@@ -34,8 +34,10 @@ def regional_collate(samples):
 class RegionalTrainingDataset(Dataset):
     def __init__(self, path, *, split, fold=None, rain_stations='nham+bach_ma+ho_hoa_my+hong_thai',
                  use_weather_forecast=True, time_features='none', station_id=None,
-                 sequence_length=None, target_horizons=None, target_normalizers=None):
+                 sequence_length=None, target_horizons=None, target_normalizers=None, sample_weights=False):
         self.split = split
+        # Optional per-sample loss weights from the samples column `loss_weight` (training loss only).
+        self.sample_weights = bool(sample_weights)
         self.view = RegionalDataset(path, split=split, fold=fold, rain_stations=rain_stations,
                                     use_weather_forecast=use_weather_forecast, time_features=time_features)
         selection = configure_view(self.view, sequence_length, target_horizons, target_normalizers)
@@ -95,6 +97,14 @@ class RegionalTrainingDataset(Dataset):
         self._target_scale = torch.from_numpy(scales[self._ids])
         self._targets = torch.from_numpy((raw-means[self._ids])/scales[self._ids])
         self._station_ids = torch.from_numpy(self._ids)
+        self._weights = None
+        if self.sample_weights:
+            if 'loss_weight' not in frame:
+                raise ValueError('--sample-weights needs a loss_weight column in samples.parquet')
+            weights = frame.loss_weight.to_numpy(dtype=np.float32, copy=True)
+            if not np.all(np.isfinite(weights)) or (weights < 0).any() or not (weights > 0).any():
+                raise ValueError('loss_weight must be finite, nonnegative and not all zero')
+            self._weights = torch.from_numpy(weights)
         self._history_offsets = np.arange(self.seq_len, dtype=np.int64)
         columns = self.view.schema['weather_columns'] if self.view.use_weather else []
         self._weather_positions = np.array([self.feature_cols.index(c) for c in columns], dtype=np.int64)
@@ -120,17 +130,23 @@ class RegionalTrainingDataset(Dataset):
 
     def __getitem__(self, item):
         self._ensure_cache()
-        return dict(x=self._inputs(np.array([item]))[0], y=self._targets[item],
+        out = dict(x=self._inputs(np.array([item]))[0], y=self._targets[item],
             station_ids=self._station_ids[item], target_scale=self._target_scale[item], target_mean=self._target_mean[item])
+        if self._weights is not None:
+            out['sample_weight'] = self._weights[item]
+        return out
 
     def __getitems__(self, items):
         """Let DataLoader construct all windows in a batch with one array gather."""
         self._ensure_cache()
         positions = np.asarray(items, dtype=np.int64)
         indices = torch.from_numpy(positions)
-        return RegionalBatch(dict(x=self._inputs(positions), y=self._targets[indices],
+        out = dict(x=self._inputs(positions), y=self._targets[indices],
             station_ids=self._station_ids[indices], target_scale=self._target_scale[indices],
-            target_mean=self._target_mean[indices]))
+            target_mean=self._target_mean[indices])
+        if self._weights is not None:
+            out['sample_weight'] = self._weights[indices]
+        return RegionalBatch(out)
 
 
 class RegionalShuffleSampler(Sampler):
@@ -151,11 +167,13 @@ class RegionalShuffleSampler(Sampler):
         yield from RandomSampler(self.dataset, generator=self.generator)
 
 
-def regional_loaders(path, *, batch_size, num_workers, seed, **selection):
+def regional_loaders(path, *, batch_size, num_workers, seed, sample_weights=False, **selection):
+    """sample_weights applies to the TRAIN split only; validation/test losses stay unweighted."""
     loaders = []
     target_normalizers = None
     for i, split in enumerate(['train', 'validation', 'test_exploratory']):
-        dataset = RegionalTrainingDataset(path, split=split, target_normalizers=target_normalizers, **selection)
+        dataset = RegionalTrainingDataset(path, split=split, target_normalizers=target_normalizers,
+                                          sample_weights=sample_weights and i == 0, **selection)
         if i == 0:
             target_normalizers = dataset.view.normalizers
         loaders.append(DataLoader(dataset, batch_size=batch_size,

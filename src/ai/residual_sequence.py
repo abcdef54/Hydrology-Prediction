@@ -159,7 +159,10 @@ class ResidualSequence(nn.Module):
                  forecast_hidden_size=32, tcn_channels=(32, 32, 32, 32, 32), tcn_kernel_size=3,
                  cnn_channels=(32, 32), cnn_kernel_size=3,
                  transformer_heads=4, transformer_ff_size=128, head_mode='shared', horizon_decoder='none',
-                 station_mlp_hidden_size=32, prediction_mode='residual', event_aware=False):
+                 station_mlp_hidden_size=32, prediction_mode='residual', event_aware=False,
+                 group_dropout_indices=None, group_dropout_mask_indices=None, group_dropout_rates=None,
+                 history_dropout_rate=0., history_dropout_min=1, history_dropout_value_indices=None,
+                 history_dropout_mask_indices=None):
         super().__init__()
         kind = architecture.removesuffix('-late-fusion')
         if kind not in ('lstm', 'gru', 'tcn', 'cnn-gru', 'transformer'):
@@ -246,6 +249,37 @@ class ResidualSequence(nn.Module):
             self.architecture_config['prediction_mode'] = prediction_mode
         if event_aware:
             self.architecture_config['event_aware'] = True
+        # Group dropout (training only): with probability p per sample, an entire input group (e.g. every forecast
+        # channel) is replaced over the whole history by its missing representation: standardized value 0 (the train
+        # mean) and mask channels 1. This prevents the model from relying on one source as a shortcut.
+        g_values = [list(map(int, g)) for g in (group_dropout_indices or [])]
+        g_masks = [list(map(int, g)) for g in (group_dropout_mask_indices or [[] for _ in g_values])]
+        g_rates = [float(r) for r in (group_dropout_rates or [])]
+        if not (len(g_values) == len(g_masks) == len(g_rates)) or any(not 0 < r < 1 for r in g_rates):
+            raise ValueError('Group dropout needs one value-index list, mask-index list and rate in (0,1) per group')
+        used = [i for g in g_values + g_masks for i in g]
+        if (any(not g for g in g_values) or len(set(used)) != len(used) or any(i < 0 or i >= input_size for i in used)
+                or level_feature_index in used or set(used) & set(weather)):
+            raise ValueError('Group dropout groups must be disjoint, non-empty and exclude the level/weather channels')
+        self._group_dropout = [(torch.tensor(v, dtype=torch.long), torch.tensor(m, dtype=torch.long), r)
+                               for v, m, r in zip(g_values, g_masks, g_rates)]
+        if g_values:
+            self.architecture_config.update(group_dropout_indices=g_values, group_dropout_mask_indices=g_masks,
+                                            group_dropout_rates=g_rates)
+        # History dropout (training only): with probability rate per sample keep only the k most recent steps
+        # (k uniform in [min, T]; the anchor step is always kept, positions are never compacted) and replace the
+        # older steps of the listed channels by their missing representation (values 0, masks 1).
+        h_values = list(map(int, history_dropout_value_indices or []))
+        h_masks = list(map(int, history_dropout_mask_indices or []))
+        h_rate, h_min = float(history_dropout_rate), int(history_dropout_min)
+        if h_rate:
+            used = h_values + h_masks
+            if (not 0 < h_rate < 1 or h_min < 1 or not h_values or len(set(used)) != len(used)
+                    or any(i < 0 or i >= input_size for i in used) or set(used) & set(weather)):
+                raise ValueError('History dropout needs rate in (0,1), min >= 1 and disjoint in-range value/mask channels')
+            self.architecture_config.update(history_dropout_rate=h_rate, history_dropout_min=h_min,
+                                            history_dropout_value_indices=h_values, history_dropout_mask_indices=h_masks)
+        self._history_dropout = (h_rate, h_min, torch.tensor(h_values, dtype=torch.long), torch.tensor(h_masks, dtype=torch.long))
         self.register_buffer('persistence_scale', scale)
         self.register_buffer('persistence_offset', offset)
         self.register_buffer('_weather_indices', torch.tensor(weather, dtype=torch.long), persistent=False)
@@ -321,8 +355,41 @@ class ResidualSequence(nn.Module):
         x[:, :-1, self._mask_indices] = self._mask_values.to(x)
         return x
 
+    def apply_group_dropout(self, x):
+        if not self.training or not self._group_dropout:
+            return x
+        x = x.clone()
+        for values, masks, rate in self._group_dropout:
+            drop = (torch.rand(len(x), device=x.device) < rate).to(x.dtype)[:, None, None]
+            v = values.to(x.device)
+            x[:, :, v] = x[:, :, v]*(1.-drop)
+            if len(masks):
+                m = masks.to(x.device)
+                x[:, :, m] = x[:, :, m]*(1.-drop)+drop
+        return x
+
+    def apply_history_dropout(self, x):
+        rate, k_min, values, masks = self._history_dropout
+        if not self.training or not rate:
+            return x
+        n, steps = x.shape[:2]
+        k_min = min(k_min, steps)
+        keep = torch.randint(k_min, steps+1, (n,), device=x.device)              # most recent steps kept
+        drop = torch.rand(n, device=x.device) < rate
+        cut = torch.where(drop, steps-keep, torch.zeros_like(keep))               # steps before `cut` are hidden
+        hidden = (torch.arange(steps, device=x.device)[None, :] < cut[:, None]).to(x.dtype)[:, :, None]
+        x = x.clone()
+        v = values.to(x.device)
+        x[:, :, v] = x[:, :, v]*(1.-hidden)
+        if len(masks):
+            m = masks.to(x.device)
+            x[:, :, m] = x[:, :, m]*(1.-hidden)+hidden
+        return x
+
     def forward(self, x, station_ids=None, *, _validate_station_ids=True, return_diagnostics=False):
         x = self._batch(x, station_ids, _validate_station_ids)
+        x = self.apply_group_dropout(x)
+        x = self.apply_history_dropout(x)
         prepared = self.prepare_inputs(x)
         history = prepared.index_select(-1, self._history_indices)
         history = self.input_dropout_layer(history.transpose(1, 2)).transpose(1, 2)

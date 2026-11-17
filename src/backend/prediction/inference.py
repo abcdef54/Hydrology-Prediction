@@ -11,6 +11,8 @@ from sqlalchemy.engine import Engine
 import torch
 
 from src.ai.lstm import ResidualLSTM
+from src.ai.residual_sequence import NEW_METHODS
+from src.ai.sequence_checkpoint import model_from_spec
 from src.backend.prediction.config import StationModelConfig
 from src.backend.prediction.inputs import PreparedInput, PredictionInputService
 from src.backend.prediction.preprocessing import InputPreprocessor
@@ -37,7 +39,7 @@ class ResidualLSTMRuntime:
     """
 
     def __init__(self, config: StationModelConfig, device: str = "cpu"):
-        if config.model_type != "residual_lstm":
+        if config.model_type not in ('residual_lstm', 'lstm', *NEW_METHODS):
             raise ValueError(f"Unsupported inference model type: {config.model_type}")
         self.config = config
         self.device = torch.device(device)
@@ -84,14 +86,27 @@ class ResidualLSTMRuntime:
         persistence_offset = (
             feature_scaler.mean_[level_index] - self.target_scaler.mean_
         ) / self.target_scaler.scale_
-        model = ResidualLSTM(
-            input_size=len(config.feature_columns),
-            output_size=output_size,
-            level_feature_index=level_index,
-            persistence_scale=persistence_scale.tolist(),
-            persistence_offset=persistence_offset.tolist(),
-            **config.model_parameters,
-        )
+        if config.model_type == 'residual_lstm':
+            model = ResidualLSTM(
+                input_size=len(config.feature_columns),
+                output_size=output_size,
+                level_feature_index=level_index,
+                persistence_scale=persistence_scale.tolist(),
+                persistence_offset=persistence_offset.tolist(),
+                **config.model_parameters,
+            )
+        else:
+            spec = saved.get('model_spec')
+            if (not spec or spec.get('family') != 'residual_sequence'
+                    or spec['options'].get('architecture') != config.model_type):
+                raise ValueError('Saved architecture metadata does not match configured model type')
+            model = model_from_spec(spec)
+            if (model.num_stations or model.input_size != len(config.feature_columns)
+                    or model.output_size != output_size or model.level_feature_index != level_index):
+                raise ValueError('App runtime requires matching single-station model and feature contract')
+            if (not torch.allclose(model.persistence_scale, torch.tensor(persistence_scale, dtype=torch.float32))
+                    or not torch.allclose(model.persistence_offset, torch.tensor(persistence_offset, dtype=torch.float32))):
+                raise ValueError('Architecture persistence coefficients disagree with preprocessing')
         state = torch.load(BytesIO(model_bytes), map_location="cpu", weights_only=True)
         for name in ("persistence_scale", "persistence_offset"):
             expected = getattr(model, name)

@@ -8,7 +8,7 @@ class ChangeRiskLoss(HorizonWeightedMSE):
     def __init__(self, weights, counts, scales, mode, scale_floor_mm=200.,
                  event_weight=1., under_weight=1., threshold_mm=200.,
                  large_error_penalty=0.2, large_error_threshold_mm=200.,
-                 large_error_transition_mm=20., rise_event_weight=0.):
+                 large_error_transition_mm=20., rise_event_weight=0., margin_mm=0.):
         super().__init__(weights)
         if mode not in ('station-balanced', 'event-weighted', 'asymmetric', 'combined', 'large-error-count', 'large-error-primary'):
             raise ValueError('Unknown change loss')
@@ -20,6 +20,8 @@ class ChangeRiskLoss(HorizonWeightedMSE):
                 raise ValueError('Risk weights must be nonnegative and finite')
         if not math.isfinite(large_error_penalty) or large_error_penalty < 0:
             raise ValueError('Large-error penalty must be nonnegative and finite')
+        if not math.isfinite(margin_mm) or margin_mm < 0:
+            raise ValueError('Insensitive margin must be finite and nonnegative')
         if not math.isfinite(rise_event_weight) or rise_event_weight < 0:
             raise ValueError('Rise event weight must be nonnegative and finite')
         if rise_event_weight and mode != 'station-balanced':
@@ -44,6 +46,9 @@ class ChangeRiskLoss(HorizonWeightedMSE):
         self.large_error_threshold_mm = large_error_threshold_mm
         self.large_error_transition_mm = large_error_transition_mm
         self.rise_event_weight = rise_event_weight
+        # Epsilon-insensitive margin (mm): errors up to margin cost nothing, larger errors are penalised on the excess
+        # only. Stops the optimiser trading tail errors for smaller typical errors; 0 reproduces the original loss.
+        self.margin_mm = margin_mm
 
     def elements(self, predictions, targets, persistence, station_ids, *, apply_rise_weight=True):
         if predictions.ndim != 2 or predictions.shape != targets.shape or persistence.shape != targets.shape:
@@ -56,6 +61,8 @@ class ChangeRiskLoss(HorizonWeightedMSE):
                             'Station ID outside loss mapping')
         scale = self.scales[station_ids].to(predictions)
         error = (predictions-targets)*scale
+        if self.margin_mm:
+            error = torch.sign(error)*(error.abs()-self.margin_mm).clamp_min(0)
         change = (targets-persistence.detach())*scale
         balanced = self.mode in ('station-balanced', 'combined', 'large-error-count')
         denominator = scale.clamp_min(self.scale_floor_mm) if balanced else scale
@@ -97,6 +104,8 @@ class ChangeRiskLoss(HorizonWeightedMSE):
                         base_squared_error_weight=1. if self.mode == 'large-error-count' else 0.)
         if self.rise_event_weight:
             spec['rise_event_weight'] = self.rise_event_weight
+        if self.margin_mm:
+            spec['margin_mm'] = self.margin_mm
         return spec
 
 

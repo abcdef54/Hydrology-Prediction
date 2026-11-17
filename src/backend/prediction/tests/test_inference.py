@@ -12,6 +12,8 @@ from sklearn.preprocessing import StandardScaler
 import torch
 
 from src.ai.lstm import ResidualLSTM
+from src.ai.residual_sequence import NEW_METHODS, residual_model
+from src.ai.sequence_checkpoint import model_spec
 from src.backend.prediction.config import StationModelConfig
 from src.backend.prediction.inference import ResidualLSTMRuntime
 from src.backend.prediction.inputs import PreparedInput
@@ -93,6 +95,26 @@ class InferenceTests(unittest.TestCase):
                 point.forecast_at,
                 prepared.anchor_observed_at + pd.Timedelta(minutes=point.horizon_minutes),
             )
+
+    def test_all_new_architectures_use_existing_prepared_input_contract(self):
+        for method in NEW_METHODS:
+            with self.subTest(method=method):
+                fs, ts = self.saved['feature_scaler'], self.saved['target_scaler']
+                model = residual_model(method, input_size=len(self.config.feature_columns), output_size=2,
+                    hidden_size=3, num_layers=1, dropout=0., tcn_channels=[3, 3], cnn_channels=[3],
+                    transformer_heads=1,
+                    level_feature_index=0, persistence_scale=(fs.scale_[0]/ts.scale_).tolist(),
+                    persistence_offset=((fs.mean_[0]-ts.mean_)/ts.scale_).tolist()).eval()
+                torch.nn.init.normal_(model.linear.weight)
+                saved = dict(self.saved, model_spec=model_spec(model))
+                joblib.dump(saved, self.config.preprocessing_path)
+                torch.save(model.state_dict(), self.config.model_path)
+                runtime = ResidualLSTMRuntime(replace(self.config, model_type=method))
+                prepared = self.prepared_input(runtime)
+                with torch.inference_mode():
+                    expected = ts.inverse_transform(model(prepared.tensor).numpy())[0]
+                actual = runtime.predict(prepared)
+                np.testing.assert_allclose([p.water_level_mm for p in actual.predictions], expected, atol=1e-4)
 
     def test_dropout_and_autograd_are_disabled_and_prediction_is_repeatable(self):
         # A nonzero head ensures this test exercises the recurrent correction too.

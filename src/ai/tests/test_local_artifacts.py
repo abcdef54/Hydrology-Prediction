@@ -16,6 +16,40 @@ from src.ai.trainers import LSTMTrainer
 
 
 class LocalArtifactTests(TestCase):
+    def test_existing_artifacts_block_training_before_initial_checkpoint(self):
+        for artifact in ("model_best.pt", "model_best.preprocessing.joblib", "model_best.dynamics"):
+            with self.subTest(artifact=artifact), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                target = root / artifact
+                if target.suffix == '.dynamics':
+                    target.mkdir()
+                    (target / 'preserve').write_bytes(b'old snapshot')
+                else:
+                    target.write_bytes(b'old artifact')
+                trainer = object.__new__(LSTMTrainer)
+                trainer.checkpoint_path = root / 'model_best.pt'
+                trainer.print_settings = Mock()
+                trainer.prepare_checkpoint = Mock()
+                with self.assertRaisesRegex(FileExistsError, 'new --checkpoint-dir'):
+                    trainer.train()
+                trainer.prepare_checkpoint.assert_not_called()
+                self.assertFalse((root / 'model_best.training.lock').exists())
+                preserved = target / 'preserve' if target.is_dir() else target
+                self.assertIn(preserved.read_bytes(), (b'old artifact', b'old snapshot'))
+
+    def test_existing_lock_blocks_concurrent_run_without_deleting_lock(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            lock = root / 'model_best.training.lock'
+            lock.write_text('another run')
+            trainer = object.__new__(LSTMTrainer)
+            trainer.checkpoint_path = root / 'model_best.pt'
+            trainer.prepare_checkpoint = Mock()
+            with self.assertRaisesRegex(FileExistsError, 'locked'):
+                trainer.train()
+            trainer.prepare_checkpoint.assert_not_called()
+            self.assertEqual(lock.read_text(), 'another run')
+
     def test_training_saves_local_scalers_without_uploading_model(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -34,6 +68,8 @@ class LocalArtifactTests(TestCase):
             trainer.horizon = "1h"
             trainer.best_checkpoint_epoch = 1
             trainer.best_val_loss = .1
+            trainer.dynamics = None
+            trainer.skip_test = False
             trainer.print_settings = Mock()
             trainer.prepare_checkpoint = Mock()
             trainer.train_epochs = Mock(return_value=1)

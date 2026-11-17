@@ -1,6 +1,7 @@
 """Training and evaluation for the sequence forecasting models."""
 
 import math
+import re
 import json
 from pathlib import Path
 from typing import Protocol
@@ -116,6 +117,30 @@ class LSTMTrainer:
 
     def train(self) -> nn.Module:
         self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+        # Acquire before inspecting or writing artifacts: otherwise two runs can
+        # both pass the check and overwrite each other's initial checkpoint.
+        lock_path = self.checkpoint_path.with_suffix('.training.lock')
+        try:
+            lock = lock_path.open('x')
+        except FileExistsError as exc:
+            raise FileExistsError(
+                f'Training destination is locked: {lock_path}. Choose a new --checkpoint-dir; '
+                'if a prior process stopped unexpectedly, verify it is not running before removing the stale lock.'
+            ) from exc
+        try:
+            lock.close()
+            existing = sorted(p for p in self.checkpoint_path.parent.glob(self.checkpoint_path.stem + '.*')
+                              if p != lock_path)
+            if existing:
+                raise FileExistsError(
+                    f'Training destination already contains artifacts: {existing[0]}. '
+                    'Choose a new --checkpoint-dir; existing models will not be overwritten.'
+                )
+            return self._train_reserved()
+        finally:
+            lock_path.unlink(missing_ok=True)
+
+    def _train_reserved(self) -> nn.Module:
         self.print_settings()
         self.prepare_checkpoint()
         if self.dynamics is not None:
@@ -175,6 +200,9 @@ class LSTMTrainer:
                       f"RMSE: {self.last_validation_metrics['val/rmse_mm']:.2f} mm"
                       + (f"; MAE: {self.last_validation_metrics['val/mae_mm']:.2f} mm"
                          if 'val/mae_mm' in self.last_validation_metrics else ''))
+                per_horizon = self.horizon_error_summary(self.last_validation_metrics)
+                if per_horizon:
+                    print(f"  >{self.validation_threshold_mm:g} mm by horizon: {per_horizon}")
             if stage is not None:
                 metrics["training_stage"] = stage
             mlflow.log_metrics(metrics, step=epoch)
@@ -252,11 +280,18 @@ class LSTMTrainer:
     def predict_batch(predictor, inputs):
         return predictor(**inputs) if isinstance(inputs, dict) else predictor(inputs)
 
-    def data_loss(self, predictions, targets, scales, inputs=None, *, apply_rise_weight=True):
+    def data_loss(self, predictions, targets, scales, inputs=None, *, apply_rise_weight=True, sample_weight=None):
+        if sample_weight is not None and type(self.loss_func).forward is not ChangeRiskLoss.forward:
+            raise ValueError('Per-sample weights are implemented for the change-risk losses only')
         if isinstance(self.loss_func, ChangeRiskLoss):
             if not isinstance(inputs, dict) or 'station_ids' not in inputs:
                 raise ValueError('Change loss requires station IDs')
             baseline = self.predict_batch(self.model.persistence, inputs)
+            if sample_weight is not None:
+                # Weighted cells, still divided by the batch size: weight 0 removes a sample's gradient.
+                cells = self.loss_func.elements(predictions, targets, baseline, inputs['station_ids'],
+                                                apply_rise_weight=apply_rise_weight)
+                return self.loss_func.reduce_per_horizon(cells*sample_weight.to(cells)[:, None])
             return self.loss_func(predictions, targets, baseline, inputs['station_ids'],
                                   apply_rise_weight=apply_rise_weight)
         if isinstance(self.loss_func, HorizonWeightedTailLoss):
@@ -373,7 +408,10 @@ class LSTMTrainer:
                 predictions, aux = self.model(**inputs, return_diagnostics=True)
             else:
                 predictions, aux = self.predict_batch(self.model, inputs), None
-            data_loss = self.data_loss(predictions, targets, scales, inputs)
+            weight = batch.get('sample_weight') if isinstance(batch, dict) else None
+            if weight is not None:
+                weight = weight.to(self.device, non_blocking=True)
+            data_loss = self.data_loss(predictions, targets, scales, inputs, sample_weight=weight)
             objective = self.training_loss(predictions, inputs, data_loss)
             if aux is not None:
                 classification = self.rise_classification_loss(aux['rise_logits'], targets, scales, inputs)
@@ -389,6 +427,9 @@ class LSTMTrainer:
             if (batch_number + 1) % self.gradient_accumulation == 0 or last_batch:
                 nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=getattr(self, "gradient_clip", 1.0))
                 self.optimizer.step()
+                callback = getattr(self, 'optimizer_step_callback', None)
+                if callback is not None:
+                    callback(epoch, batch_number + 1, last_batch)
 
         self.save_change_diagnostics(meter, self.train_dataloader.dataset, 'train')
         if self.scheduler is not None:
@@ -398,6 +439,20 @@ class LSTMTrainer:
             self.last_train_components = {'train/regression_loss': torch.stack(regression_losses).double().mean().item(),
                                           'train/rise_classification_loss': torch.stack(classification_losses).double().mean().item()}
         return torch.stack(batch_losses).double().mean().item() if batch_losses else 0.
+
+    @staticmethod
+    def horizon_error_summary(metrics) -> str:
+        """'+3h 10 (MAE 31.2) | +6h 40 (MAE 52.0) | ...' from per-target validation metrics, in target order."""
+        parts = []
+        for key, count in metrics.items():
+            if not (key.startswith('val/') and key.endswith('/large_error_count') and key.count('/') == 2):
+                continue
+            name = key.split('/')[1]
+            match = re.search(r'_plus_(\d+)m$', name)
+            label = (f"+{int(match.group(1)) / 60:g}h" if match else name)
+            mae = metrics.get(f'val/{name}/mae_mm')
+            parts.append(f"{label} {count}" + (f" (MAE {mae:.1f})" if mae is not None else ''))
+        return ' | '.join(parts)
 
     def evaluate_loss(self, dataloader: DataLoader, predictor=None) -> float:
         """Score the same validation objective for a learned model or persistence."""
@@ -463,6 +518,7 @@ class LSTMTrainer:
                 self.last_validation_metrics[f"val/{name}/rmse_mm"] = math.sqrt(sq.item() / row_count)
                 self.last_validation_metrics[f"val/{name}/mae_mm"] = absolute.item() / row_count
                 self.last_validation_metrics[f"val/{name}/large_error_pct"] = 100 * bad.item() / row_count
+                self.last_validation_metrics[f"val/{name}/large_error_count"] = int(bad.item())
         elif getattr(self, "checkpoint_metric", "val_loss") in ("large_error_rate", "rmse"):
             raise ValueError("Physical-unit checkpoint selection requires the train-fitted target scaler")
         if isinstance(self.loss_func, HorizonWeightedTailLoss):

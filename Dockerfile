@@ -25,7 +25,7 @@ RUN uv pip install --system torch --index-url "${PYTORCH_INDEX_URL}" \
 
 COPY src/__init__.py ./src/__init__.py
 COPY src/backend ./src/backend
-COPY src/ai/__init__.py src/ai/lstm.py ./src/ai/
+COPY src/ai/__init__.py src/ai/lstm.py src/ai/residual_sequence.py src/ai/sequence_checkpoint.py ./src/ai/
 
 RUN groupadd --gid 10001 hydrology \
     && useradd --uid 10001 --gid hydrology --no-create-home hydrology \

@@ -212,14 +212,46 @@ parser.add_argument('--change-loss', choices=['baseline', 'station-balanced', 'e
 parser.add_argument('--dilate-alpha', type=float, default=0.5)
 parser.add_argument('--dilate-gamma', type=float, default=0.01)
 parser.add_argument('--change-scale-floor-mm', type=float, default=200.)
+parser.add_argument('--change-margin-mm', type=float, default=0.,
+                    help='Epsilon-insensitive margin for change-risk losses: errors below this many mm are not penalised and '
+                         'larger errors only on their excess, so training stops shrinking small errors (MAE) and focuses on '
+                         'large ones. 0 = original loss.')
 parser.add_argument('--change-event-weight', type=float, default=1.)
 parser.add_argument('--change-under-weight', type=float, default=1.)
 parser.add_argument('--change-threshold-mm', type=float, default=200.)
 parser.add_argument('--large-error-penalty', type=float, default=0.2,
                     help='Strength of the smooth prediction-error count penalty')
 parser.add_argument('--large-error-threshold-mm', type=float, default=200.)
+parser.add_argument('--history-dropout', default=None, metavar='RATE:MIN',
+                    help='Training-only: with probability RATE per sample keep only the k most recent history steps '
+                         '(k uniform in [MIN, sequence length]); older steps of observed channels become missing (value 0, '
+                         'masks 1). Calendar and tide_* channels are kept. Regional residual sequence models only.')
+parser.add_argument('--group-dropout', nargs='+', default=[], metavar='PREFIX:RATE',
+                    help='Training-only dropout of whole input groups, e.g. fc_:0.3 rain_:0.2. With probability RATE per sample all '
+                         'channels whose name starts with PREFIX are set to their missing representation (value 0, masks 1) '
+                         'over the whole history. Regional residual sequence models only.')
+parser.add_argument('--sample-weights', action='store_true',
+                    help='Training-only per-sample loss weights from the samples.parquet column loss_weight (regional datasets, '
+                         'change-risk losses). Validation loss, checkpoint selection and metrics stay unweighted.')
 parser.add_argument('--large-error-transition-mm', type=float, default=20.,
                     help='Smoothing width in mm around the large-error threshold')
+
+
+def history_dropout_options(args, dataset, regional, weather):
+    if not args.history_dropout:
+        return {}
+    rate, _, k_min = args.history_dropout.partition(':')
+    if not regional or not k_min:
+        raise ValueError('--history-dropout needs RATE:MIN and a regional dataset')
+    known = ('flood_season', 'hour_sin', 'hour_cos', 'day_sin', 'day_cos')         # deterministic, never hidden
+    cols = dataset.feature_cols
+    is_mask = lambda c: c.endswith('_missing') or c.endswith('_missing_frac')
+    hidden = [i for i, c in enumerate(cols) if i not in weather and c not in known and not c.startswith('tide_')]
+    values = [i for i in hidden if not is_mask(cols[i])]
+    masks = [i for i in hidden if is_mask(cols[i])]
+    print(f'History dropout p={float(rate)}, keep >= {int(k_min)} recent steps; hidden channels: {[cols[i] for i in hidden]}')
+    return dict(history_dropout_rate=float(rate), history_dropout_min=int(k_min),
+                history_dropout_value_indices=values, history_dropout_mask_indices=masks)
 
 
 def is_regional_dataset(args):
@@ -546,6 +578,8 @@ def train_tabular(args: argparse.Namespace) -> None:
 
 def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
     regional = is_regional_dataset(args)
+    if args.sample_weights and (not regional or args.change_loss in ('baseline', 'dilate')):
+        raise ValueError('--sample-weights needs a regional dataset and a change-risk loss (not baseline/dilate)')
     if args.change_loss != 'baseline':
         if not regional or args.water_station is not None:
             raise ValueError('Change loss currently requires regional station-conditioned training')
@@ -570,7 +604,8 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
             fold=args.regional_fold, rain_stations=rain,
             use_weather_forecast=weather,
             time_features=args.time_features, station_id=args.water_station,
-            sequence_length=args.lstm_seq_len, target_horizons=args.target_horizons)
+            sequence_length=args.lstm_seq_len, target_horizons=args.target_horizons,
+            sample_weights=args.sample_weights)
     else:
         train_loader, eval_loader, test_loader = get_dataloader(
         args.horizon,
@@ -635,7 +670,22 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
                 scale, offset = (fs.scale_[level_index]/ts.scale_).tolist(), ((fs.mean_[level_index]-ts.mean_)/ts.scale_).tolist()
                 station_count = 0
                 mask_values = ((1.-fs.mean_[masks])/fs.scale_[masks]).tolist()
+            group_values, group_masks, group_rates = [], [], []
+            for spec in args.group_dropout:
+                prefix, _, rate = spec.rpartition(':')
+                if not regional or not prefix:
+                    raise ValueError('--group-dropout needs PREFIX:RATE and a regional dataset')
+                cols = [i for i, c in enumerate(dataset.feature_cols) if c.startswith(prefix)]
+                is_mask = lambda c: c.endswith('_missing') or c.endswith('_missing_frac')
+                values = [i for i in cols if not is_mask(dataset.feature_cols[i])]
+                if not values:
+                    raise ValueError(f'--group-dropout prefix {prefix!r} matches no value channel')
+                group_values.append(values); group_rates.append(float(rate))
+                group_masks.append([i for i in cols if is_mask(dataset.feature_cols[i])])
+                print(f'Group dropout {prefix!r} p={float(rate)}: {[dataset.feature_cols[i] for i in cols]}')
             model = residual_model('lstm' if args.train_method == 'residual_lstm' else args.train_method,
+                group_dropout_indices=group_values, group_dropout_mask_indices=group_masks, group_dropout_rates=group_rates,
+                **history_dropout_options(args, dataset, regional, weather),
                 **model_options, level_feature_index=level_index, persistence_scale=scale, persistence_offset=offset,
                 weather_feature_indices=weather, weather_mask_indices=masks, weather_mask_values=mask_values,
                 forecast_history_policy='anchor_only', num_stations=station_count,
@@ -685,7 +735,8 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
             under_weight=args.change_under_weight, threshold_mm=args.change_threshold_mm,
             large_error_penalty=args.large_error_penalty,
             large_error_threshold_mm=args.large_error_threshold_mm,
-            large_error_transition_mm=args.large_error_transition_mm, rise_event_weight=args.rise_event_weight)
+            large_error_transition_mm=args.large_error_transition_mm, rise_event_weight=args.rise_event_weight,
+            margin_mm=args.change_margin_mm)
     if args.change_loss == 'dilate':
         if train_loader.dataset.target_horizons != list(range(1, 25)):
             raise ValueError('DILATE requires consecutive +1h through +24h targets')
@@ -742,7 +793,9 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
         checkpoint_root /= (f"tail_{args.lstm_tail_penalty:g}_threshold_{args.lstm_tail_threshold_mm:g}"
                             f"_transition_{args.lstm_tail_transition_mm:g}_{args.lstm_checkpoint_metric}")
     if args.change_loss != 'baseline':
-        checkpoint_root /= f'change_{args.change_loss}_floor{args.change_scale_floor_mm:g}_event{args.change_event_weight:g}_under{args.change_under_weight:g}_threshold{args.change_threshold_mm:g}'
+        checkpoint_root /= (f'change_{args.change_loss}_floor{args.change_scale_floor_mm:g}_event{args.change_event_weight:g}'
+                            f'_under{args.change_under_weight:g}_threshold{args.change_threshold_mm:g}'
+                            + (f'_margin{args.change_margin_mm:g}' if args.change_margin_mm else ''))
         if args.change_loss == 'dilate':
             checkpoint_root /= f'alpha_{args.dilate_alpha:g}_gamma_{args.dilate_gamma:g}'
         if args.change_loss in ('large-error-count', 'large-error-primary'):
@@ -817,6 +870,9 @@ def main() -> None:
                     "large_error_threshold_mm": args.large_error_threshold_mm,
                     "large_error_transition_mm": args.large_error_transition_mm,
                     "seed": args.seed,
+                    "group_dropout": ' '.join(args.group_dropout) or 'none',
+                    "history_dropout": args.history_dropout or 'none',
+                    "sample_weights": bool(args.sample_weights),
                     "batch_size": args.batch_size,
                     "num_epochs": args.num_epochs,
                     "early_stopping": args.early_stopping,
