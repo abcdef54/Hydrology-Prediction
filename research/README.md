@@ -6,6 +6,10 @@ giá mô hình nằm trong `src/ai/`.
 
 - `scripts/`: script tạo dataset, train thí nghiệm và phân tích; test trong `scripts/tests/`.
 - `notebooks/`: notebook và kết quả phân tích tương tác.
+- [station_analysis/](station_analysis/README.md): pipeline DEM và EDA toàn bộ
+  trạm nước, phân nhóm có kiểm tra thời gian, xuất báo cáo/figures và SQLite
+  phân tích riêng. Chạy bằng `python -m research.station_analysis.pipeline`;
+  không training hoặc sửa quan trắc PostgreSQL.
 - Code thu thập dự báo mưa phục vụ app nằm trong `src/backend/ingestion/`, schema
   trong `src/backend/db/`. Thư mục `research/weather_forecast/` cũ đã được gộp vào
   hai thư mục trên; code phân tích còn dùng được giữ lại.
@@ -599,3 +603,10 @@ bỏ cờ, báo cáo ghi chưa có metadata. Nhánh report-only dùng scaler c�
 không tạo checkpoint mới, không ghi MLflow và không yêu cầu output train mới.
 Process train đã khởi động trước thay đổi code không tự nhận tính năng mới;
 nếu đang chạy nhánh thứ hai thì để nó chạy xong rồi dùng report-only.
+
+## Chẩn đoán dự báo biến động mực nước
+
+[Pipeline thử nghiệm phần 4](CHANGE_DYNAMICS_EXPERIMENTS.md) cung cấp chẩn đoán
+train/validation ở eval mode, snapshots theo epoch, gradient probe và head riêng
+theo trạm. Bộ lệnh được chuẩn bị để review; không tự chạy training hay chuyển
+giai đoạn. Các đối chứng bỏ qua test và giữ nguyên dataset/baseline mặc định.

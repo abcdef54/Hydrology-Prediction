@@ -1,0 +1,40 @@
+# Master plan: EDA2.md. Inventory, rainfall and weather stages are implemented; stop before feature ablation.
+master_plan: EDA2.md
+work_dir: data/processed/station_analysis/phase2
+output_dir: reports/station_analysis/phase2
+phase1_work_dir: data/processed/station_analysis
+start: '2025-11-15T00:00:00+07:00'
+end: null
+water_station_ids: []
+rain_station_ids: []
+# Empty means inspect every retained train_data/*/manifest.json.
+dataset_dirs: []
+expected_interval_minutes: 10
+rain_outlier_threshold_mm: 100
+assumed_release_lag_hours: 6
+max_forecast_age_hours: 24
+forecast_windows: [[0, 3], [3, 6], [6, 12], [12, 24]]
+# Empty contracts deliberately keep all historical rain sums diagnostic only.
+# Each future confirmed contract requires kind, interval_minutes and source.
+rainfall_semantics: {}
+# Rainfall selection reads grouping_end; timezone is explicit. Stage 1 does not use it.
+future_analysis:
+  target_horizons: [6, 12]
+  rainfall_windows: [1, 3, 6, 12, 24, 48]
+  lag_hours: [0, 72]
+  grouping_end: '2026-08-01T00:00:00+07:00'
+
+# Stage 3 treats all request locations as lineage of ONE shared city forecast.
+weather_analysis:
+  reference_gauge_ids: ['750062', '750007']
+  nearby_gauges: 3
+  wet_threshold_mm: 0.1
+  heavy_mean_rate_mm_h: 5.0
+
+# Stage 3B adds spatial research artifacts only; production models stay unchanged.
+spatial_weather:
+  collection_version: collection_v1
+  requested_station_ids: ['750007', '750062', '0074647403', '0074647402', '750041', '750066', '750012', '0074647606']
+  cell_selection: land
+  model: ecmwf_ifs
+  nearby_gauges: 3

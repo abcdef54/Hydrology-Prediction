@@ -1,0 +1,25 @@
+# Dates are explicit, timezone-aware; end is exclusive. No target interpolation.
+start: '2025-11-15T00:00:00+07:00'
+end: null
+station_ids: []
+work_dir: data/processed/station_analysis
+output_dir: reports/station_analysis
+fabdem: data/DEM/data/Vietnam_FABDEM/20egxk888rljr25vst4u3nhnyz/Vietnam_FABDEM_V1-0.tif
+copernicus: data/DEM/data/Copernicus_DSM_COG_10_N16_00_E107_00_DEM.tiff
+boundary_file: data/processed/station_analysis/inputs/hue_boundary.geojson
+boundary_api: https://www.geoboundaries.org/api/current/gbOpen/VNM/ADM1/
+boundary_name: Thừa Thiên Huế
+boundary_buffer_m: 1000
+radii_m: [100, 200, 300]
+metric_crs: EPSG:32648
+sequence_length: 96
+horizons: [6, 12]
+rapid_threshold_mm: 200
+flood_months: [9, 10, 11, 12]
+event_gap_hours: 12
+# Freeze descriptive clustering before the existing validation period.
+grouping_end: '2026-08-01T00:00:00+07:00'
+min_pair_hours: 168
+cluster_max_k: 5
+seed: 42
+quality_jump_mm: 1000

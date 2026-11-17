@@ -1,0 +1,192 @@
+schema_version: 1
+reviewed_at: '2026-10-26'
+notes:
+  - Registry identities and coordinates are database facts; point locations were not surveyed again.
+  - Public geography is context, not proof of the sensor zero, physical quantity or alert datum.
+  - No Kim Long or Phu Oc thresholds are assigned to Da Vien, Tu Phu or other devices.
+  - No DEM elevation is subtracted from a station measurement without a surveyed common datum.
+sources:
+  copernicus:
+    title: Copernicus DEM product description
+    url: https://dataspace.copernicus.eu/explore-data/data-collections/copernicus-contributing-missions/collections-description/COP-DEM
+    status: verified_primary
+    supports: GLO-30 DSM; approximately 30m; WGS84 horizontal; EGM2008 vertical metres; contains buildings and vegetation.
+  fabdem_vietnam:
+    title: FABDEM Vietnam, Hawker and Neal, University of Bristol
+    url: https://data.bris.ac.uk/data/dataset/20egxk888rljr25vst4u3nhnyz
+    published_at: '2021-11-15'
+    doi: 10.5523/bris.20egxk888rljr25vst4u3nhnyz
+    status: verified_primary
+    supports: Vietnam-specific forest and building bias removed DEM; CC BY 4.0 for this supplied subset.
+  fabdem_readme:
+    title: FABDEM Vietnam readme, matching the supplied local file
+    url: https://data.bris.ac.uk/datasets/20egxk888rljr25vst4u3nhnyz/readme.txt
+    status: verified_primary
+    supports: One arcsecond; WGS84 EPSG4326; EGM2008 EPSG3855; based on Copernicus GLO30; not a river bathymetry product.
+  official_alerts:
+    title: Chi cuc Thuy loi va BDKH Hue, signed response 522/CCTL-HC
+    url: https://tuongtac.hue.gov.vn/UploadFiles/PhanAnh/2025/11/06.11.2025thac_mac_ve_muc_bao_dong_lu_tren_song_huong.signed.signed.signed.pdf
+    published_at: '2025-11-06'
+    status: verified_primary
+    supports: Kim Long, Phu Oc and Thuong Nhat alert levels apply to the named official gauges; no evidence of equivalence to the project devices.
+  coastal_geography:
+    title: Hue government portal, geography of the lagoon and coast
+    url: https://hue.gov.vn/Du-khach/Thong-tin-du-khach/Kham-pha-Hue/tb/Dia-hinh-khu-vuc-dam-pha-va-bien-ven-bo-326960
+    status: primary_search_excerpt_verified
+    supports: Tam Giang connects the O Lau mouth with the Thuan An inlet; regional coastal and lagoon context only.
+  coastal_tides:
+    title: Hue government portal, coastal marine regime
+    url: https://hue.gov.vn/Du-khach/Thong-tin-du-khach/Kham-pha-Hue/tb/Che-do-hai-van-vung-bien-987874
+    status: primary_search_excerpt_verified
+    supports: Tidal influence in coastal Hue, including Thuan An and Tu Hien; not proof of the exact device response or datum.
+  sinh_confluence:
+    title: Hue government tourism portal, Sinh village geography
+    url: https://huetourism.gov.vn/ve-hue-xem-hoi-vat-sinh-dau-xuan-vo-cung-thu-vi/?pid=MjM1ODd8Y3NkbGRs0
+    status: primary_search_excerpt_verified
+    supports: Geographic context of the Huong and Bo rivers at Sinh; sensor location comes only from the registry.
+  truoi_aqueduct:
+    title: Hue public response by the irrigation management company about Cau Mang
+    url: https://tuongtac.hue.gov.vn/phan-anh/kien-nghi-kiem-tra-cau-mang-a184923.html
+    published_at: '2025-04-23'
+    status: primary_search_excerpt_verified
+    supports: Cau Mang crosses the Truoi river; does not establish the gauge zero or reservoir operating effects.
+  flood_towers:
+    title: Hue Phong Phu government portal, disaster-risk communication
+    url: https://phongphu.hue.gov.vn/Trang-chu/Thong-tin-tuyen-truyen/tb/Huong-ung-ngay-Quoc-te-Giam-nhe-rui-ro-thien-tai-13-10-2026-Kha-nang-chong-chiu-bat-dau-tu-chinh-ngoi-nha-cua-ban-836943
+    published_at: '2026-10-13'
+    status: primary_search_excerpt_verified
+    supports: Some Hue flood towers report inundation depth; no station-ID mapping or surveyed sensor zero is supplied.
+reference_alerts_not_project_station_thresholds:
+  - station: Hue (Kim Long)
+    river: Huong
+    levels_m: [1.0, 2.0, 3.5]
+    source: official_alerts
+  - station: Phu Oc
+    river: Bo
+    levels_m: [1.5, 3.0, 4.5]
+    source: official_alerts
+  - station: Thuong Nhat
+    river: Ta Trach
+    levels_m: [59.0, 61.0, 63.0]
+    source: official_alerts
+stations:
+  '0074647402':
+    hydrological_type: coastal_lagoon
+    static_group_hypothesis: coastal_lagoon
+    river_or_basin: Tam Giang / Thuan An inlet
+    classification_confidence: medium
+    measured_quantity_hypothesis: water_surface_level_relative_to_unknown_zero
+    tidal_evidence: coastal_context_likely_not_sensor_verified
+    tidal_confidence: medium
+    source_ids: [coastal_geography, coastal_tides]
+    geography_notes: Fishing-port location; inside versus outside port and exact sensor exposure need verification.
+  '0074647403':
+    hydrological_type: river
+    static_group_hypothesis: huong_bo_rivers
+    river_or_basin: Huong
+    classification_confidence: high
+    measured_quantity_hypothesis: river_stage_relative_to_unknown_zero
+    tidal_evidence: unknown_at_sensor
+    tidal_confidence: unknown
+    source_ids: [official_alerts]
+    geography_notes: Da Vien is not Kim Long. Public alert values are not assigned to this device.
+  '0074647404':
+    hydrological_type: river
+    static_group_hypothesis: huong_bo_rivers
+    river_or_basin: Bo
+    classification_confidence: high
+    measured_quantity_hypothesis: river_stage_relative_to_unknown_zero
+    tidal_evidence: unknown_at_sensor
+    tidal_confidence: unknown
+    source_ids: [official_alerts]
+    geography_notes: Tu Phu is not Phu Oc. Public alert values are not assigned to this device.
+  '0074647606':
+    hydrological_type: river
+    static_group_hypothesis: o_lau_river
+    river_or_basin: O Lau
+    classification_confidence: medium
+    measured_quantity_hypothesis: river_stage_relative_to_unknown_zero
+    tidal_evidence: unknown_at_sensor
+    tidal_confidence: unknown
+    source_ids: []
+    geography_notes: River attribution follows registry name; spelling Van versus Van-with-circumflex should be checked against installation records.
+  '0074647705':
+    hydrological_type: river_confluence
+    static_group_hypothesis: huong_bo_rivers
+    river_or_basin: Huong-Bo confluence
+    classification_confidence: high
+    measured_quantity_hypothesis: river_stage_relative_to_unknown_zero
+    tidal_evidence: downstream_context_possible_not_verified
+    tidal_confidence: low
+    source_ids: [sinh_confluence, coastal_geography]
+    geography_notes: Confluence context may introduce backwater; this is a hypothesis, not a measured hydraulic connection.
+  '0074648201':
+    hydrological_type: coastal_lagoon
+    static_group_hypothesis: coastal_lagoon
+    river_or_basin: Cau Hai / Tu Hien inlet
+    classification_confidence: medium
+    measured_quantity_hypothesis: water_surface_level_relative_to_unknown_zero
+    tidal_evidence: coastal_context_likely_not_sensor_verified
+    tidal_confidence: medium
+    source_ids: [coastal_geography, coastal_tides]
+    geography_notes: Inlet and port context; no claim that its zero equals sea-level datum.
+  '0097203841':
+    hydrological_type: river
+    static_group_hypothesis: o_lau_river
+    river_or_basin: O Lau
+    classification_confidence: medium
+    measured_quantity_hypothesis: river_stage_relative_to_unknown_zero
+    tidal_evidence: unknown_at_sensor
+    tidal_confidence: unknown
+    source_ids: []
+    geography_notes: Hoa Xuan 1 river attribution follows registry; exact bridge identification needs installation records.
+  '750048':
+    hydrological_type: river
+    static_group_hypothesis: southern_rivers_review_separately
+    river_or_basin: Bu Lu
+    classification_confidence: medium
+    measured_quantity_hypothesis: river_stage_relative_to_unknown_zero
+    tidal_evidence: unknown_at_sensor
+    tidal_confidence: unknown
+    source_ids: []
+    geography_notes: Cau Rao Bai; river attribution follows registry. Do not merge catchment with Truoi merely because both are southern.
+  '750049':
+    hydrological_type: river
+    static_group_hypothesis: southern_rivers_review_separately
+    river_or_basin: Truoi
+    classification_confidence: medium
+    measured_quantity_hypothesis: river_stage_relative_to_unknown_zero
+    tidal_evidence: unknown_at_sensor
+    tidal_confidence: unknown
+    source_ids: [truoi_aqueduct]
+    geography_notes: Cau Mang on the Truoi river; reservoir effects require operating records, not assumed from name.
+  '11223344':
+    static_group_hypothesis: urban_inundation_provisional
+    geography_notes: Huong So resettlement area; registry flood-tower subtype, but ground zero not documented.
+  '55889944':
+    static_group_hypothesis: floodplain_inundation_provisional
+    geography_notes: Thu Le floodplain locality; Bo drainage association not confirmed at the sensor.
+  '750043':
+    static_group_hypothesis: urban_inundation_provisional
+    geography_notes: Phu Xuan is an ambiguous locality name. Device type follows registry rather than name matching.
+  '750044':
+    static_group_hypothesis: urban_inundation_provisional
+    geography_notes: An Cuu locality is distinct from An Cuu City device; river versus street measurement remains unverified.
+  '751115':
+    static_group_hypothesis: urban_inundation_provisional
+    geography_notes: Xuan Phu apartment locality; do not infer river flooding from reports about wastewater in parking areas.
+  '751116':
+    static_group_hypothesis: urban_inundation_provisional
+    geography_notes: An Cuu City locality; local drainage and river backwater contributions need investigation.
+  '751117':
+    static_group_hypothesis: floodplain_inundation_provisional
+    geography_notes: Trung Lang, Quang Thai locality; no measured tidal attribution at the sensor.
+  '751118':
+    static_group_hypothesis: floodplain_inundation_provisional
+    geography_notes: Pho Nam A, Quang Tho locality; drainage link to Bo is a geographic hypothesis only.
+  '75882244':
+    static_group_hypothesis: urban_inundation_provisional
+    geography_notes: Xom Giong locality; historical ward names differ, so registry coordinates are retained without geocoding.
+  '75996644':
+    static_group_hypothesis: floodplain_inundation_provisional
+    geography_notes: Thuy Thanh locality; river-overflow versus local-drainage contributions not separated.
