@@ -1,0 +1,35 @@
+{
+  "station_id": "0074647402",
+  "station_name": "Cảng Cá Thuận An",
+  "latitude": 16.554968,
+  "longitude": 107.63527,
+  "grid_start_utc": "2025-11-14T17:00:00+00:00",
+  "grid_end_utc": "2026-10-15T07:00:00+00:00",
+  "sequence_length": 96,
+  "minimum_water_history_fraction": 0.8,
+  "purge_hours": 24,
+  "horizons_hours": [3, 6, 12],
+  "validation_start": "2026-07-31T00:00:00+07:00",
+  "validation_end": "2026-09-15T00:00:00+07:00",
+  "cutoff": "2026-09-15T00:00:00+07:00",
+  "wind": {
+    "previous_runs_json": "data/external/open_meteo/prev_offshore.json",
+    "request_point": [16.85, 107.85],
+    "request_dates": ["2025-11-01", "2026-10-21"]
+  },
+  "tide": {"window_days": 30},
+  "fc_ecmwf": {
+    "single_runs_dir": "data/external/open_meteo/ecmwf_single_runs",
+    "request_points": [[16.458944, 107.571361], [16.554968, 107.63527], [16.251017, 107.873289], [16.199675, 107.857476],
+                       [16.122778, 107.694444], [16.576556, 107.347889], [16.221111, 107.179444]],
+    "request_cycles_utc": ["2025-11-13T00:00", "2026-10-15T06:00"],
+    "all_cells": ["ecmwf_ifs:16.203865:107.675520", "ecmwf_ifs:16.203865:107.846300", "ecmwf_ifs:16.274164:107.264960",
+                  "ecmwf_ifs:16.274164:107.863250", "ecmwf_ifs:16.485060:107.571434", "ecmwf_ifs:16.555359:107.330795",
+                  "ecmwf_ifs:16.555359:107.588180"],
+    "named_cells": {"a_luoi": "ecmwf_ifs:16.274164:107.264960", "thuan_an": "ecmwf_ifs:16.555359:107.588180",
+                    "bach_ma": "ecmwf_ifs:16.274164:107.863250"},
+    "lag_hours": 6,
+    "max_age_hours": 24,
+    "transform": "log1p"
+  }
+}

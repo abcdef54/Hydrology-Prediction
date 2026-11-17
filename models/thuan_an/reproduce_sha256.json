@@ -1,0 +1,36 @@
+{
+  "datasets": {
+    "train_data/thuan_an/ta_water_only_wind/water.parquet": "c4f7782783e962ce737d8a31968b5da09745560204791ad25191a9b0f2f8b5f5",
+    "train_data/thuan_an/ta_water_only_wind/samples.parquet": "7a1d29f63fe688a011ebffec9ceabfdf95ea14c18eb68460fb7ac19e2eb4676f",
+    "train_data/thuan_an/ta_water_only_wind/rainfall.parquet": "5cdf621ebed05a41b554b8d1fe79a4807febc19ad781752970a89d4b5019a19e",
+    "train_data/thuan_an/ta_water_only_wind/calendar.parquet": "31ddea952f210a56f64971f1f702f32a68bec467e4dd69daa4485b78a49e1d0f",
+    "train_data/thuan_an/ta_water_only_wind_tide30_fc/water.parquet": "c4f7782783e962ce737d8a31968b5da09745560204791ad25191a9b0f2f8b5f5",
+    "train_data/thuan_an/ta_water_only_wind_tide30_fc/samples.parquet": "7a1d29f63fe688a011ebffec9ceabfdf95ea14c18eb68460fb7ac19e2eb4676f",
+    "train_data/thuan_an/ta_water_only_wind_tide30_fc/rainfall.parquet": "48d8d8892a5ce6a41a53aeb97f191f63724e06f608cc5939dfcd5d360e185e1e",
+    "train_data/thuan_an/ta_water_only_wind_tide30_fc/calendar.parquet": "31ddea952f210a56f64971f1f702f32a68bec467e4dd69daa4485b78a49e1d0f"
+  },
+  "inputs": {
+    "data/external/open_meteo/prev_offshore.json (2025-11-01..2026-10-21)": "846a6db4270d8117b1d14593281db725bb18987e53c8b1b8837f758af17ae224"
+  },
+  "src_code": {
+    "src/ai/station_dataset/__init__.py": "8e6f788622d86c243f131c7b706e3f9389a03f4bb960fff22e147256188541b1",
+    "src/ai/station_dataset/build.py": "49d801a2e0d444ad706479af6d345ff087d549fed73e4c40b5874386525e0cd8",
+    "src/ai/station_dataset/evaluate.py": "5c531b688d7e5b6aa0e507959fb318fb2c24929b9c2163434de8bf629a42099c",
+    "src/ai/station_dataset/features.py": "dc387187e111a27116fac857cefdd166297619f672aac0edaa8e7318ff4d4c7a",
+    "src/ai/station_dataset/open_meteo.py": "488ad9b7c20f4d05bb17a4d1ec3394f130a098cb36319ba39a92e34b5a273801",
+    "src/backend/ingestion/api_backfill.py": "baac5dc273f650307e45613b0380e70625c46aae71e77da5aaf8b66f3f7f65f4",
+    "src/ai/train.py": "fae426b8444c1d3b6e0ce2294fde9cd29c694ad6972fb7d4c1aaf32c05695879",
+    "src/ai/trainers.py": "f2d9b75f8b8503c4b239c124f46316a5a7eba8cd651951bba538cdd0ae13c91c",
+    "src/ai/residual_sequence.py": "3b02ead524268d664b7c2aaea3cb8f78df847de78a41a3e88388b166503f3883",
+    "src/ai/regional_training_data.py": "d60a3b4b33376c5644ae0ea882f65da21892da51b71ea2f1c643539d4137a4b7",
+    "src/ai/regional_data/reader.py": "854504e7940cd1eac128e45f58f6a3f64b4d7bab65272216fbf9738f34f50ca3",
+    "src/ai/regional_data/preprocessing.py": "9a297e0b85bb9c831f1e14d08fbd03b0f7d75cc496bd844a35b1c335c63ea364",
+    "src/ai/regional_data/training_selection.py": "23cbad8f4a946fd2532022ec1efa3a01d894dcbdd64c5caf71537814289fc0b7",
+    "src/ai/change_objective.py": "7d55fb5014cd34093158e6b7be9deda9be4494b0a2091fa9fec30b4f124d88bf",
+    "src/ai/losses.py": "38d17d648a011364fd528c23a84645cc5dc2e393a497d11c78cdd86907e66816",
+    "src/ai/lr_schedules.py": "8fdcf843d6f6b3dfeed753f656fab42ad0d2e2a8163c4c5ceb257e0b926e77f9",
+    "src/ai/utils.py": "76d41793a140e862ccca9db065d018aaa99be79e29e8239e8b76c14b4e6a74e8",
+    "src/ai/sequence_checkpoint.py": "8c5f382c23236a77dcf4c0a59bf27825f5d04e9094bcdae4a7118c384d1f6f78"
+  },
+  "note": "datasets: bytes written by src/ai/station_dataset/build.py with models/thuan_an/dataset_config.json (verified identical to the training datasets). src_code: state on 2026-11-12 when this was verified."
+}

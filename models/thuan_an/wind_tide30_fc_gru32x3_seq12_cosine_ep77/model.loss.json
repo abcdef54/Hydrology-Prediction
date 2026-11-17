@@ -1,0 +1,60 @@
+{
+  "mode": "combined",
+  "scale_floor_mm": 200.0,
+  "event_weight": 0.0,
+  "under_weight": 0.3,
+  "threshold_mm": 200.0,
+  "counts_policy": "N/(active_stations*n_station), train only",
+  "station_frequency": [
+    1.0
+  ],
+  "target_scales": [
+    [
+      206.19775176647335,
+      205.38317215805603,
+      204.02618641503457
+    ]
+  ],
+  "horizon_weights": [
+    0.3333333333333333,
+    0.3333333333333333,
+    0.3333333333333333
+  ],
+  "training_provenance": {
+    "dataset_path": "/home/my_ubuntu/projects/hydrology/train_data/thuan_an/ta_water_only_wind_tide30_fc",
+    "dataset_manifest_sha256": "4e28d6035bba0c6239ee14a51a61172b7062c5e54786b7145d8cf85dbc64e4be",
+    "fold": "fixed",
+    "station_mapping": {
+      "0074647402": {
+        "station_index": 0,
+        "name": "C\u1ea3ng C\u00e1 Thu\u1eadn An",
+        "cluster": 1,
+        "latitude": 16.554968,
+        "longitude": 107.63527,
+        "unit": "mm",
+        "water_level_datum": "unknown; not tied to DEM",
+        "hydrological_type": "coastal_lagoon",
+        "measured_quantity": "unknown",
+        "source_station_index": 0
+      }
+    },
+    "target_horizons": [
+      3,
+      6,
+      12
+    ],
+    "training_selection": {
+      "sequence_length": 12,
+      "target_horizons": [
+        3,
+        6,
+        12
+      ],
+      "dropped_samples": 0,
+      "effective_purge_hours": 24,
+      "history_policy": "saved anchor pool; require requested history coverage; no new anchors",
+      "target_policy": "exact water.parquet timestamps; retain saved horizon scalers; fit new horizons on selected train only",
+      "feature_scaler_policy": "reuse immutable train-only input scalers"
+    }
+  }
+}

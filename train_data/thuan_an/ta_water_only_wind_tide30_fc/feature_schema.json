@@ -1,0 +1,155 @@
+{
+  "water_columns": [
+    "water_level_depth",
+    "water_level_missing"
+  ],
+  "calendar_columns": [
+    "flood_season",
+    "hour_sin",
+    "hour_cos",
+    "day_sin",
+    "day_cos"
+  ],
+  "calendar_groups": {
+    "base": [
+      "flood_season"
+    ],
+    "hour": [
+      "hour_sin",
+      "hour_cos"
+    ],
+    "day_of_year": [
+      "day_sin",
+      "day_cos"
+    ]
+  },
+  "time_feature_modes": {
+    "none": [
+      "flood_season"
+    ],
+    "hour": [
+      "flood_season",
+      "hour_sin",
+      "hour_cos"
+    ],
+    "day_of_year": [
+      "flood_season",
+      "day_sin",
+      "day_cos"
+    ],
+    "all": [
+      "flood_season",
+      "hour_sin",
+      "hour_cos",
+      "day_sin",
+      "day_cos"
+    ]
+  },
+  "flood_season": "1 in local months 9,10,11,12; 0 otherwise; Asia/Ho_Chi_Minh",
+  "rain_groups": {
+    "fc_ecmwf": [
+      "fc_a_luoi_rain_0_3h",
+      "fc_a_luoi_rain_3_6h",
+      "fc_a_luoi_rain_6_12h",
+      "fc_a_luoi_rain_12_24h",
+      "fc_thuan_an_rain_0_3h",
+      "fc_thuan_an_rain_3_6h",
+      "fc_thuan_an_rain_6_12h",
+      "fc_thuan_an_rain_12_24h",
+      "fc_bach_ma_rain_0_3h",
+      "fc_bach_ma_rain_3_6h",
+      "fc_bach_ma_rain_6_12h",
+      "fc_bach_ma_rain_12_24h",
+      "fc_basin_rain_0_3h",
+      "fc_basin_rain_3_6h",
+      "fc_basin_rain_6_12h",
+      "fc_basin_rain_12_24h",
+      "fc_age_hours",
+      "fc_missing_frac"
+    ],
+    "wind": [
+      "wind_onshore_past24",
+      "wind_onshore_next6",
+      "wind_onshore_next12",
+      "wind_onshore_chg12",
+      "wind_along_past24",
+      "wind_along_next6",
+      "wind_along_next12",
+      "wind_along_chg12",
+      "wind_speed_past24",
+      "wind_speed_next6",
+      "wind_speed_next12",
+      "wind_speed_chg12",
+      "wind_p_now",
+      "wind_p_chg12",
+      "wind_missing_frac"
+    ],
+    "tide": [
+      "tide_now",
+      "tide_d3",
+      "tide_d6",
+      "tide_d12",
+      "tide_missing_frac"
+    ]
+  },
+  "rain_aliases": {
+    "fc_ecmwf": "fc_ecmwf",
+    "wind": "wind",
+    "tide": "tide"
+  },
+  "rain_value_columns": [
+    "fc_a_luoi_rain_0_3h",
+    "fc_a_luoi_rain_3_6h",
+    "fc_a_luoi_rain_6_12h",
+    "fc_a_luoi_rain_12_24h",
+    "fc_thuan_an_rain_0_3h",
+    "fc_thuan_an_rain_3_6h",
+    "fc_thuan_an_rain_6_12h",
+    "fc_thuan_an_rain_12_24h",
+    "fc_bach_ma_rain_0_3h",
+    "fc_bach_ma_rain_3_6h",
+    "fc_bach_ma_rain_6_12h",
+    "fc_bach_ma_rain_12_24h",
+    "fc_basin_rain_0_3h",
+    "fc_basin_rain_3_6h",
+    "fc_basin_rain_6_12h",
+    "fc_basin_rain_12_24h",
+    "fc_age_hours",
+    "wind_onshore_past24",
+    "wind_onshore_next6",
+    "wind_onshore_next12",
+    "wind_onshore_chg12",
+    "wind_along_past24",
+    "wind_along_next6",
+    "wind_along_next12",
+    "wind_along_chg12",
+    "wind_speed_past24",
+    "wind_speed_next6",
+    "wind_speed_next12",
+    "wind_speed_chg12",
+    "wind_p_now",
+    "wind_p_chg12",
+    "tide_now",
+    "tide_d3",
+    "tide_d6",
+    "tide_d12"
+  ],
+  "weather_columns": [],
+  "weather_value_columns": [],
+  "target_columns": [
+    "target_h3_mm",
+    "target_h6_mm",
+    "target_h12_mm"
+  ],
+  "horizons_hours": [
+    3,
+    6,
+    12
+  ],
+  "sequence_order": "oldest to newest: t-95h through t",
+  "sample_stride": 1,
+  "raw_missing": "NaN in parquet; standardized NaN -> 0 by the reader with water_level_missing = 1",
+  "units": {
+    "water": "mm relative to station datum"
+  }
+}

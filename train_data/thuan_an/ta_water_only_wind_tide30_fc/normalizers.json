@@ -1,0 +1,306 @@
+{
+  "fixed": {
+    "stations": {
+      "0074647402": {
+        "water": {
+          "mean": 147.0907923636532,
+          "scale": 217.35411754509227,
+          "count": 6166,
+          "constant": false,
+          "all_missing": false
+        },
+        "targets": {
+          "h3": {
+            "mean": 138.1684827456423,
+            "scale": 206.19775176647335,
+            "count": 6073,
+            "constant": false,
+            "all_missing": false
+          },
+          "h6": {
+            "mean": 137.70392925752552,
+            "scale": 205.38317215805603,
+            "count": 6073,
+            "constant": false,
+            "all_missing": false
+          },
+          "h12": {
+            "mean": 136.87356260732514,
+            "scale": 204.02618641503457,
+            "count": 6073,
+            "constant": false,
+            "all_missing": false
+          }
+        },
+        "persistence_scale": [
+          1.0582859114563865,
+          1.0653246103563674
+        ],
+        "persistence_offset": [
+          0.0457041490181283,
+          0.050078031334389365
+        ],
+        "persistence_horizons": [
+          6,
+          12
+        ],
+        "training_samples": 6073,
+        "input_fit_first": "2025-11-14 17:00:00+00:00",
+        "input_fit_last": "2026-07-29 16:00:00+00:00",
+        "target_fit_last": "2026-07-30 04:00:00+00:00"
+      }
+    },
+    "shared": {
+      "fc_a_luoi_rain_0_3h": {
+        "mean": 0.394918010823751,
+        "scale": 0.6440661426004816,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_a_luoi_rain_3_6h": {
+        "mean": 0.39241958812030303,
+        "scale": 0.6468710496279624,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_a_luoi_rain_6_12h": {
+        "mean": 0.6194171317101891,
+        "scale": 0.8480052244643695,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_a_luoi_rain_12_24h": {
+        "mean": 1.0007036357367745,
+        "scale": 1.066623748613534,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_thuan_an_rain_0_3h": {
+        "mean": 0.227116559952407,
+        "scale": 0.46387410868743617,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_thuan_an_rain_3_6h": {
+        "mean": 0.23023851208434265,
+        "scale": 0.46460816092064644,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_thuan_an_rain_6_12h": {
+        "mean": 0.38019729232031085,
+        "scale": 0.6335385564515628,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_thuan_an_rain_12_24h": {
+        "mean": 0.6010412503048156,
+        "scale": 0.8447837450937019,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_bach_ma_rain_0_3h": {
+        "mean": 0.3307602825071155,
+        "scale": 0.6053131363330623,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_bach_ma_rain_3_6h": {
+        "mean": 0.32712403518896566,
+        "scale": 0.5966832658408475,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_bach_ma_rain_6_12h": {
+        "mean": 0.5029688208091354,
+        "scale": 0.7901783324992023,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_bach_ma_rain_12_24h": {
+        "mean": 0.7792339485525287,
+        "scale": 1.0114007340174742,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_basin_rain_0_3h": {
+        "mean": 0.33327894133873337,
+        "scale": 0.5397829584324327,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_basin_rain_3_6h": {
+        "mean": 0.33339619946739857,
+        "scale": 0.5406429465281479,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_basin_rain_6_12h": {
+        "mean": 0.5262889300917,
+        "scale": 0.7231311570182741,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_basin_rain_12_24h": {
+        "mean": 0.8251837763787466,
+        "scale": 0.9281674926116292,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_age_hours": {
+        "mean": 8.511673151750973,
+        "scale": 1.7281693535937679,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_onshore_past24": {
+        "mean": 2.13373011816892,
+        "scale": 2.651254503553796,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_onshore_next6": {
+        "mean": 2.1204925614039802,
+        "scale": 2.9422683542071106,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_onshore_next12": {
+        "mean": 2.115546065635699,
+        "scale": 2.797708762290316,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_onshore_chg12": {
+        "mean": -0.018184052533221536,
+        "scale": 1.516748674412896,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_along_past24": {
+        "mean": -2.6822102489887047,
+        "scale": 3.195607742083059,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_along_next6": {
+        "mean": -2.6961273567204453,
+        "scale": 3.5906694600864744,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_along_next12": {
+        "mean": -2.6961773135989073,
+        "scale": 3.4044178093498654,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_along_chg12": {
+        "mean": -0.01396706461020276,
+        "scale": 2.2243475188044983,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_speed_past24": {
+        "mean": 5.370015199416343,
+        "scale": 1.9400652932694762,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_speed_next6": {
+        "mean": 5.360694984868136,
+        "scale": 2.3305922694393764,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_speed_next12": {
+        "mean": 5.357883025291829,
+        "scale": 2.149592797744238,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_speed_chg12": {
+        "mean": -0.0121321741245131,
+        "scale": 1.5606853738677302,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_p_now": {
+        "mean": 1011.0079604409858,
+        "scale": 5.3606016868080095,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_p_chg12": {
+        "mean": -0.01887564850843084,
+        "scale": 1.1664220201508704,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "tide_now": {
+        "mean": -0.19012143570697349,
+        "scale": 101.44587886721489,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "tide_d3": {
+        "mean": 0.7803146002838091,
+        "scale": 128.95790188213888,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "tide_d6": {
+        "mean": 0.6919423294306374,
+        "scale": 190.70530812981758,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "tide_d12": {
+        "mean": -0.020673524268106973,
+        "scale": 96.16205284775423,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      }
+    },
+    "train_anchor_first": "2025-11-18 16:00:00+00:00",
+    "train_anchor_last": "2026-07-29 16:00:00+00:00",
+    "shared_rain_fit_last": "2026-07-29 16:00:00+00:00",
+    "shared_weather_fit_last": "2026-07-29 16:00:00+00:00",
+    "fit_policy": "train-only: water over unique training-window input hours; targets over training samples"
+  }
+}

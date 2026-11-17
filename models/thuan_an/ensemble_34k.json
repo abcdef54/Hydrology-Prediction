@@ -1,0 +1,44 @@
+{
+  "name": "ensemble_34k",
+  "rule": "equal-weight mean of the two members' predicted water level (mm) per issue time and horizon",
+  "members": [
+    "wind_tide30_fc_gru32x3_seq12_cosine_ep77",
+    "wind_gru32x2_seq25_ep33"
+  ],
+  "station": "0074647402 Cảng Cá Thuận An",
+  "horizons": [
+    3,
+    6,
+    12
+  ],
+  "parameters": 34038,
+  "sep_oct_2026": {
+    "h3": {
+      "mae": 30.54,
+      "n200": 0,
+      "max": 129.9
+    },
+    "h6": {
+      "mae": 40.07,
+      "n200": 0,
+      "max": 185.2
+    },
+    "h12": {
+      "mae": 44.2,
+      "n200": 0,
+      "max": 190.7
+    },
+    "all": {
+      "mae": 38.27,
+      "n200": 0,
+      "max": 190.7
+    },
+    "large_error_issue_times_utc": []
+  },
+  "selection": "lightest of 327 equal-weight combinations (<=3 models, trainer epochs) with 0 errors >200 mm on validation and test; also 0 on 16–31/10/2026. The same wind member gives 0/0/0 with 5 different h32x3 fc variants.",
+  "caveats": [
+    "single seed",
+    "selected from many combinations after seeing validation, test and 16–31/10 → optimistic",
+    "max error 191 mm (Sep–Oct) → thin margin"
+  ]
+}

@@ -1,0 +1,286 @@
+{
+  "fixed": {
+    "stations": {
+      "0074647705": {
+        "water": {
+          "mean": 444.39031949399936,
+          "scale": 144.16437733414008,
+          "count": 6166,
+          "constant": false,
+          "all_missing": false
+        },
+        "targets": {
+          "h3": {
+            "mean": 433.7458757341237,
+            "scale": 107.83526331623327,
+            "count": 6073,
+            "constant": false,
+            "all_missing": false
+          },
+          "h6": {
+            "mean": 433.39481091168557,
+            "scale": 106.46009092593734,
+            "count": 6073,
+            "constant": false,
+            "all_missing": false
+          },
+          "h12": {
+            "mean": 432.76961743235086,
+            "scale": 104.15442419763245,
+            "count": 6073,
+            "constant": false,
+            "all_missing": false
+          }
+        },
+        "persistence_scale": [
+          1.3368945639922032,
+          1.3541635751037733,
+          1.3841406972841497
+        ],
+        "persistence_offset": [
+          0.09871023107404325,
+          0.10328291556657787,
+          0.11157185257534795
+        ],
+        "persistence_horizons": [
+          3,
+          6,
+          12
+        ],
+        "training_samples": 6073,
+        "input_fit_first": "2025-11-14 17:00:00+00:00",
+        "input_fit_last": "2026-07-29 16:00:00+00:00",
+        "target_fit_last": "2026-07-30 04:00:00+00:00"
+      }
+    },
+    "shared": {
+      "fc_a_luoi_rain_0_3h": {
+        "mean": 0.394918010823751,
+        "scale": 0.6440661426004816,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_a_luoi_rain_3_6h": {
+        "mean": 0.39241958812030303,
+        "scale": 0.6468710496279624,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_a_luoi_rain_6_12h": {
+        "mean": 0.6194171317101891,
+        "scale": 0.8480052244643695,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_a_luoi_rain_12_24h": {
+        "mean": 1.0007036357367745,
+        "scale": 1.066623748613534,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_thuan_an_rain_0_3h": {
+        "mean": 0.227116559952407,
+        "scale": 0.46387410868743617,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_thuan_an_rain_3_6h": {
+        "mean": 0.23023851208434265,
+        "scale": 0.46460816092064644,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_thuan_an_rain_6_12h": {
+        "mean": 0.38019729232031085,
+        "scale": 0.6335385564515628,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_thuan_an_rain_12_24h": {
+        "mean": 0.6010412503048156,
+        "scale": 0.8447837450937019,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_bach_ma_rain_0_3h": {
+        "mean": 0.3307602825071155,
+        "scale": 0.6053131363330623,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_bach_ma_rain_3_6h": {
+        "mean": 0.32712403518896566,
+        "scale": 0.5966832658408475,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_bach_ma_rain_6_12h": {
+        "mean": 0.5029688208091354,
+        "scale": 0.7901783324992023,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_bach_ma_rain_12_24h": {
+        "mean": 0.7792339485525287,
+        "scale": 1.0114007340174742,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_basin_rain_0_3h": {
+        "mean": 0.33327894133873337,
+        "scale": 0.5397829584324327,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_basin_rain_3_6h": {
+        "mean": 0.33339619946739857,
+        "scale": 0.5406429465281479,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_basin_rain_6_12h": {
+        "mean": 0.5262889300917,
+        "scale": 0.7231311570182741,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_basin_rain_12_24h": {
+        "mean": 0.8251837763787466,
+        "scale": 0.9281674926116292,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "fc_age_hours": {
+        "mean": 8.511673151750973,
+        "scale": 1.7281693535937679,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_onshore_past24": {
+        "mean": 2.13373011816892,
+        "scale": 2.651254503553796,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_onshore_next6": {
+        "mean": 2.1204925614039802,
+        "scale": 2.9422683542071106,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_onshore_next12": {
+        "mean": 2.115546065635699,
+        "scale": 2.797708762290316,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "wind_onshore_chg12": {
+        "mean": -0.018184052533221536,
+        "scale": 1.516748674412896,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "tide_now": {
+        "mean": 0.14120233245801647,
+        "scale": 49.44492937321053,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "tide_d3": {
+        "mean": -0.5341564910733062,
+        "scale": 61.983558446755175,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "tide_d6": {
+        "mean": -0.46482886136662954,
+        "scale": 89.61588604170235,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "tide_d12": {
+        "mean": 0.3743568252345856,
+        "scale": 72.60214057861963,
+        "count": 6168,
+        "constant": false,
+        "all_missing": false
+      },
+      "sea_setup_chg": {
+        "mean": -1.3617545879422042,
+        "scale": 52.83435614646682,
+        "count": 6078,
+        "constant": false,
+        "all_missing": false
+      },
+      "sea_anom": {
+        "mean": -6.0336338894064445,
+        "scale": 158.4391358054411,
+        "count": 5970,
+        "constant": false,
+        "all_missing": false
+      },
+      "sea_next12_anom": {
+        "mean": -6.3465875465812065,
+        "scale": 70.34418813254351,
+        "count": 5970,
+        "constant": false,
+        "all_missing": false
+      },
+      "sea_p3": {
+        "mean": -0.18886516669403844,
+        "scale": 194.16148776579482,
+        "count": 6089,
+        "constant": false,
+        "all_missing": false
+      },
+      "sea_p6": {
+        "mean": -0.5041878797832157,
+        "scale": 285.19284147901897,
+        "count": 6089,
+        "constant": false,
+        "all_missing": false
+      },
+      "sea_p12": {
+        "mean": -0.8277221218590901,
+        "scale": 119.30109899796739,
+        "count": 6089,
+        "constant": false,
+        "all_missing": false
+      },
+      "sea_now": {
+        "mean": 740.4204302841189,
+        "scale": 200.33324335200032,
+        "count": 6089,
+        "constant": false,
+        "all_missing": false
+      }
+    },
+    "train_anchor_first": "2025-11-18 16:00:00+00:00",
+    "train_anchor_last": "2026-07-29 16:00:00+00:00",
+    "fit_policy": "train-only: inputs over unique training-window hours; targets over training samples"
+  }
+}

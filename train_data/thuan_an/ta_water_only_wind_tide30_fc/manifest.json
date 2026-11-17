@@ -1,0 +1,110 @@
+{
+  "status": "complete",
+  "format_version": 2,
+  "dataset": "ta_water_only_wind_tide30_fc",
+  "created_at": "2026-11-11T14:58:55.974813+00:00",
+  "scope": "local single-station (Cảng Cá Thuận An 0074647402), own water level only",
+  "sequence_length": 96,
+  "horizons_hours": [
+    3,
+    6,
+    12
+  ],
+  "output_size": 3,
+  "station_count": 1,
+  "groups": [
+    "fc_ecmwf",
+    "wind",
+    "tide"
+  ],
+  "input_features": 41,
+  "input_feature_breakdown": {
+    "water": 2,
+    "flood_season": 1,
+    "fc_ecmwf": 18,
+    "wind": 15,
+    "tide": 5
+  },
+  "sample_count": 7924,
+  "split_counts": {
+    "train": 6073,
+    "validation": 1080,
+    "test_exploratory": 723,
+    "purged": 48
+  },
+  "samples_dropped_missing_label": 0,
+  "hourly_rows": 8031,
+  "default_fold": "fixed",
+  "default_rain_stations": "fc_ecmwf+wind+tide",
+  "default_time_features": "none",
+  "cutoff": "2026-09-15T00:00:00+07:00",
+  "test_status": "exploratory; post-cutoff data have been examined previously",
+  "observation_availability": "retrospective hourly observations; receipt by anchor not proven for all observations",
+  "persistence_large_errors_200mm": {
+    "train": {
+      "h3": 744,
+      "h6": 2024,
+      "h12": 420
+    },
+    "validation": {
+      "h3": 203,
+      "h6": 458,
+      "h12": 86
+    },
+    "test_exploratory": {
+      "h3": 88,
+      "h6": 221,
+      "h12": 10
+    }
+  },
+  "train_command": "--dataset-dir <this dir> --horizon 1h --target-horizons 3 6 12 --rain-stations none --use-weather-forecast false --feature-set water_level+flood_season",
+  "source_sha256": {
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/manifest.json": "fa64cb513cca743ee15309e31df2be43c83373a61e9ce967fcb4bc9b4b532e6c",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/samples.parquet": "7f340abaaeac8a1378ca5010164796c2520f4f0d55d06f651a7f920e2c23e4de",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/water.parquet": "32e7194e30025825b2628845da8c2fa99f66350776acae5f099fb05416b84a2f",
+    "/home/my_ubuntu/projects/hydrology/train_data/hue_regional_20261015_h6_h12_fixed_split_v1/calendar.parquet": "31ddea952f210a56f64971f1f702f32a68bec467e4dd69daa4485b78a49e1d0f"
+  },
+  "source_code_sha256": {
+    "/home/my_ubuntu/projects/hydrology/research/scripts/build_station_water_only.py": "08615b3c29767a62b54932fd6bf4016cc9ec0ede3aae74f7834e989c0393c635",
+    "/home/my_ubuntu/projects/hydrology/research/scripts/augment_da_vien_dataset.py": "b6623841401799512506af436dc9f1d75c8c084d1c707bc6359c19e95ec06f73"
+  },
+  "augmented_from": {
+    "source": "ta_water_only",
+    "source_manifest_sha256": "d5758dcb2c0c63f3e4c9f27581158c67962589bd61214bf4d344919546027a3c",
+    "phase": false,
+    "fc": true,
+    "fc_rel": false,
+    "water_stations": [],
+    "wind": true,
+    "wind_onshore_pos": false,
+    "tide": true,
+    "tide_quality": {
+      "train": {
+        "r2_change_d3": 0.921,
+        "r2_change_d6": 0.937,
+        "r2_change_d12": 0.71,
+        "fallback_fraction": 0.012
+      },
+      "validation": {
+        "r2_change_d3": 0.932,
+        "r2_change_d6": 0.938,
+        "r2_change_d12": 0.615,
+        "fallback_fraction": 0.0
+      },
+      "test_exploratory": {
+        "r2_change_d3": 0.92,
+        "r2_change_d6": 0.932,
+        "r2_change_d12": 0.587,
+        "fallback_fraction": 0.0
+      }
+    },
+    "tide_days": 30,
+    "fc_transform": "log1p",
+    "rain_from": null,
+    "flood_weight": null,
+    "norm_exclude_flood": false,
+    "flood_anchor_rule": "split == train and anchor_utc < 2025-11-18 16:00:00+00:00",
+    "flood_train_anchors": 0,
+    "loss_weight_note": null
+  }
+}

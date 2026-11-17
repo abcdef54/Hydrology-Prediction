@@ -1,0 +1,50 @@
+{
+  "format_version": 1,
+  "family": "residual_sequence",
+  "options": {
+    "architecture": "gru",
+    "input_size": 35,
+    "output_size": 3,
+    "hidden_size": 128,
+    "num_layers": 3,
+    "dropout": 0.2,
+    "input_dropout": 0.1,
+    "head_dropout": 0.1,
+    "level_feature_index": 0,
+    "persistence_scale": [
+      [
+        1.3368945121765137,
+        1.3541635274887085,
+        1.3841407299041748
+      ]
+    ],
+    "persistence_offset": [
+      [
+        0.09871023148298264,
+        0.10328291356563568,
+        0.11157185584306717
+      ]
+    ],
+    "weather_feature_indices": [],
+    "weather_mask_indices": [],
+    "weather_mask_values": [],
+    "forecast_history_policy": "anchor_only",
+    "num_stations": 1,
+    "station_embedding_size": 8,
+    "forecast_hidden_size": 32,
+    "tcn_channels": [
+      32,
+      32,
+      32,
+      32,
+      32
+    ],
+    "tcn_kernel_size": 3,
+    "cnn_channels": [
+      32,
+      32
+    ],
+    "cnn_kernel_size": 3,
+    "head_mode": "station"
+  }
+}

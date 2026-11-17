@@ -1,0 +1,134 @@
+{
+  "name": "nga_ba_sinh_combined_v1",
+  "station": "0074647705 Trạm Ngã Ba Sình (Sông Hương)",
+  "rule": "per-horizon combination: +3 h and +6 h from short_3h_6h, +12 h from long_12h (no averaging)",
+  "members": {
+    "short_3h_6h": {
+      "horizons_used": [
+        3,
+        6
+      ],
+      "dataset": "train_data/nga_ba_sinh/nbs_onshore_tide7_fc_sea7_v3",
+      "run_dir": "model/experiments/nga_ba_sinh/nbs_onshore_tide7_fc_sea7_v3/b64_lr0.0001_wd0.001_gru_h64x3_do0.2-0.1-0.1_seq12_e100_combinedu0.3_step_s23",
+      "epoch": 59,
+      "model_pt_sha256": "2bff6ff3c964c32d58b844fd98df7ce7089e70a93fa48f316e2d0fcbbeea9d29",
+      "mlflow_params": {
+        "dataset_dir": "/home/my_ubuntu/projects/hydrology/train_data/nga_ba_sinh/nbs_onshore_tide7_fc_sea7_v3",
+        "sequence_length": "12",
+        "Hidden size": "64",
+        "Layers": "3",
+        "learning_rate": "0.0001",
+        "weight_decay": "0.001",
+        "lr_scheduler": "step",
+        "lr_warmup_epochs": "0",
+        "batch_size": "64",
+        "num_epochs": "100",
+        "early_stopping": "100",
+        "change_under_weight": "0.3",
+        "change_event_weight": "0.0",
+        "horizon_weights": "[1.0, 1.0, 1.0]",
+        "seed": "23",
+        "Encoder dropout": "0.2",
+        "Input dropout": "0.1",
+        "Head dropout": "0.1",
+        "checkpoint_metric": "val_loss",
+        "input_size": "39"
+      }
+    },
+    "long_12h": {
+      "horizons_used": [
+        12
+      ],
+      "dataset": "train_data/nga_ba_sinh/nbs_onshore_tide7_fc_sea_v3",
+      "run_dir": "model/experiments/nga_ba_sinh/nbs_onshore_tide7_fc_sea_v3/hw112.5_b64_lr0.0001_wd0.001_gru_h128x3_do0.2-0.1-0.1_seq25_e100_combinedu0.3_ev0_step_s23_v2",
+      "epoch": 110,
+      "model_pt_sha256": "9ded77daea1a3d2d496faf95bb3acb8ae00142ea4409c17d922956a3653f48eb",
+      "mlflow_params": {
+        "dataset_dir": "/home/my_ubuntu/projects/hydrology/train_data/nga_ba_sinh/nbs_onshore_tide7_fc_sea_v3",
+        "sequence_length": "25",
+        "Hidden size": "128",
+        "Layers": "3",
+        "learning_rate": "0.0001",
+        "weight_decay": "0.001",
+        "lr_scheduler": "step",
+        "lr_warmup_epochs": "0",
+        "batch_size": "64",
+        "num_epochs": "130",
+        "early_stopping": "200",
+        "change_under_weight": "0.3",
+        "change_event_weight": "0.0",
+        "horizon_weights": "[1.0, 1.0, 2.5]",
+        "seed": "23",
+        "Encoder dropout": "0.2",
+        "Input dropout": "0.1",
+        "Head dropout": "0.1",
+        "checkpoint_metric": "val_loss",
+        "input_size": "35"
+      }
+    }
+  },
+  "metrics": {
+    "val": {
+      "h3": {
+        "n200": 0,
+        "mae": 32.7,
+        "max": 145.4
+      },
+      "h6": {
+        "n200": 0,
+        "mae": 53.0,
+        "max": 185.4
+      },
+      "h12": {
+        "n200": 0,
+        "mae": 60.8,
+        "max": 197.6
+      }
+    },
+    "test": {
+      "h3": {
+        "n200": 0,
+        "mae": 37.7,
+        "max": 152.6
+      },
+      "h6": {
+        "n200": 0,
+        "mae": 54.0,
+        "max": 187.1
+      },
+      "h12": {
+        "n200": 0,
+        "mae": 47.7,
+        "max": 184.1
+      }
+    },
+    "new": {
+      "h3": {
+        "n200": 0,
+        "mae": 38.8,
+        "max": 167.7
+      },
+      "h6": {
+        "n200": 0,
+        "mae": 54.3,
+        "max": 187.6
+      },
+      "h12": {
+        "n200": 0,
+        "mae": 53.8,
+        "max": 195.6
+      }
+    }
+  },
+  "periods": {
+    "val": "2026-07-30T17Z..2026-09-13T16Z (1080 anchors)",
+    "test": "2026-09-14T17Z..2026-10-14T19Z minus 13 sensor-step anchors (710)",
+    "new": "2026-10-14T20Z..2026-11-11T15Z, unseen (668), despiked, built with --normalizers-from"
+  },
+  "caveats": [
+    "Members and epochs were selected after looking at val, test AND new data (thousands of epochs) -> no untouched evaluation period remains; re-check on data after 2026-11-12.",
+    "Margins are thin: largest errors 197.6 mm (val +12 h), 195.6 mm (new +12 h), 187.6 mm (+6 h).",
+    "Inputs: short uses nbs_onshore_tide7_fc_sea7_v3 (39 inputs), long uses nbs_onshore_tide7_fc_sea_v3 (35 inputs); both need ECMWF fc rain, wind previous_day1, Marine sea_level previous_day1, despiked level, tide7."
+  ],
+  "created": "2026-11-16"
+}

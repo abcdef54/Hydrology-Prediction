@@ -1,0 +1,14 @@
+{
+  "0074647402": {
+    "station_index": 0,
+    "name": "Cảng Cá Thuận An",
+    "cluster": 1,
+    "latitude": 16.554968,
+    "longitude": 107.63527,
+    "unit": "mm",
+    "water_level_datum": "unknown; not tied to DEM",
+    "hydrological_type": "coastal_lagoon",
+    "measured_quantity": "unknown",
+    "source_station_index": 0
+  }
+}

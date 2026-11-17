@@ -1,0 +1,132 @@
+{
+  "role": "ensemble member only (not for standalone use)",
+  "epoch": 33,
+  "station": "0074647402 Cảng Cá Thuận An",
+  "horizons": [
+    3,
+    6,
+    12
+  ],
+  "dataset": "train_data/thuan_an/ta_water_only_wind",
+  "input_groups": [
+    "wind"
+  ],
+  "feature_columns": [
+    "water_level_depth",
+    "water_level_missing",
+    "flood_season",
+    "wind_onshore_past24",
+    "wind_onshore_next6",
+    "wind_onshore_next12",
+    "wind_onshore_chg12",
+    "wind_along_past24",
+    "wind_along_next6",
+    "wind_along_next12",
+    "wind_along_chg12",
+    "wind_speed_past24",
+    "wind_speed_next6",
+    "wind_speed_next12",
+    "wind_speed_chg12",
+    "wind_p_now",
+    "wind_p_chg12",
+    "wind_missing_frac"
+  ],
+  "sequence_length": 25,
+  "parameters": 12747,
+  "config": "GRU residual, hidden 32 x 2, seq 25, batch 64, lr 0.0005 step, wd 0.001, dropout 0.2/0.1/0.1, combined loss under 0.3, seed 17, 50 epochs; epoch 33 = trainer best (val_loss)",
+  "train_command": ".venv/bin/python -m src.ai.train --mlflow-ex-name thuan_an --horizon 1h --dataset-dir train_data/thuan_an/ta_water_only_wind --target-horizons 3 6 12 --rain-stations all --use-weather-forecast false --feature-set water_level+rain+flood_season --train-method gru --head-mode station --lstm-seq-len 25 --lstm-hidden-size 32 --lstm-num-layers 2 --lstm-drop-out 0.2 --lstm-input-dropout 0.1 --lstm-head-dropout 0.1 --lstm-lr 0.0005 --lstm-weight-decay 0.001 --lr-scheduler step --batch-size 64 --num-epochs 50 --early-stopping 30 --change-loss combined --change-under-weight 0.3 --change-event-weight 0 --change-margin-mm 0 --lstm-checkpoint-metric val_loss --skip-test --seed 17 --checkpoint-dir model/experiments/thuan_an/ta_water_only_wind/b64_lr0.0005_wd0.001_gru_h32x2_do0.2-0.1-0.1_seq25_e50_combinedu0.3_s17 --diagnose-change-dynamics",
+  "source_snapshot": "model/experiments/thuan_an/ta_water_only_wind/b64_lr0.0005_wd0.001_gru_h32x2_do0.2-0.1-0.1_seq25_e50_combinedu0.3_s17/gru/rain_wind/seq25/head_station/targets_3-6-12h/change_combined_floor200_event0_under0.3_threshold200/1h/ResidualGRU_water_level+rain+flood_season_best.dynamics/epoch_033",
+  "metrics": {
+    "validation_h3": {
+      "n200": 0,
+      "mae": 32.89,
+      "max": 154.5
+    },
+    "validation_h6": {
+      "n200": 3,
+      "mae": 44.44,
+      "max": 216.6
+    },
+    "validation_h12": {
+      "n200": 3,
+      "mae": 51.7,
+      "max": 209.6
+    },
+    "validation_all": {
+      "n200": 6,
+      "mae": 43.01,
+      "max": 216.6
+    },
+    "test_h3": {
+      "n200": 0,
+      "mae": 31.87,
+      "max": 133.8
+    },
+    "test_h6": {
+      "n200": 0,
+      "mae": 42.31,
+      "max": 184.2
+    },
+    "test_h12": {
+      "n200": 4,
+      "mae": 47.18,
+      "max": 212.9
+    },
+    "test_all": {
+      "n200": 4,
+      "mae": 40.45,
+      "max": 212.9
+    }
+  },
+  "sep_oct_2026": {
+    "h3": {
+      "mae": 34.29,
+      "n200": 0,
+      "max": 154.5
+    },
+    "h6": {
+      "mae": 46.39,
+      "n200": 5,
+      "max": 230.7
+    },
+    "h12": {
+      "mae": 51.36,
+      "n200": 6,
+      "max": 212.9
+    },
+    "all": {
+      "mae": 44.02,
+      "n200": 11,
+      "max": 230.7
+    },
+    "large_error_issue_times_utc": [
+      "2026-09-11 15:00:00+00:00",
+      "2026-09-12 13:00:00+00:00",
+      "2026-09-12 23:00:00+00:00",
+      "2026-09-13 12:00:00+00:00",
+      "2026-09-13 13:00:00+00:00",
+      "2026-09-13 19:00:00+00:00",
+      "2026-09-13 20:00:00+00:00",
+      "2026-10-07 00:00:00+00:00",
+      "2026-10-07 01:00:00+00:00",
+      "2026-10-07 02:00:00+00:00",
+      "2026-10-07 03:00:00+00:00"
+    ]
+  },
+  "caveats": [
+    "single seed (17); not yet re-run with another seed",
+    "chosen after many runs scored on validation and exploratory test; test (15/9–15/10) is not independent",
+    "validation max error close to the 200 mm threshold",
+    "inputs: ECMWF day-ahead wind (Open-Meteo previous_day1, 16.75N 107.75E) and, for fc models, ECMWF rain of 7 cells; neither is collected by the app worker yet"
+  ],
+  "sha256": {
+    "model.architecture.json": "0db2cc82267fc639740e8bdd75346ccd4a210c82ab5457f62451034adf40442a",
+    "model.loss.json": "8e42a220b8113d060d2e260c2ab1650ebb9374ff58c57aafe3d5433035df4c0a",
+    "model.preprocessing.joblib": "223b53bc2ffe32e6e962997bdac406ba39a5c14e087ca9d5b015039a58db77e3",
+    "model.pt": "88cb90bf9ad0d9908e45ba2d1b25f3cdd3afc214d7bb6b56bb7000df0635460d",
+    "summary.json": "eef32038791f7a6ecb2fed9e59ebe2e0249a245f4cbeadbdc6f50b02150ddd47",
+    "train_eval_metrics.csv": "9d33fa309e36ddb63dc9f580ed42ae1326c2fe536ff5c6314e4a050a104a44da",
+    "val_eval_metrics.csv": "67d91b2cf4025d49c596a89dee708e0eaf1b126ed5a7f18963f77f93b97200ad",
+    "validation_predictions.parquet": "8d9d817a7c93a7e5eb15f1fbfb501e6b049f6b7568442f00bff372993958c40a"
+  }
+}

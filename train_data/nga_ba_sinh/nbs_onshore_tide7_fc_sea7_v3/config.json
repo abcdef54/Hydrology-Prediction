@@ -1,0 +1,26 @@
+{
+  "folds": [
+    {
+      "id": "fixed",
+      "validation_start": "2026-07-31T00:00:00+07:00",
+      "validation_end": "2026-09-15T00:00:00+07:00"
+    }
+  ],
+  "cutoff": "2026-09-15T00:00:00+07:00",
+  "sequence_length": 96,
+  "minimum_water_history_fraction": 0.8,
+  "purge_hours": 24,
+  "split_policy": "fixed_train_validation_test",
+  "expected_station_count": 1,
+  "horizons_hours": [
+    3,
+    6,
+    12
+  ],
+  "groups": [
+    "fc_ecmwf",
+    "wind",
+    "tide",
+    "sea"
+  ]
+}

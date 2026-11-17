@@ -1,0 +1,157 @@
+{
+  "status": "complete",
+  "format_version": 2,
+  "dataset": "nbs_onshore_tide7_fc_sea_v3",
+  "created_at": "2026-11-16T02:54:38.313886+00:00",
+  "sequence_length": 96,
+  "horizons_hours": [
+    3,
+    6,
+    12
+  ],
+  "output_size": 3,
+  "station_count": 1,
+  "groups": [
+    "fc_ecmwf",
+    "wind",
+    "tide",
+    "sea"
+  ],
+  "input_features": 35,
+  "sample_count": 7924,
+  "split_counts": {
+    "train": 6073,
+    "validation": 1080,
+    "test_exploratory": 710,
+    "purged": 48,
+    "excluded_sensor_step": 13
+  },
+  "hourly_rows": 8031,
+  "default_fold": "fixed",
+  "cutoff": "2026-09-15T00:00:00+07:00",
+  "train_command": "--dataset-dir <this dir> --target-horizons 3 6 12 --rain-stations all --feature-set water_level+rain+flood_season --use-weather-forecast false",
+  "config": {
+    "station_id": "0074647705",
+    "station_name": "Trạm Ngã Ba Sình (Sông Hương)",
+    "latitude": 16.528167,
+    "longitude": 107.574,
+    "grid_start_utc": "2025-11-14T17:00:00+00:00",
+    "grid_end_utc": "2026-10-15T07:00:00+00:00",
+    "sequence_length": 96,
+    "minimum_water_history_fraction": 0.8,
+    "purge_hours": 24,
+    "horizons_hours": [
+      3,
+      6,
+      12
+    ],
+    "validation_start": "2026-07-31T00:00:00+07:00",
+    "validation_end": "2026-09-15T00:00:00+07:00",
+    "cutoff": "2026-09-15T00:00:00+07:00",
+    "wind": {
+      "previous_runs_json": "data/external/open_meteo/prev_offshore.json",
+      "request_point": [
+        16.85,
+        107.85
+      ],
+      "request_dates": [
+        "2025-11-01",
+        "2026-10-21"
+      ],
+      "channels": [
+        "wind_onshore_past24",
+        "wind_onshore_next6",
+        "wind_onshore_next12",
+        "wind_onshore_chg12"
+      ]
+    },
+    "tide": {
+      "window_days": 7
+    },
+    "fc_ecmwf": {
+      "single_runs_dir": "data/external/open_meteo/ecmwf_single_runs",
+      "request_points": [
+        [
+          16.458944,
+          107.571361
+        ],
+        [
+          16.554968,
+          107.63527
+        ],
+        [
+          16.251017,
+          107.873289
+        ],
+        [
+          16.199675,
+          107.857476
+        ],
+        [
+          16.122778,
+          107.694444
+        ],
+        [
+          16.576556,
+          107.347889
+        ],
+        [
+          16.221111,
+          107.179444
+        ]
+      ],
+      "request_cycles_utc": [
+        "2025-11-13T00:00",
+        "2026-10-15T06:00"
+      ],
+      "all_cells": [
+        "ecmwf_ifs:16.203865:107.675520",
+        "ecmwf_ifs:16.203865:107.846300",
+        "ecmwf_ifs:16.274164:107.264960",
+        "ecmwf_ifs:16.274164:107.863250",
+        "ecmwf_ifs:16.485060:107.571434",
+        "ecmwf_ifs:16.555359:107.330795",
+        "ecmwf_ifs:16.555359:107.588180"
+      ],
+      "named_cells": {
+        "a_luoi": "ecmwf_ifs:16.274164:107.264960",
+        "thuan_an": "ecmwf_ifs:16.555359:107.588180",
+        "bach_ma": "ecmwf_ifs:16.274164:107.863250"
+      },
+      "lag_hours": 6,
+      "max_age_hours": 24,
+      "transform": "log1p"
+    },
+    "sensor_steps": [
+      {
+        "time_utc": "2026-10-10T15:20:00+00:00",
+        "note": "Gauge datum change: level dropped 157 mm in one 10-min step at 22:20 VN while Thuận An rose 30 mm and Dã Viên 17 mm; NBS minus TA/DV offset shifted by -171..-176 mm and stayed (checked to 2026-11-12). Raw levels kept; samples whose current or target hour crosses the step are excluded (split excluded_sensor_step)."
+      }
+    ],
+    "despike": {
+      "window_minutes": 121,
+      "threshold_mm": 150,
+      "keep": [
+        {
+          "start_utc": "2026-04-11T00:00:00+00:00",
+          "end_utc": "2026-04-11T01:30:00+00:00",
+          "note": "2026-04-11 07:30-07:40 VN dip (-175/-284 mm): Dã Viên dips at about the same time, possibly real; kept after user review 2026-11-16"
+        }
+      ],
+      "note": "10-min readings deviating > 150 mm from the centred 2-h median are dropped before the hourly mean (spikes and short plateaus, reviewed in figures/nga_ba_sinh/sensor_spikes*.png on 2026-11-16)"
+    },
+    "sea": {
+      "marine_json": "data/external/open_meteo/marine_offshore_ta.json",
+      "request_point": [
+        16.7,
+        107.75
+      ],
+      "request_dates": [
+        "2025-11-01",
+        "2026-11-12"
+      ],
+      "week_hours": 168,
+      "note": "Open-Meteo Marine sea_level_height_msl_previous_day1 (forecast 24 h ahead), grid 16.708/107.708 offshore Thuận An; previous_day1 available from 2025-11-18"
+    }
+  }
+}
