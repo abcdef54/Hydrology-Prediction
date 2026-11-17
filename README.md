@@ -121,7 +121,6 @@ supply observations or appear in the monitoring interface.
 │   │   ├── regional_training_data.py     # Regional pool dataset adapter
 │   │   ├── sequence_checkpoint.py        # Inference runtime for regional checkpoints
 │   │   ├── RESIDUAL_ARCHITECTURES.md     # Architecture reference
-│   │   ├── expanded_train_experiment.py  # Expanded Dã Viên training and reference inference
 │   │   ├── event_evaluation.py           # Rise-alarm evaluation for validation snapshots
 │   │   └── tests/
 │   ├── backend/
@@ -234,11 +233,6 @@ Runtime ingestion does not update their CSV files.
 | Dataset suffix | Contents | Split |
 |---|---|---|
 | `forecast_mask_o24` | 26 B features; 24 hourly targets (+1…+24h) | Original train/validation/test |
-| `forecast_mask_o2_h6_h12` | Same 26 inputs; only +6/+12h targets | Exact O24 splits and eligible anchors |
-| `forecast_mask_o2_h6_h12_weather12` | 24 inputs: remove forecast rain 12–24h and its mask; same +6/+12h targets | Exact two-output splits and anchors |
-| `o2_h6_h12_weather12_rain_pool` | Pool of 6 rain gauges, 48 inputs; +6/+12h targets and forecast windows through +12h | Original two-output splits and anchors; not expanded train |
-| `o2_h6_h12_weather24_rain_pool` | Matched control: same rain pool and targets, retaining forecast rain 12–24h and its mask (50 inputs) | Same original splits and anchors as weather12 pool |
-| `expanded_train_o24` | Pool of 6 rain gauges, 50 features; 24 targets | Former train+validation → train; former test → validation |
 
 The regional experiments additionally use prebuilt Parquet pools such as
 `train_data/hue_regional_20261015_h6_h12_fixed_split_v1` (11 stations,
@@ -253,39 +247,6 @@ Transformer, and their late-fusion variants) are documented in
 length (`--lstm-seq-len`), target horizons (`--target-horizons`), station
 conditioning and the change-objective losses are shared across all of them.
 
-### Rebuilding the paired Dã Viên datasets
-
-Rebuild the paired two-output dataset with
-`python -m src.ai.build_horizon_subset_dataset`. It retains sequence length 96,
-the 24-hour purge and all input rows, including forecast rain through +24h.
-Both selected targets are masked to NaN on rows missing any of the original 24
-labels, so reducing outputs never adds eligible anchors: **6,095 / 985 / 592**
-train/validation/test sequences. Retained labels use exact future timestamps.
-`preprocessing.joblib` contains train-only fitted input/target scalers and the
-two persistence coefficients per type. The existing `src.ai.train` loader
-accepts this dataset with `--horizon 1h --lstm-seq-len 96 --target-horizons 6 12`;
-`--outputs` remains restricted to 5 or 24. No model is trained by the builder.
-
-Build the 24-input feature ablation with
-`python -m src.ai.build_weather_horizon_ablation`. It projects the parent input
-scaler to the retained columns and reuses the target scaler without fitting.
-Historical 24-hour rain sums, forecast age, all remaining masks, target masks,
-weather-vintage selection and forecast-history policy stay unchanged. Metadata
-and `preprocessing.joblib` contain updated feature and weather-mask indices.
-The same training CLI accepts this dataset without architecture or loop changes.
-
-The fixed 24-input dataset contains only Hồng Thái and Nhâm. For other
-combinations, build the pool with
-`python -m src.ai.build_weather_horizon_ablation --rain-stations all
---output-dir train_data/da_vien_1h_2026-10-15_o2_h6_h12_weather12_rain_pool`.
-It copies matching rain predictors from the retained expanded dataset's hourly
-snapshot, while keeping the original two-output splits and masked labels. Added
-input scales are fitted on the original train split only. Select sources with
-`--rain-stations hong_thai+bach_ma+phu_bai` when training: 2/3/4/6 gauges give
-24/30/36/48 inputs. The original two-station ablation stays unchanged. Use
-`--forecast-hours 24` with a separate output directory to build the matched
-control containing forecast rain through +24h (26/32/38/50 selected inputs).
-
 ### Comparison and promotion policy
 
 After `src.ai.train` finishes on a Dã Viên dataset, comparison defaults to
@@ -297,38 +258,6 @@ parent without restoring masked samples. The console and
 errors >200 mm. The verdict prioritizes fewer large errors, then lower pooled
 RMSE; it never promotes a model automatically. Comparison failures are reported
 separately and preserve the completed training checkpoint.
-
-Expanded-train runs likewise compare their selected checkpoint with legacy/B on
-common validation anchors and write reports under
-`reports/model_comparisons/expanded_train/`; MLflow stores settings/metrics
-without model uploads. Training does not promote a model to production. Use
-`--help` for all options, `--check-only` for preparation checks, or `--no-mlflow`
-to train without the tracking server.
-
-Configuration of the expanded three-station run reported above:
-
-```bash
-.venv/bin/python -m src.ai.expanded_train_experiment \
-  --dataset-dir train_data/da_vien_1h_2026-10-15_expanded_train_o24 \
-  --variant uniform --rain-stations hong_thai+bach_ma+phu_bai \
-  --device cuda --seed 42 --num-epochs 100 --early-stopping 25 \
-  --sequence-length 96 --hidden-size 16 --num-layers 3 \
-  --dropout 0.5 --input-dropout 0.2 --head-dropout 0.2 \
-  --learning-rate 0.001 --weight-decay 0.001 --correction-penalty -0.2 \
-  --horizon-weights 1 1 1 1 1 \
-  --tail-penalty 0.5 --tail-threshold-mm 200 --tail-transition-mm 20 \
-  --checkpoint-metric large_error_rate
-```
-
-The 2026-10-23 two-output study completed 36 cases (three configurations, three
-rain combinations, two seeds, two forecast-input windows). On the same 592
-anchors and only +6h/+12h, Model B has 21 errors >200 mm (RMSE 85.69 mm). The
-best new case has 18 (87.49 mm), but its other seed has 38; the existing
-expanded model has 17 (81.10 mm), using a larger training split. Removing the
-12–24h forecast and its mask improves 12 of 18 matched pairs, with six worse.
-These exploratory results do not establish a replacement for production. The
-local detailed report and all case metrics are under
-`reports/model_comparisons/20261023_weather_outputs_matrix/`.
 
 ## Station and terrain analysis
 

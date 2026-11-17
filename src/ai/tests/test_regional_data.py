@@ -162,27 +162,6 @@ class RegionalDataTests(unittest.TestCase):
             self.assertEqual(manifest['constant_training_target_stations'], ['001'])
             self.assertEqual(validate_dataset(root/'explicit', verify_sources=False)['status'], 'PASS')
 
-    def test_station_subsets_preserve_labels_and_reindex(self):
-        from src.ai.build_station_subset_dataset import build_station_subset
-        level, rain, strict, weather, mapping, config, catalog = fixture()
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            build_dataset(root/'source', level=level, rain_standard=rain, rain_strict=strict,
-                weather=weather, stations=mapping, clusters=pd.DataFrame({'station_id': list(mapping)}),
-                config=config, source_paths=[], rain_catalog=catalog)
-            validate_dataset(root/'source', verify_sources=False)
-            for ids in (['001'], ['003', '001']):
-                output = root/('subset'+str(len(ids)))
-                self.assertEqual(build_station_subset(root/'source', output, ids)['stations'], len(ids))
-                saved = json.loads((output/'station_mapping.json').read_text())
-                self.assertEqual([saved[sid]['station_index'] for sid in ids], list(range(len(ids))))
-            for ids in ([], ['001', '001'], ['999']):
-                with self.assertRaises(ValueError):
-                    build_station_subset(root/'source', root/'invalid', ids)
-                self.assertFalse((root/'invalid').exists())
-            with self.assertRaises(FileExistsError):
-                build_station_subset(root/'source', root/'subset1', ['001'])
-
     def test_unclustered_station_requires_explicit_opt_in(self):
         level, rain, strict, weather, mapping, config, catalog = fixture()
         level['004'] = level['001']

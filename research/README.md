@@ -16,7 +16,6 @@ giá mô hình nằm trong `src/ai/`.
 
 | File | Mục đích |
 |---|---|
-| [src/ai/expanded_train_experiment.py](../src/ai/expanded_train_experiment.py) | Code chính train trên dữ liệu gộp, lấy mẫu uniform/event-balanced và so với B/production |
 | [scripts/output_horizon_experiment.py](scripts/output_horizon_experiment.py) | Thí nghiệm LSTM/ResidualLSTM với 5 hoặc 24 output |
 | [scripts/tree_horizon_experiment.py](scripts/tree_horizon_experiment.py) | Thí nghiệm XGBoost/LightGBM |
 | [scripts/build_weather_datasets.py](scripts/build_weather_datasets.py) | Tạo dataset có feature dự báo mưa |
@@ -37,14 +36,7 @@ Chạy lệnh từ thư mục gốc dự án:
 ```
 
 Script nghiên cứu dùng `python -m research.scripts.<script>` thay cho
-`python -m research.<script>`. Riêng pipeline dataset expand đã chuyển vào
-`src.ai`: builder `src.ai.build_expanded_train_dataset`, runner
-`src.ai.expanded_train_experiment`, report/inference comparison nằm cùng `src/ai/`.
-Ví dụ:
-
-```bash
-.venv/bin/python -m src.ai.expanded_train_experiment --help
-```
+`python -m research.<script>`.
 
 Mở notebook trong `notebooks/` bằng Jupyter hoặc VS Code. Các đường dẫn dữ liệu và
 artifacts vẫn tính từ thư mục gốc dự án. Cần có dữ liệu/model/MLflow tương ứng
@@ -428,181 +420,6 @@ và 08–14/10/2026; đây là mốc đầu vào, actual nằm ở t+h. Không d
 | +24h | Production cũ | -3.34 | 0.39 | -277.83 | 285.03 | 31.45 | 50.52 | 46.30 |
 | +24h | Model B | 2.16 | 2.22 | -268.83 | 170.70 | 25.71 | 53.38 | 57.26 |
 | +24h | Ba trạm | 5.08 | 5.26 | -293.30 | 266.25 | 30.18 | 57.96 | 53.79 |
-
-## Hai thí nghiệm train mở rộng — chuẩn bị ngày 21/10/2026
-
-Mục tiêu: bổ sung các đợt biến động thật từ validation cũ vào train, rồi tách riêng
-tác dụng của lấy mẫu ưu tiên. Giữ B seed 42 và production cũ làm tham chiếu đóng băng;
-không ghi đè artifact hoặc đổi registry production.
-
-| Trường hợp | Dataset | Cách lấy mẫu train |
-|---|---|---|
-| 1 — `uniform` | Train mở rộng | Shuffle thông thường, không lặp mẫu trong epoch |
-| 2 — `event-balanced` | Giống trường hợp 1 | Khoảng 80% tự nhiên +10% ưu tiên tăng mạnh +10% ưu tiên giảm mạnh |
-
-Hai trường hợp train **từ đầu**, cùng seed, cùng scaler fit lại trên train mở rộng,
-cùng số lượt lấy mẫu và số batch mỗi epoch. Giữ nguyên cấu hình B: ResidualLSTM,
-Hồng Thái + Nhâm, 26 inputs, chuỗi 96 giờ, outputs +1/+3/+6/+12/+24h; hidden 32,
-3 layers; dropout/input/head 0,7/0,2/0,2; AdamW lr 0,0009, weight decay 0,001;
-correction penalty 0,1; tail penalty 0,5, threshold 200 mm, transition 20 mm;
-horizon weights đều 1, batch 128, clip gradient 1, StepLR(10;0,9), tối đa 50 epochs,
-patience 25; checkpoint chọn theo (N200 validation, RMSE), có persistence epoch 0.
-
-### Dataset và ranh giới
-
-`src.ai.build_expanded_train_dataset` tạo dataset offline từ hourly pool, không
-nối thẳng CSV. Khôi phục 24 giờ purge nội bộ giữa train/val cũ vì nay cùng thuộc
-train; giữ nguyên 24 giờ purge trước validation mới. Kiểm tra nhãn bằng lookup
-quan trắc đúng t+h, không nội suy, không đổi predictor hoặc forecast vintage.
-
-Dataset: `train_data/da_vien_1h_2026-10-15_expanded_train_o24`.
-
-| Tập | Khoảng bản ghi đầu vào (giờ Việt Nam) | Rows | Chuỗi hợp lệ 96 giờ |
-|---|---|---:|---:|
-| Train mới | 15/11/2025 02:00–14/09/2026 23:00 | 7.294 | 7.199 |
-| Validation mới = test cũ | 16/09/2026 00:00–15/10/2026 14:00 | 711 | 592 |
-
-Không tạo `test.csv`: **không còn test độc lập**. Validation mới đã xem nhiều lần
-và được dùng early stopping/chọn checkpoint; mọi so sánh đều là khám phá. Giữ
-cùng 592 anchor trước đây, từ 19/09 23:00 đến 14/10 14:00, để so các model.
-`reference_validation.csv` giữ nguồn quan trắc nguyên bản của production cũ,
-tránh thiếu các feature trạm 750003/750011 khi so với rain pool.
-
-### Quy tắc lấy mẫu ưu tiên
-
-- Chỉ tính nhãn nhóm từ các **anchor train hợp lệ**. Chọn ΔH có độ lớn lớn hơn
-  giữa +12/+24h; nếu bằng nhau dùng +12h. ΔH >200 mm là tăng mạnh, <−200 mm là
-  giảm mạnh. Nhãn nhóm không trở thành feature và không cần khi inference.
-- Gộp anchor mạnh thành nhóm thời gian khi khoảng cách ≤12 giờ; đây là quy ước
-  nhóm mẫu, không khẳng định các nhóm là những trận mưa/lũ độc lập.
-- Trong mỗi nhóm tăng/giảm: chọn nhóm thời gian đều nhau rồi chọn anchor đều nhau.
-  Thực thi bằng trọng số nghịch số anchor của nhóm; không để nhóm dài chiếm hết.
-- Mỗi epoch vẫn 7.199 lượt: 5.761 tự nhiên không hoàn lại, 719 tăng và 719 giảm
-  có hoàn lại. Shuffle toàn bộ rồi chia batch, nên tỷ lệ từng batch chỉ xấp xỉ.
-  Phần tự nhiên vẫn có thể chứa mẫu mạnh. Train mới có 409 anchor mạnh
-  (179 tăng, 230 giảm), nên tỷ lệ mạnh kỳ vọng khoảng 24,5%, không chỉ 20%.
-- Không thay chuỗi 96 giờ, không ghép/sinh dữ liệu và không oversample validation.
-  Thiếu nhóm được yêu cầu thì báo lỗi, không âm thầm đổi tỷ lệ thí nghiệm.
-
-### Lệnh tái lập
-
-Tạo dataset một lần; output đã tồn tại sẽ bị từ chối để tránh ghi đè:
-
-```bash
-.venv/bin/python -m src.ai.build_expanded_train_dataset
-
-.venv/bin/python -m src.ai.expanded_train_experiment \
-  --variant uniform --check-only
-.venv/bin/python -m src.ai.expanded_train_experiment \
-  --variant event-balanced --check-only
-```
-
-Chạy trường hợp 1 trước:
-
-```bash
-.venv/bin/python -m src.ai.expanded_train_experiment \
-  --variant uniform \
-  --device cuda --seed 42 --num-epochs 50 --early-stopping 25 \
-  --output-dir model/experiments/expanded_train_20261021 \
-  --mlflow-ex-name da_vien_expanded_train
-```
-
-Trường hợp 2, giữ nguyên các tham số còn lại:
-
-```bash
-.venv/bin/python -m src.ai.expanded_train_experiment \
-  --variant event-balanced \
-  --device cuda --seed 42 --num-epochs 50 --early-stopping 25 \
-  --output-dir model/experiments/expanded_train_20261021 \
-  --mlflow-ex-name da_vien_expanded_train
-```
-
-Các giá trị mặc định theo B và có args để thay đổi. Có thể chọn tổ hợp bằng
-`--rain-stations`, nhưng hai trường hợp đầu giữ mặc định `hong_thai+nham` để cô lập
-tác dụng. Mỗi lượt chạy tự có run name riêng, không cần đổi tên thủ công.
-Output tách `<combination>/<variant>/seed_<seed>/<run_name>/`, không resume/ghi đè.
-MLflow mặc định localhost:5000, có `--mlflow-tracking-uri`
-hoặc `--no-mlflow`; chỉ log settings/metrics, không upload model hay bảng artifact.
-Cuối run reload checkpoint và so với B/cũ trên cùng anchor, đủ năm horizon;
-log N200, RMSE, độ lớn ΔH và độ lớn ΔH ở nhóm biến động mạnh dưới nhãn validation.
-
-`--checkpoint-metric` chọn cả checkpoint và tiêu chí early stopping:
-`large_error_rate` (mặc định, ưu tiên N200 rồi RMSE), `rmse` (RMSE gộp cả năm
-horizon bằng mm, không ưu tiên N200), hoặc `val_loss` (HorizonWeightedTailLoss).
-Các metric còn lại vẫn được log đầy đủ. Run name chứa sequence length, hidden size,
-tiêu chí checkpoint, timestamp UTC và mã ngẫu nhiên ngắn. Muốn so sampler thì giữ
-cùng tiêu chí hai nhánh.
-
-Các hyperparameter đều được truyền từ CLI vào dataset/model/optimizer/loss thực tế,
-không chỉ ghi vào log. Các cờ `--lstm-*` tương ứng của `src.ai.train` cũng được nhận
-làm alias. Danh sách cờ chính và mặc định:
-
-| Args | Mặc định |
-|---|---|
-| `--sequence-length` | 96 |
-| `--hidden-size`, `--num-layers` | 32; 3 |
-| `--dropout`, `--input-dropout`, `--head-dropout` | 0.7; 0.2; 0.2 |
-| `--learning-rate`, `--weight-decay` | 0.0009; 0.001 |
-| `--correction-penalty` | 0.1 |
-| `--horizon-weights` | 1 1 1 1 1, theo +1/+3/+6/+12/+24h |
-| `--tail-penalty`, `--tail-threshold-mm`, `--tail-transition-mm` | 0.5; 200; 20 |
-| `--batch-size`, `--num-worker`, `--gradient-accumulation`, `--gradient-clip` | 128; 0; 1; 1.0 |
-| `--scheduler`, `--scheduler-step-size`, `--scheduler-gamma` | step; 10; 0.9 |
-
-`--scheduler none` tắt lịch LR; `--tail-penalty 0` dùng weighted MSE không có tail.
-Thay ngưỡng tail không thay định nghĩa N200 trong checkpoint/report (vẫn >200 mm).
-Input size tự tính từ feature của tổ hợp trạm; outputs vẫn là cả năm horizon.
-Đổi sequence length sẽ đổi số anchor hợp lệ; báo cáo dùng giao các anchor với
-hai model tham chiếu. Có thể chạy lại cùng command; mỗi lần tạo thư mục mới tự động.
-
-`--output-dir` và `--report-dir` đều tùy chọn, nay là **thư mục gốc** có thể tái sử dụng.
-Mặc định lần lượt là `model/experiments/expanded_train` và
-`reports/model_comparisons/expanded_train`. Trong cả hai, các thư mục con chứa cùng
-`<combination>/<variant>/seed_<seed>/<run_name>` để đối chiếu dễ dàng. Các thư mục
-và checkpoint cũ giữ nguyên. MLflow cũng dùng tên riêng mỗi run; terminal in đường
-dẫn trước khi train. `--check-only` chỉ in dự kiến, không tạo thư mục.
-
-Đã check-only cả hai nhánh, chạy smoke 1 epoch CPU mỗi nhánh với checkpoint ở
-`/tmp`, kiểm tra reload và so sánh tham chiếu end-to-end. Smoke không đánh giá
-hiệu quả thí nghiệm; chưa chạy các run đầy đủ hoặc thay model production.
-
-### Báo cáo tự động sau mỗi lượt train
-
-`expanded_train_experiment` tự reload checkpoint tốt nhất và tạo báo cáo ba model:
-production cũ, Model B và candidate. Lệnh train bên trên không cần thêm cờ.
-Output mặc định:
-`reports/model_comparisons/expanded_train/<combination>/<variant>/seed_<seed>/<run_name>/`.
-Có thể chọn thư mục gốc bằng `--report-dir`; mỗi lượt luôn tạo thư mục run mới.
-
-- `comparison.md`: tổng hợp RMSE/MAE/N200, đủ năm horizon, chênh lệch với từng model
-  tham chiếu, biên độ ΔH và nhóm biến động mạnh. Ghi rõ validation mới không phải test độc lập.
-- `metrics.csv`: metric theo model/horizon và thống kê phân bố ΔH.
-- `predictions.csv.gz`: cả ba model trên cùng anchor, actual, current, target time.
-- `manifest.json`: seed/variant, epoch được chọn, dataset, model/version/scaler paths,
-  feature order, thiết bị và cấu hình train nếu báo cáo được tạo trong run mới.
-
-Các file này chỉ lưu local; không upload model/báo cáo lên MLflow. Model tham chiếu
-không bị sửa, không dùng chung scaler với candidate. CPU/GPU có thể lệch số lẻ nhỏ.
-
-Lượt uniform seed 42 đã chạy xong trước khi thêm tính năng này: epoch 43, RMSE
-76,87 mm, N200=51; B 75,78/48; production cũ 87,03/97. Báo cáo đã tạo tại
-[uniform seed 42](../reports/model_comparisons/expanded_train/nham+hong_thai/uniform/seed_42/044689eeb379414a82a15f73eabb68c8/comparison.md).
-Nó gần B nhưng chưa tốt hơn theo hai chỉ số tổng hợp; cần xem nhánh lấy mẫu ưu tiên.
-
-Tạo báo cáo từ checkpoint có sẵn, **không train lại**:
-
-```bash
-.venv/bin/python -m src.ai.expanded_train_experiment \
-  --variant uniform --seed 42 --device cpu \
-  --report-only --best-epoch 43 \
-  --checkpoint 'model/experiments/expanded_train_20261021/nham+hong_thai/uniform/seed_42/1h/ResidualLSTM_water_level+rain+flood_season+weather_forecast_best.pt'
-```
-
-`--best-epoch` chỉ ghi metadata đã biết, không chọn checkpoint; nếu không có thì
-bỏ cờ, báo cáo ghi chưa có metadata. Nhánh report-only dùng scaler cạnh checkpoint,
-không tạo checkpoint mới, không ghi MLflow và không yêu cầu output train mới.
-Process train đã khởi động trước thay đổi code không tự nhận tính năng mới;
-nếu đang chạy nhánh thứ hai thì để nó chạy xong rồi dùng report-only.
 
 ## Chẩn đoán dự báo biến động mực nước
 
