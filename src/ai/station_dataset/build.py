@@ -35,11 +35,13 @@ def write_json(path, obj):
     Path(path).write_text(json.dumps(obj, indent=2, ensure_ascii=False, default=str))
 
 
-def hourly_level_from_db(station_id, index, engine=None, despike=None, return_flagged=False):
+def hourly_level_from_db(station_id, index, engine=None, despike=None, return_flagged=False, invalid_ranges=None):
     """Hourly level on `index` from hydrology.observations: value at t = mean of the station's observations with
     observed_at in (t-1h, t], quality_status 'observed' and finite depth; an hour containing two records with the
     same timestamp is left missing. Units: the station's measurement_unit must be mm.
 
+    invalid_ranges: optional list of {start_utc, end_utc, note}; readings inside are dropped first (see
+    drop_invalid_ranges), so they never enter the despike median or the hourly mean.
     despike: optional config dict (see despike_observations); flagged 10-min readings are dropped before the hourly
     mean, so the hour keeps the mean of its remaining readings. The database is not modified."""
     import sqlalchemy as sa
@@ -59,10 +61,32 @@ def hourly_level_from_db(station_id, index, engine=None, despike=None, return_fl
         if own:
             engine.dispose()
     flagged = pd.DataFrame(columns=['observed_at', 'depth', 'rolling_median', 'deviation_mm'])
+    if invalid_ranges:
+        obs = drop_invalid_ranges(obs, invalid_ranges)
     if despike:
         obs, flagged = despike_observations(obs, **{k: v for k, v in despike.items() if k != 'note'})
     level = hourly_level(obs, index)
     return (level, flagged) if return_flagged else level
+
+
+def drop_invalid_ranges(obs, ranges):
+    """Mark every reading with start_utc <= observed_at <= end_utc as quality_status 'invalid' (e.g. a stuck sensor
+    repeating one value for days). Such readings are treated as missing; nothing is imputed."""
+    obs = obs.copy()
+    obs['observed_at'] = pd.to_datetime(obs.observed_at, utc=True)
+    for r in ranges:
+        inside = (obs.observed_at >= pd.Timestamp(r['start_utc'])) & (obs.observed_at <= pd.Timestamp(r['end_utc']))
+        obs.loc[inside, 'quality_status'] = 'invalid'
+    return obs
+
+
+def invalid_range_hours(index, ranges):
+    """Boolean mask over the hourly `index`: hour x (covering (x-1h, x]) overlaps an invalid range [start, end]."""
+    mask = np.zeros(len(index), dtype=bool)
+    for r in ranges:
+        start, end = pd.Timestamp(r['start_utc']), pd.Timestamp(r['end_utc'])
+        mask |= np.asarray((index >= start) & (index - pd.Timedelta(hours=1) < end))
+    return mask
 
 
 def despike_observations(obs, window_minutes=121, threshold_mm=150, keep=()):
@@ -130,7 +154,8 @@ def build(cfg, name, groups, output_dir, level=None, normalizers_from=None):
     index = pd.date_range(pd.Timestamp(cfg['grid_start_utc']), pd.Timestamp(cfg['grid_end_utc']), freq='h')
     flagged = None
     if level is None:
-        level, flagged = hourly_level_from_db(sid, index, despike=cfg.get('despike'), return_flagged=True)
+        level, flagged = hourly_level_from_db(sid, index, despike=cfg.get('despike'), return_flagged=True,
+                                              invalid_ranges=cfg.get('invalid_ranges'))
     else:
         level = level.reindex(index).astype(float)
     L, horizons = cfg['sequence_length'], cfg['horizons_hours']
@@ -158,6 +183,18 @@ def build(cfg, name, groups, output_dir, level=None, normalizers_from=None):
         excluded |= np.asarray((anchors - pd.Timedelta(hours=1) < t) & (t <= anchors + pd.Timedelta(hours=max(horizons))))
     samples.loc[excluded, ['fixed_train', 'fixed_validation', 'refit_train']] = False
     samples.loc[excluded, 'split'] = 'excluded_sensor_step'
+    # ---- invalid ranges (cfg['invalid_ranges'], readings already dropped above): a sample whose history window
+    # (t-W+1 .. t) or any target hour (t+1 .. t+max(horizons)) overlaps a range is removed from every split.
+    # W = cfg['max_sequence_length'] (default L): the longest --lstm-seq-len that will be trained on this sample
+    # pool, so a pool built with a short L stays clean when training re-selects samples with a longer window.
+    if cfg.get('invalid_ranges'):
+        W = max(L, cfg.get('max_sequence_length', L))
+        bad = np.concatenate([[0], np.cumsum(invalid_range_hours(index, cfg['invalid_ranges']))])
+        r = samples.anchor_row.to_numpy()
+        lo, hi = np.clip(r - W + 1, 0, len(index)), np.clip(r + max(horizons) + 1, 0, len(index))
+        touched = (bad[hi] - bad[lo]) > 0
+        samples.loc[touched, ['fixed_train', 'fixed_validation', 'refit_train']] = False
+        samples.loc[touched, 'split'] = 'excluded_invalid_range'
     samples['station_index'] = 0
     samples['sample_id'] = np.arange(len(samples))
     order = ['sample_id', 'station_id', 'station_index', 'anchor_utc', 'anchor_row', 'history_start_row', 'history_coverage',

@@ -117,6 +117,8 @@ Lệnh dựng: `python -m src.ai.station_dataset.build --config <dataset_config.
 - `tide.window_days`: 7 hoặc 30.
 - `rain_obs`: các cụm trạm mưa, cửa sổ cộng dồn, biến đổi; mưa giờ theo đúng quy tắc 6/6 hoặc 5/6 bản ghi ở mục 1.3.
 - `sensor_steps`: các lần sensor đổi mốc đo (mục 3.1b).
+- `invalid_ranges`: các khoảng dữ liệu hỏng bị xóa hoàn toàn (mục 3.1d).
+- `max_sequence_length`: cửa sổ lịch sử dài nhất sẽ dùng khi train trên dataset này. Dùng cho quy tắc xóa mẫu của `invalid_ranges` (mục 3.1d).
 - `lin_fc` (nhóm `--groups lin_fc`, đặt sau các nhóm mà nó dùng): dự báo mức thay đổi +3 / +6 / +12 h của một hồi quy tuyến tính (`features.linear_forecast_features`). Đầu vào của hồi quy là lịch sử `history_hours` giờ và các nhóm trong `inputs`. Với các giờ thuộc giai đoạn train, giá trị được tính chéo (`folds` đoạn thời gian liên tiếp, chừa khoảng đệm lịch sử + mốc xa nhất); với val và test, dùng hồi quy fit trên toàn bộ train. Mục đích: GRU bị nén biên độ khi gặp thay đổi lớn hơn lúc train, còn dự báo tuyến tính thì không.
 
 - `soil` (nhóm `--groups soil`): độ ẩm đất ECMWF (`features.soil_moisture_features`) lấy từ thư mục Single Runs tải kèm biến độ ẩm đất (`open_meteo single-runs --hourly precipitation,soil_moisture_0_to_7cm,...`). Chọn lượt chạy theo đúng quy tắc của `fc_ecmwf`, nhưng lượt chạy thiếu độ ẩm đất thì lùi về lượt cũ hơn (ví dụ 18:00 ngày 10/06 và 06:00 ngày 11/06/2026 không có). Kênh: `soil_<tầng>_basin` (trung bình 7 ô), `soil_x_fcrain` (độ ẩm tầng đầu × log1p mưa dự báo 0–24 h của cùng lượt chạy), `soil_missing_frac`.
@@ -153,6 +155,18 @@ Gai là một hoặc vài số đo 10 phút liên tiếp (thường dưới 1 gi
 - `keep`: các khoảng thời gian đã xem lại và quyết định giữ nguyên (ví dụ có thể là hiện tượng thật), ghi kèm lý do.
 - Không có khóa `despike` thì kết quả y như trước (đã kiểm chứng: dataset Thuận An dựng lại vẫn giống từng byte).
 - Lúc chạy thật không có số đo của 1 giờ sau, nên giờ mới nhất chỉ so được với các số đo trước đó.
+
+### 3.1d Khoảng dữ liệu hỏng (`invalid_ranges` trong config)
+Ví dụ: sensor bị treo, vẫn gửi số đo đều mỗi 10 phút nhưng giá trị không đổi trong nhiều ngày, trong khi trạm lân cận vẫn dao động theo triều. Ví dụ thật: Dã Viên 01–12/02 và 20–25/06/2026, xem `models/da_vien/notes.md`.
+- **Khai báo:** mỗi khoảng gồm `start_utc`, `end_utc` (tính cả hai đầu, theo thời điểm số đo) và `note` (bằng chứng).
+- **Số đo:** `build.drop_invalid_ranges` bỏ mọi số đo trong khoảng **trước khi** lọc gai, nên chúng không ảnh hưởng tới trung vị của `despike` hay tới mực nước giờ. Giờ nào không còn số đo nào thì mực nước giờ là NaN. Không nội suy giá trị thay thế; database không bị sửa.
+- **Mẫu:** mọi mẫu có cửa sổ lịch sử (t − W + 1 … t, với W = `max_sequence_length` của config, mặc định bằng `sequence_length`) hoặc giờ nhãn (t + 1 … t + mốc xa nhất) chạm vào một giờ thuộc khoảng hỏng đều bị gán `split = excluded_invalid_range`, nên không thuộc train, val hay test. Phần lớn các mẫu này vốn đã bị loại vì thiếu nhãn hoặc cửa sổ không đủ 80% giờ có dữ liệu; quy tắc này loại nốt các mẫu còn sót.
+- **Một tập mẫu cho nhiều cửa sổ:**
+  - Có thể dựng dataset với `sequence_length` nhỏ (ví dụ 12) rồi train với `--lstm-seq-len` lớn hơn (25 / 48 / 96). Khi đó `select_samples` tự lọc lại các mẫu theo quy tắc ≥ 80% trên cửa sổ mới.
+  - Phải đặt `max_sequence_length` bằng cửa sổ dài nhất sẽ dùng. Nếu không, run cửa sổ dài vẫn giữ những mẫu có cửa sổ chạm vào giờ đã xóa (điền 0 kèm cờ thiếu).
+  - Bộ chuẩn hóa được fit trên tập mẫu gốc (L = `sequence_length`) và dùng chung cho mọi cửa sổ.
+- Fit triều chỉ dùng các giờ còn dữ liệu (mục 3.3).
+- Không có khóa `invalid_ranges` thì kết quả y như trước (đã kiểm chứng 17/11/2026: dataset Ngã Ba Sình dựng lại vẫn giống từng byte).
 
 ### 3.2 Nhóm `wind` (15 kênh): `features.wind_features`
 Từ chuỗi `*_previous_day1` theo giờ:
