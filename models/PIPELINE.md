@@ -31,7 +31,7 @@ Open-Meteo Single Runs (mưa dự báo ECMWF) ───────────�
 - PostgreSQL. Redis không bắt buộc: nếu không có `REDIS_URL` thì bỏ qua cache.
 - GPU NVIDIA. Mọi lệnh chạy từ thư mục gốc repo (thư mục chứa `src/`).
 - **Train tất định:** `train.py` đặt `CUBLAS_WORKSPACE_CONFIG=:4096:2` trước khi import torch. `set_seed` (`src/ai/utils.py`) seed `random`, `numpy` và `torch`, bật `torch.use_deterministic_algorithms(True)` và cuDNN deterministic. Cùng GPU và cùng phiên bản thư viện thì hai lần train cho kết quả giống từng bit. Khác GPU hoặc khác phiên bản CUDA/torch thì có thể lệch nhỏ.
-- **MLflow:** mặc định `train.py` gửi log tới `http://localhost:5000`. Có thể chạy một server (`mlflow server --backend-store-uri sqlite:///mlflow_local.db --port 5000`), hoặc thêm `--mlflow-tracking-uri sqlite:///mlflow_local.db` vào lệnh train. MLflow chỉ dùng để ghi log, không ảnh hưởng kết quả.
+- **MLflow:** mặc định `train.py` gửi log tới `http://localhost:5000`. Có thể chạy một server (`mlflow server --backend-store-uri sqlite:///mlflow_local.db --port 5000`), hoặc thêm `--mlflow-tracking-uri sqlite:///mlflow_local.db` vào lệnh train. MLflow chỉ dùng để ghi log, không ảnh hưởng kết quả. **Lưu ý:** các experiment `nga_ba_sinh` và `thuan_an` trong `mlflow_local.db` được tạo qua server, nên artifact nằm ở `mlflow-artifacts:/…`. Ghi vào chúng **bắt buộc** phải qua server (`http://localhost:5000`). Dùng `--mlflow-tracking-uri sqlite:///…` sẽ lỗi ở bước `log_artifact`.
 
 File `.env` ở thư mục gốc, **không commit**:
 ```bash
@@ -222,6 +222,13 @@ Từ chuỗi `*_previous_day1` theo giờ:
 
 **Không dùng embedding trạm** (`--head-mode shared --station-embedding-size 0`, dùng cho Dã Viên từ 17/11/2026): bỏ bước 3 và head riêng cho trạm. Với một trạm, embedding chỉ là một hằng số cộng thêm vào tầng ghép. Khi đó tầng ghép là `Linear(H → H)` + ReLU, head là `Linear(H → số mốc)` khởi tạo 0, và mã trạm chỉ còn dùng để lấy a_h, b_h. Số tham số giảm 8 + 8·H. Thuận An và Ngã Ba Sình vẫn giữ cấu hình cũ.
 
+**Mỗi mốc một tầng ghép và một head riêng** (`--horizon-heads separate`, cần `--head-mode shared`; thêm ngày 17/11/2026):
+- Thay tầng ghép dùng chung bằng 3 tầng `Linear(· → H)` + ReLU, mỗi mốc một tầng, cộng một head tuyến tính riêng cho từng mốc, khởi tạo 0.
+- GRU vẫn dùng chung giữa các mốc. Mục đích: các mốc phản ứng khác nhau với cùng trạng thái GRU (xem phần "bập bênh +6 h / +12 h" trong `models/da_vien/notes.md`).
+- Tăng thêm 2·(H·H + H) tham số (H = 128: 278.403 → 311.427).
+- **Nhánh GRU riêng cho từng mốc** (`--horizon-gru-layers K`, cần `--train-method gru` và `--horizon-heads separate`): K lớp GRU trên cùng được nhân thành một nhánh cho mỗi mốc, các lớp dưới (`--lstm-num-layers` − K) dùng chung, giữa hai phần có `Dropout(--lstm-drop-out)`. Với H = 128, 3 lớp, 35 đầu vào: K = 1 → 509.571 tham số; K = 2 → 707.715.
+- Chỉnh được kích thước mỗi head: `--horizon-head-size W` (số nơ-ron mỗi lớp ẩn, mặc định bằng `--lstm-hidden-size`) và `--horizon-head-layers K` (số lớp ẩn Linear + ReLU, mặc định 1). Với GRU 128×3 và 35 đầu vào, tổng tham số theo (W, K): (128, 1) 311.427; (64, 1) 286.467; (128, 2) 360.963; (64, 2) 298.947.
+
 Số tham số: 3·(F·H + H·H + 2H) cho lớp GRU đầu, 3·(2H² + 2H) cho mỗi lớp GRU sau, cộng 8 (embedding), (H + 8)·H + H (fusion) và 3H + 3 (head). Ví dụ: F = 41, H = 32, 3 lớp → 21.291; F = 18, H = 32, 2 lớp → 12.747.
 
 ## 5. Loss: `ChangeRiskLoss`, chế độ `combined` (`--change-loss combined`)
@@ -232,6 +239,10 @@ Tính cho mỗi mẫu và mỗi mốc h, với σ_h là scale của nhãn (mm), 
 - under = (max(−e, 0)/d)² · 1[c > 200]: phạt **thêm** khi dự báo thiếu trong lúc mực nước thật sự lên hơn 200 mm
 - tổng = base·(1 + event_weight·1[|c| > 200]) + under_weight·under; trong các model này `event_weight` = 0
 - loss của batch = trung bình theo mẫu của Σ_h w_h·tổng, với w_h = 1/(số mốc)
+- **Tùy chọn (thêm ngày 17/11/2026):**
+  - `--change-margin-mm m`: thay e bằng dấu(e)·max(|e| − m, 0) trong base và under, tức các sai số nhỏ hơn m không bị phạt.
+  - `--change-tail-weight λ --change-tail-start-mm s` (mặc định s = 150): cộng thêm λ·(max(|e| − s, 0)/d)² vào tổng, tính trên sai số **gốc** (trước margin). Khoản phạt bắt đầu trước ngưỡng 200 mm và tiếp tục tăng khi sai số lớn hơn. Mục đích: đẩy các sai số lớn nhất xuống dưới 200 mm, chấp nhận MAE tăng.
+  - λ = 0 và m = 0 cho đúng loss gốc. Các model Thuận An và Ngã Ba Sình đã đóng gói đều dùng 0.
 
 Với một trạm, hệ số cân bằng trạm bằng 1. Nếu σ_h > 200 thì base chính là MSE trong không gian đã chuẩn hóa. Val loss dùng đúng công thức này, lấy trung bình trên toàn tập validation.
 

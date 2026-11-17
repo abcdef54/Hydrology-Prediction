@@ -8,7 +8,8 @@ class ChangeRiskLoss(HorizonWeightedMSE):
     def __init__(self, weights, counts, scales, mode, scale_floor_mm=200.,
                  event_weight=1., under_weight=1., threshold_mm=200.,
                  large_error_penalty=0.2, large_error_threshold_mm=200.,
-                 large_error_transition_mm=20., rise_event_weight=0., margin_mm=0.):
+                 large_error_transition_mm=20., rise_event_weight=0., margin_mm=0.,
+                 tail_weight=0., tail_start_mm=150.):
         super().__init__(weights)
         if mode not in ('station-balanced', 'event-weighted', 'asymmetric', 'combined', 'large-error-count', 'large-error-primary'):
             raise ValueError('Unknown change loss')
@@ -22,6 +23,10 @@ class ChangeRiskLoss(HorizonWeightedMSE):
             raise ValueError('Large-error penalty must be nonnegative and finite')
         if not math.isfinite(margin_mm) or margin_mm < 0:
             raise ValueError('Insensitive margin must be finite and nonnegative')
+        if not math.isfinite(tail_weight) or tail_weight < 0:
+            raise ValueError('Tail weight must be nonnegative and finite')
+        if not math.isfinite(tail_start_mm) or tail_start_mm < 0:
+            raise ValueError('Tail start must be nonnegative and finite')
         if not math.isfinite(rise_event_weight) or rise_event_weight < 0:
             raise ValueError('Rise event weight must be nonnegative and finite')
         if rise_event_weight and mode != 'station-balanced':
@@ -49,6 +54,10 @@ class ChangeRiskLoss(HorizonWeightedMSE):
         # Epsilon-insensitive margin (mm): errors up to margin cost nothing, larger errors are penalised on the excess
         # only. Stops the optimiser trading tail errors for smaller typical errors; 0 reproduces the original loss.
         self.margin_mm = margin_mm
+        # Tail penalty: tail_weight * (max(|error| - tail_start_mm, 0) / d)^2 on the RAW error (before the margin),
+        # for every prediction. Errors start costing extra below the 200 mm large-error threshold (safety margin) and
+        # the push keeps growing with the error, unlike the saturating sigmoid count. 0 reproduces the original loss.
+        self.tail_weight, self.tail_start_mm = tail_weight, tail_start_mm
 
     def elements(self, predictions, targets, persistence, station_ids, *, apply_rise_weight=True):
         if predictions.ndim != 2 or predictions.shape != targets.shape or persistence.shape != targets.shape:
@@ -61,6 +70,7 @@ class ChangeRiskLoss(HorizonWeightedMSE):
                             'Station ID outside loss mapping')
         scale = self.scales[station_ids].to(predictions)
         error = (predictions-targets)*scale
+        raw_error = error
         if self.margin_mm:
             error = torch.sign(error)*(error.abs()-self.margin_mm).clamp_min(0)
         change = (targets-persistence.detach())*scale
@@ -73,6 +83,8 @@ class ChangeRiskLoss(HorizonWeightedMSE):
         # incur full shortfall; excessive positive predictions remain penalized.
         under = ((-error).clamp_min(0)/denominator).square() * (change > self.threshold_mm)
         total = weighted+self.under_weight*under if self.mode in ('asymmetric', 'combined') else weighted
+        if self.tail_weight:
+            total = total + self.tail_weight*((raw_error.abs()-self.tail_start_mm).clamp_min(0)/denominator).square()
         if balanced:
             total = total*self.frequency[station_ids, None].to(predictions)
         if self.rise_event_weight and apply_rise_weight:
@@ -106,6 +118,8 @@ class ChangeRiskLoss(HorizonWeightedMSE):
             spec['rise_event_weight'] = self.rise_event_weight
         if self.margin_mm:
             spec['margin_mm'] = self.margin_mm
+        if self.tail_weight:
+            spec.update(tail_weight=self.tail_weight, tail_start_mm=self.tail_start_mm)
         return spec
 
 

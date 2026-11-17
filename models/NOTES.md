@@ -150,6 +150,15 @@ Hồi quy tuyến tính, fit trên train. Kết quả ghi theo val / test.
 - Mục tiêu của người dùng là **0 lỗi trên toàn bộ thời gian**: val, test và dữ liệu mới.
 - Chấm điểm nên chạy trên GPU (`SequenceRuntime(..., device='cuda')`).
 
+## B5b. Phát hiện thêm ngày 17/11/2026 (chi tiết trong `models/da_vien/notes.md`)
+- **Model NBS không có station embedding** (`--head-mode shared --station-embedding-size 0`), train để finetune sang Dã Viên.
+  - Công thức tốt nhất: `nbs_onshore_tide7_fc_sea_v3`, GRU 128×3, cửa sổ 25 h, trọng số mốc 1/1,5/2,5, under 0,3, step, seed 42, 120 epoch.
+  - Tốt nhất có 1 lỗi sát ngưỡng trên mọi giờ.
+  - Ghép theo mốc từ hai epoch của cùng run (+3/+6 h từ ep37, +12 h từ ep69) cho 0 lỗi.
+- **Phải chấm cả 48 mẫu `purged`** (giờ ranh giới giữa các tập). `research/scripts/score_all_epochs.py` bỏ qua chúng; mẫu 14/09 21:00 +6 h là chỗ hay sai.
+- **Bập bênh +6 h / +12 h** trong một model là lý do `combined_v1` (ghép theo mốc) đạt 0 lỗi mà model đơn thì không. Các cách sửa bằng loss hay kiến trúc đều không thành công.
+- Phải train qua MLflow server (experiment `nga_ba_sinh` có nơi lưu artifact là `mlflow-artifacts:/7`).
+
 ## B6. Việc tiếp theo
 1. **Kiểm tra `combined_v1` trên dữ liệu sau 12/11:**
    - đồng bộ database (`python -m src.backend.ingestion --once`);

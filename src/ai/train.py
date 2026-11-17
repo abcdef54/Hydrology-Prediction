@@ -106,6 +106,16 @@ parser.add_argument('--transformer-ff-size', type=int, default=128,
                     help='Transformer feed-forward width; hidden size/layers/dropout use --lstm-* flags')
 parser.add_argument('--head-mode', choices=['shared', 'station', 'station-mlp'], default='shared',
                     help='Regional correction head: shared, per-station linear, or per-station 3-layer MLP')
+parser.add_argument('--horizon-heads', choices=['shared', 'separate'], default='shared',
+                    help='separate: each horizon gets its own fusion layer and head on top of the shared encoder '
+                         '(needs --head-mode shared)')
+parser.add_argument('--horizon-head-size', type=int, default=None,
+                    help='Hidden width of each separate horizon head (default: --lstm-hidden-size)')
+parser.add_argument('--horizon-head-layers', type=int, default=1,
+                    help='Hidden layers (Linear + ReLU) in each separate horizon head (default 1)')
+parser.add_argument('--horizon-gru-layers', type=int, default=0,
+                    help='Top GRU layers that each horizon gets as its own branch (the remaining lower '
+                         '--lstm-num-layers minus this are shared); needs --train-method gru and --horizon-heads separate')
 parser.add_argument('--prediction-mode', choices=['residual', 'direct'], default='residual',
                     help='Predict a correction to persistence or the normalized water level directly')
 parser.add_argument('--event-aware', action='store_true', help='Enable supervised rise probability and positive correction heads')
@@ -217,6 +227,11 @@ parser.add_argument('--change-margin-mm', type=float, default=0.,
                     help='Epsilon-insensitive margin for change-risk losses: errors below this many mm are not penalised and '
                          'larger errors only on their excess, so training stops shrinking small errors (MAE) and focuses on '
                          'large ones. 0 = original loss.')
+parser.add_argument('--change-tail-weight', type=float, default=0.,
+                    help='Change-risk losses: add WEIGHT * (max(|error| - START, 0) / d)^2 per prediction (raw error, mm), '
+                         'a penalty that starts below the 200 mm threshold and keeps growing with the error. 0 = off.')
+parser.add_argument('--change-tail-start-mm', type=float, default=150.,
+                    help='Error (mm) where the --change-tail-weight penalty starts')
 parser.add_argument('--change-event-weight', type=float, default=1.)
 parser.add_argument('--change-under-weight', type=float, default=1.)
 parser.add_argument('--change-threshold-mm', type=float, default=200.)
@@ -307,6 +322,23 @@ def validate_args(args: argparse.Namespace) -> None:
     if args.change_loss in ('station-balanced', 'large-error-count', 'large-error-primary') and (args.change_event_weight or args.change_under_weight):
         warnings.warn(f'{args.change_loss} ignores event/under weights; use combined to activate them. '
                       'Set both weights to 0 for the B1 control.', UserWarning)
+    if args.horizon_heads == 'separate' and (args.head_mode != 'shared' or args.horizon_decoder != 'none' or args.event_aware
+                                             or args.train_method not in NEW_METHODS):
+        parser.error('--horizon-heads separate needs a residual sequence model with --head-mode shared, '
+                     'no horizon decoder and no event-aware heads')
+    if args.horizon_heads != 'separate' and (args.horizon_head_size is not None or args.horizon_head_layers != 1):
+        parser.error('--horizon-head-size / --horizon-head-layers require --horizon-heads separate')
+    if (args.horizon_head_size is not None and args.horizon_head_size < 1) or args.horizon_head_layers < 1:
+        parser.error('--horizon-head-size and --horizon-head-layers must be positive')
+    if args.horizon_gru_layers and (args.horizon_heads != 'separate' or args.train_method != 'gru'
+                                    or not 0 < args.horizon_gru_layers < args.lstm_num_layers):
+        parser.error('--horizon-gru-layers needs --train-method gru, --horizon-heads separate and a value in '
+                     '[1, --lstm-num-layers - 1] (at least one shared GRU layer)')
+    if args.change_tail_weight and args.change_loss in ('baseline', 'dilate'):
+        parser.error('--change-tail-weight requires a change-risk --change-loss (e.g. combined)')
+    if not (math.isfinite(args.change_tail_weight) and args.change_tail_weight >= 0
+            and math.isfinite(args.change_tail_start_mm) and args.change_tail_start_mm >= 0):
+        parser.error('--change-tail-weight and --change-tail-start-mm must be finite and nonnegative')
     if args.change_loss == 'dilate':
         if not math.isfinite(args.dilate_alpha) or not 0 <= args.dilate_alpha <= 1 or not math.isfinite(args.dilate_gamma) or args.dilate_gamma <= 0:
             parser.error('DILATE requires 0 <= alpha <= 1 and positive gamma')
@@ -698,7 +730,10 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
                 transformer_heads=args.transformer_heads, transformer_ff_size=args.transformer_ff_size,
                 head_mode=args.head_mode, horizon_decoder=args.horizon_decoder,
                 station_mlp_hidden_size=args.station_mlp_hidden_size, prediction_mode=args.prediction_mode,
-                event_aware=args.event_aware)
+                event_aware=args.event_aware, horizon_heads=args.horizon_heads,
+                **(dict(horizon_head_size=args.horizon_head_size, horizon_head_layers=args.horizon_head_layers,
+                        horizon_gru_layers=args.horizon_gru_layers)
+                   if args.horizon_heads == 'separate' else {}))
             trainer_class = ResidualLSTMTrainer
         elif args.train_method == 'residual_lstm':
             dataset = train_loader.dataset
@@ -739,7 +774,8 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
             large_error_penalty=args.large_error_penalty,
             large_error_threshold_mm=args.large_error_threshold_mm,
             large_error_transition_mm=args.large_error_transition_mm, rise_event_weight=args.rise_event_weight,
-            margin_mm=args.change_margin_mm)
+            margin_mm=args.change_margin_mm, tail_weight=args.change_tail_weight,
+            tail_start_mm=args.change_tail_start_mm)
     if args.change_loss == 'dilate':
         if train_loader.dataset.target_horizons != list(range(1, 25)):
             raise ValueError('DILATE requires consecutive +1h through +24h targets')
@@ -798,7 +834,9 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
     if args.change_loss != 'baseline':
         checkpoint_root /= (f'change_{args.change_loss}_floor{args.change_scale_floor_mm:g}_event{args.change_event_weight:g}'
                             f'_under{args.change_under_weight:g}_threshold{args.change_threshold_mm:g}'
-                            + (f'_margin{args.change_margin_mm:g}' if args.change_margin_mm else ''))
+                            + (f'_margin{args.change_margin_mm:g}' if args.change_margin_mm else '')
+                            + (f'_tail{args.change_tail_weight:g}from{args.change_tail_start_mm:g}'
+                               if args.change_tail_weight else ''))
         if args.change_loss == 'dilate':
             checkpoint_root /= f'alpha_{args.dilate_alpha:g}_gamma_{args.dilate_gamma:g}'
         if args.change_loss in ('large-error-count', 'large-error-primary'):
@@ -869,6 +907,13 @@ def main() -> None:
                     "change_event_weight": args.change_event_weight,
                     "change_under_weight": args.change_under_weight,
                     "change_threshold_mm": args.change_threshold_mm,
+                    "change_margin_mm": args.change_margin_mm,
+                    "change_tail_weight": args.change_tail_weight,
+                    "horizon_heads": args.horizon_heads,
+                    "horizon_head_size": (args.horizon_head_size or args.lstm_hidden_size) if args.horizon_heads == 'separate' else 0,
+                    "horizon_head_layers": args.horizon_head_layers if args.horizon_heads == 'separate' else 0,
+                    "horizon_gru_layers": args.horizon_gru_layers,
+                    "change_tail_start_mm": args.change_tail_start_mm,
                     "large_error_penalty": args.large_error_penalty if args.change_loss in ('large-error-count', 'large-error-primary') else 0.,
                     "large_error_threshold_mm": args.large_error_threshold_mm,
                     "large_error_transition_mm": args.large_error_transition_mm,

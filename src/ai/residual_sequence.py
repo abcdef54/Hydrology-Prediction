@@ -120,6 +120,17 @@ class StationCorrectionHead(nn.Module):
         return torch.bmm(weights, features.unsqueeze(-1)).squeeze(-1)+self.bias[station_ids]
 
 
+class HorizonCorrectionHeads(nn.Module):
+    """One zero-initialized linear correction per horizon, applied to that horizon's own features [B, O, H]."""
+    def __init__(self, hidden_size, output_size):
+        super().__init__()
+        self.weight = nn.Parameter(torch.zeros(output_size, hidden_size))
+        self.bias = nn.Parameter(torch.zeros(output_size))
+
+    def forward(self, features):
+        return (features * self.weight).sum(dim=-1) + self.bias
+
+
 class StationMLPCorrectionHead(nn.Module):
     """Three hidden layers and a separate correction for each station."""
     def __init__(self, stations, input_size, output_size, mlp_hidden_size=32):
@@ -162,8 +173,32 @@ class ResidualSequence(nn.Module):
                  station_mlp_hidden_size=32, prediction_mode='residual', event_aware=False,
                  group_dropout_indices=None, group_dropout_mask_indices=None, group_dropout_rates=None,
                  history_dropout_rate=0., history_dropout_min=1, history_dropout_value_indices=None,
-                 history_dropout_mask_indices=None):
+                 history_dropout_mask_indices=None, horizon_heads='shared', horizon_head_size=None,
+                 horizon_head_layers=1, horizon_gru_layers=0):
         super().__init__()
+        # horizon_gru_layers K > 0 (GRU only, needs separate horizon heads): the lowest num_layers-K GRU layers are
+        # shared by all horizons; each horizon then has its own K-layer GRU on the shared sequence (dropout between
+        # them, like the stacked GRU), its own fusion MLP and its own head. num_layers stays the total depth.
+        if not isinstance(horizon_gru_layers, int) or isinstance(horizon_gru_layers, bool) or horizon_gru_layers < 0:
+            raise ValueError('horizon_gru_layers must be a nonnegative integer')
+        if horizon_gru_layers and (architecture != 'gru' or horizon_heads != 'separate'
+                                   or not isinstance(num_layers, int) or horizon_gru_layers >= num_layers):
+            raise ValueError('horizon_gru_layers needs architecture gru, horizon_heads separate and at least one '
+                             'shared GRU layer (horizon_gru_layers < num_layers)')
+        # horizon_heads 'separate': every horizon gets its own MLP of horizon_head_layers x [Linear(. -> W) + ReLU]
+        # (W = horizon_head_size, default hidden_size) and its own zero-init linear output, on top of the shared
+        # sequence encoder, so the horizons can respond differently to the same encoder state (e.g. +6 h rises vs
+        # +12 h recessions). 'shared' (default) keeps the original single fusion layer and head.
+        if horizon_heads not in ('shared', 'separate'):
+            raise ValueError('horizon_heads must be shared or separate')
+        if horizon_heads == 'separate' and (head_mode != 'shared' or horizon_decoder != 'none' or event_aware):
+            raise ValueError('Separate horizon heads require head_mode shared, no horizon decoder and no event-aware heads')
+        if horizon_heads == 'shared' and (horizon_head_size is not None or horizon_head_layers != 1):
+            raise ValueError('horizon_head_size / horizon_head_layers require horizon_heads separate')
+        horizon_head_size = hidden_size if horizon_head_size is None else horizon_head_size
+        for name, value in [('horizon_head_size', horizon_head_size), ('horizon_head_layers', horizon_head_layers)]:
+            if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+                raise ValueError(f'{name} must be a positive integer')
         kind = architecture.removesuffix('-late-fusion')
         if kind not in ('lstm', 'gru', 'tcn', 'cnn-gru', 'transformer'):
             raise ValueError('Unknown sequence architecture')
@@ -294,9 +329,16 @@ class ResidualSequence(nn.Module):
         history = [i for i in range(input_size) if not self.late_fusion or i not in weather]
         self.register_buffer('_history_indices', torch.tensor(history, dtype=torch.long), persistent=False)
         self.input_dropout_layer = nn.Dropout1d(input_dropout)
-        self.encoder = SequenceEncoder(kind, len(history), hidden_size, num_layers, dropout,
+        self.encoder = SequenceEncoder(kind, len(history), hidden_size, num_layers - horizon_gru_layers, dropout,
                                        tcn_channels, tcn_kernel_size, cnn_channels, cnn_kernel_size,
                                        transformer_heads, transformer_ff_size)
+        self.horizon_gru_layers = horizon_gru_layers
+        if horizon_gru_layers:
+            self.branch_dropout = nn.Dropout(dropout)
+            self.horizon_grus = nn.ModuleList(
+                nn.GRU(hidden_size, hidden_size, horizon_gru_layers, batch_first=True,
+                       dropout=dropout if horizon_gru_layers > 1 else 0.) for _ in range(output_size))
+            self.architecture_config['horizon_gru_layers'] = horizon_gru_layers
         self.station_embedding = (nn.Embedding(num_stations, station_embedding_size)
                                   if num_stations and station_embedding_size else None)
         self.forecast_encoder = (nn.Sequential(nn.Dropout(input_dropout), nn.Linear(len(weather), forecast_hidden_size),
@@ -316,6 +358,18 @@ class ResidualSequence(nn.Module):
             self.linear = StationCorrectionHead(num_stations, hidden_size, output_size)
         elif head_mode == 'station-mlp':
             self.linear = StationMLPCorrectionHead(num_stations, hidden_size, output_size, station_mlp_hidden_size)
+        self.horizon_heads = horizon_heads
+        if horizon_heads == 'separate':
+            def horizon_mlp():
+                layers, width = [], head_size
+                for _ in range(horizon_head_layers):
+                    layers += [nn.Linear(width, horizon_head_size), nn.ReLU()]
+                    width = horizon_head_size
+                return nn.Sequential(*layers)
+            self.fusion = nn.ModuleList(horizon_mlp() for _ in range(output_size))
+            self.linear = HorizonCorrectionHeads(horizon_head_size, output_size)
+            self.architecture_config.update(horizon_heads='separate', horizon_head_size=horizon_head_size,
+                                            horizon_head_layers=horizon_head_layers)
         if event_aware:
             self.rise_head = nn.Linear(hidden_size, output_size)
             self.amplitude_head = nn.Linear(hidden_size, output_size)
@@ -402,12 +456,21 @@ class ResidualSequence(nn.Module):
         history = prepared.index_select(-1, self._history_indices)
         history = self.input_dropout_layer(history.transpose(1, 2)).transpose(1, 2)
         sequence = self.encoder.forward_sequence(history) if self.horizon_decoder_mode == 'transformer' else None
-        parts = [sequence[:, -1] if sequence is not None else self.encoder(history)]
+        extra = []
         if self.forecast_encoder is not None:
-            parts.append(self.forecast_encoder(x[:, -1].index_select(-1, self._weather_indices)))
+            extra.append(self.forecast_encoder(x[:, -1].index_select(-1, self._weather_indices)))
         if self.station_embedding is not None:
-            parts.append(self.station_embedding(station_ids))
-        features = self.fusion(torch.cat(parts, dim=-1))
+            extra.append(self.station_embedding(station_ids))
+        if self.horizon_gru_layers:
+            shared = self.branch_dropout(self.encoder.forward_sequence(history))
+            features = torch.stack([fusion(torch.cat([gru(shared)[0][:, -1], *extra], dim=-1))
+                                    for gru, fusion in zip(self.horizon_grus, self.fusion)], dim=1)   # [B, horizons, W]
+        else:
+            joined = torch.cat([sequence[:, -1] if sequence is not None else self.encoder(history), *extra], dim=-1)
+            if self.horizon_heads == 'separate':
+                features = torch.stack([fusion(joined) for fusion in self.fusion], dim=1)      # [B, horizons, W]
+            else:
+                features = self.fusion(joined)
         if sequence is not None:
             queries = features[:, None, :] + self.horizon_queries[None, :, :]
             features = self.horizon_decoder(queries, self.memory_projection(sequence))

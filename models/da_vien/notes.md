@@ -2,6 +2,35 @@
 
 Bắt đầu ngày 17/11/2026. Quy trình chung theo `models/PIPELINE.md`. Bài học từ Ngã Ba Sình xem trong `models/NOTES.md` (phần B) và `models/nga_ba_sinh/REPRODUCE.md`.
 
+## Tóm tắt trạng thái (cuối ngày 17/11/2026)
+
+**Dữ liệu Dã Viên (xong):**
+- Xóa hai đoạn sensor đứng 01–12/02 và 20–25/06 (`invalid_ranges`).
+- Lọc 5 gai, ngưỡng 85 mm, giữ sóng thật 11/04.
+- Không có bước nhảy mốc đo.
+- Mực nước giờ sau khi làm sạch không còn gai.
+- Một tập mẫu gốc dùng cho cửa sổ 12/25/48/96 h (`sequence_length` 12, `max_sequence_length` 96).
+- Dataset `train_data/da_vien/dv_water_only`; config `models/da_vien/dataset_config_base.json`.
+
+**Phân tích ban đầu:**
+- Persistence: test khó nhất ở +3/+6 h (triều tháng 9–10); val gần như chỉ có bão 10–13/09.
+- Dự báo NBS giải thích được nhiều cho DV ở +3/+6 h. Mực nước NBS thật giải thích 88–96%.
+- Dự báo NBS trên train là trong mẫu. Người dùng quyết định không train lại NBS kiểu out-of-fold; sẽ dùng group dropout.
+
+**Model NBS mới (không station embedding, để finetune sang DV), khoảng 1.900 epoch của 16 run:**
+- Không epoch nào đạt 0 lỗi trên mọi giờ (val, test, mới 15/10–12/11, giờ ranh giới).
+- Tốt nhất có 1 lỗi sát ngưỡng (200,2–200,6 mm), ví dụ hw 1/1,5/2,5 s42 ep61.
+- Ghép +3/+6 h từ ep37 và +12 h từ ep69 của cùng run đó: **0 lỗi trên mọi giờ**.
+- **Bập bênh +6 h / +12 h:** các giờ khó nhất bị một mức lệch chung trong GRU kéo cùng nhau. Nguồn gốc là model nén biên độ trên dữ liệu chưa thấy (độ dốc 0,80 / 0,63, trong khi train khoảng 0,9).
+- Đã thử và **không giúp**: tail penalty, event weight, batch 128, lr 3e-4, head riêng cho từng mốc, nhánh GRU riêng cho từng mốc. Nhánh GRU riêng cắt được bập bênh nhưng làm mọi mốc kém đi (trung vị 14 lỗi so với 5).
+- Model riêng cho từng mốc: người dùng có thể train (lệnh ở cuối cuộc thảo luận ngày 17/11), chưa có kết quả.
+- Code mới, mặc định đều tắt:
+  - `--station-embedding-size 0`;
+  - `--change-tail-weight` / `--change-tail-start-mm`;
+  - `--horizon-heads separate`, `--horizon-head-size`, `--horizon-head-layers`, `--horizon-gru-layers`.
+
+**Bước tiếp theo cho Dã Viên:** dựng dataset DV có nhóm đầu vào giống NBS (35 kênh, để finetune), thêm dự báo NBS làm đầu vào kèm group dropout, và thêm chức năng finetune (nạp trọng số NBS) vào `train.py`. Thứ tự do người dùng quyết định.
+
 ---
 
 ## Task 1. Kiểm tra chất lượng dữ liệu quan trắc (17/11/2026)
@@ -346,6 +375,178 @@ Luồng xử lý (x: [B, L, F]):
     - dựng thử model DV H64×3 trên `dv_water_only`: 67.523 tham số, a_h = 1,002 / 1,004 / 1,006.
   - Cờ khi train DV: `--head-mode shared --station-embedding-size 0`, thay cho `--head-mode station`.
 - Nhận định ban đầu của Claude (giữ nguyên ở mọi trạm): bỏ đi không có lợi hiển nhiên. Ngược lại, nó làm thay đổi khởi tạo với cùng seed: kết quả NBS phụ thuộc rất nhiều vào seed và chỉ seed 23 đạt 0 lỗi, nên sẽ không còn tái tạo được. Ngoài ra còn phải sửa `train.py` và `SequenceRuntime`, vì `--head-mode station` yêu cầu có embedding.
+
+## Model NBS không có station embedding, để finetune sang DV (17/11/2026)
+
+- **Mục đích:** người dùng muốn finetune một model NBS trên dữ liệu DV. Vì model DV bỏ embedding, cần train lại một model NBS cùng kiến trúc (`--head-mode shared --station-embedding-size 0`).
+- **Công thức:** model đơn tốt nhất của NBS là `sea3 h128x3 seq25 hw 1 1 2 ev0 step s23`, epoch 98. Trên NBS: val 0/0/0, test 0/0/0, giai đoạn mới 0/0/1. Thông số lấy từ MLflow `mlflow_local.db`: 100 epoch, early stopping 100, dataset `nbs_onshore_tide7_fc_sea_v3` (35 đầu vào).
+- **Lưu ý:**
+  - Bỏ embedding làm khởi tạo khác đi dù cùng seed 23, nên không chắc tái tạo được 0 lỗi (NBS rất nhạy với seed).
+  - `model/experiments/` hiện **không còn** (hai run gốc của `combined_v1` đã mất). Chỉ còn bản đóng gói `models/nga_ba_sinh/combined_v1/`.
+- **Để finetune được sau này:**
+  - dataset DV phải có **đúng 35 kênh, cùng thứ tự** với dataset NBS (cùng nhóm `fc_ecmwf wind tide sea`, cùng config nhóm);
+  - `train.py` hiện chưa có tùy chọn nạp trọng số cho GRU residual, nên phải thêm. Khi nạp cần thay hệ số persistence (a_h, b_h) và bộ chuẩn hóa bằng của DV.
+
+### Kết quả hai run NBS không embedding (người dùng train, 120 epoch, seed 23 và 42; chấm ngày 17/11/2026)
+
+**Cách chấm:** chấm mọi epoch trên GPU (`research/scripts/score_all_epochs.py`) trên val, test và giai đoạn mới 15/10–12/11. Giai đoạn mới dùng dataset mở rộng dựng từ `eval_config_ext_20261112_sea.json` với `--normalizers-from`; dataset này khớp tuyệt đối với dataset train trên đoạn chung. Số lỗi > 200 mm ghi theo +3/+6/+12 h.
+
+| Run | Epoch tốt nhất | val | test | mới | Sai số lớn nhất val / test / mới (mm) | Trung vị epoch ≥ 30 (val · test · mới) | Epoch trainer chọn |
+|---|---|---|---|---|---|---|---|
+| s23 | 58 / 49 | 0/3/8 · 0/3/9 | 0/0/0 | 0/0/1 · 0/0/0 | 236–246 / 176–180 / 196–212 | 0/6/9 · 0/0/0 · 0/1/1 | ep11 (val 0/15/8): kém |
+| **s42** | **63** | **0/0/0** | **0/0/0** | **0/1/0** | **199 / 177 / 206** | 0/0/1 · 0/0/0 · 0/1/2 | ep8 (val 0/11/3): kém |
+| s42 | 69 | 0/0/0 | 0/0/0 | 0/1/0 | 198 / 175 / 214 | | |
+| s42 | 90 | 0/0/0 | 0/0/0 | 0/1/1 | 195 / 166 / 206 | | |
+
+- s42 có **10 epoch đạt 0 lỗi trên cả val và test**: 63, 65, 68, 69, 72, 73, 75, 78, 87, 90. Không epoch nào đạt 0 lỗi trên cả ba giai đoạn.
+- Lỗi còn lại ở giai đoạn mới đều thuộc đợt 09/11: +6 h lúc 16:00 (−206 mm) và +12 h lúc 09:00 (khoảng −196…−206).
+- **So với model cũ có embedding** (s23 ep98: val 0/0/0, test 0/0/0, mới 0/0/1): **chất lượng tương đương**. Seed tốt đổi từ 23 sang 42, đúng như dự đoán: bỏ embedding chỉ làm đổi "seed may mắn", không làm model tốt hay kém hơn.
+- ~~Đề xuất làm model gốc để finetune sang DV: s42 epoch 63~~. Đã thay bằng kết quả bên dưới.
+
+**Ba run thêm** (người dùng train, cùng công thức, chỉ đổi seed hoặc trọng số mốc; chấm ngày 17/11/2026):
+
+| Run | Epoch tốt nhất | val | test | mới | Số epoch 0 lỗi val+test | Số epoch 0 lỗi cả 3 giai đoạn | TB tổng lỗi, epoch ≥ 30 |
+|---|---|---|---|---|---|---|---|
+| hw 1/1/2, s23 | 58 | 0/3/8 | 0/0/0 | 0/0/1 | 0 | 0 | 17,1 |
+| hw 1/1/2, s42 | 63 / 69 | 0/0/0 | 0/0/0 | 0/1/0 | 10 | 0 | 5,2 |
+| hw 1/1/2, s17 | 51 | 0/2/4 | 0/0/0 | 0/2/2 | 0 | 0 | 15,3 |
+| hw 1/1/2,5, s42 | 63 | 0/1/0 | 0/0/0 | 0/0/0 | 0 | 0 | 4,4 |
+| **hw 1/1,5/2,5, s42** | **116** | **0/0/0** | **0/0/0** | **0/0/0** | **17** | **6** | **4,4** |
+
+- **Lần đầu tiên một model đơn đạt 0 lỗi trên cả val, test và giai đoạn mới.** Run hw 1/1,5/2,5 s42 có 6 epoch như vậy: 75, 90, 97, 114, 115, 116.
+- Sai số lớn nhất trên cả ba giai đoạn: ep75 199,5; ep90 200,0; ep97 198,8; ep114 199,0; ep115 199,7; ep116 198,8 mm. **Biên độ rất mỏng.**
+- **Đề xuất: epoch 116.** Đây là một trong 3 epoch liên tiếp (114–116) cùng đạt 0, tức vùng ổn định. Sai số lớn nhất 198,8 mm.
+  - Sai số lớn nhất từng mốc (val / test / mới): +3 h 141 / 128 / 156; +6 h 191 / 170 / 193; +12 h 199 / 171 / 197.
+  - MAE +3/+6/+12 h: val 30,2 / 50,3 / 65,3; test 35,1 / 49,6 / 50,6; mới 29,3 / 44,4 / 56,3.
+- Seed 42 tốt ổn định với cả ba bộ trọng số. Seed 17 và 23 kém.
+- **Lưu ý:**
+  - Epoch được chọn sau khi xem cả ba giai đoạn, trên khoảng 600 epoch của 5 run, nên kết quả lạc quan.
+  - Phép thử thật là dữ liệu sau 12/11/2026.
+  - Thư mục run: `model/experiments/nga_ba_sinh/nbs_onshore_tide7_fc_sea_v3/noemb_hw11.52.5_…_s42`.
+
+**So sánh ep116 với `combined_v1`** (17/11/2026; đã loại các mẫu sensor đổi mốc; +3 / +6 / +12 h):
+
+| Giai đoạn | Model | Lỗi > 200 | MAE | Sai số lớn nhất | Lỗi > 150 | Độ lệch TB |
+|---|---|---|---|---|---|---|
+| 01/09–31/10 (1.451 giờ) | combined_v1 | 0/0/0 | 38,0 / 55,7 / 52,0 | 153 / 187 / 198 | 1/44/31 | +14 / +24 / +8 |
+| | ep116 | **0/1/0** | **33,0 / 48,9** / 54,9 | 143 / **239** / 199 | 0/19/38 | +3 / +8 / +9 |
+| val | combined_v1 | 0/0/0 | 32,7 / 53,0 / 60,8 | 145 / 185 / 198 | 0/26/36 | |
+| | ep116 | 0/0/0 | 30,2 / 50,3 / 65,3 | 141 / 191 / 199 | 0/19/61 | |
+| test | combined_v1 | 0/0/0 | 37,7 / 54,0 / 47,7 | 153 / 187 / 184 | 1/26/8 | |
+| | ep116 | 0/0/0 | 35,1 / 49,6 / 50,6 | 128 / 170 / 171 | 0/6/13 | |
+| mới 15/10–12/11 | combined_v1 | 0/0/0 | 38,8 / 54,3 / 53,8 | 168 / 188 / 196 | 2/5/10 | |
+| | ep116 | 0/0/0 | 29,3 / 44,4 / 56,3 | 156 / 193 / 197 | 1/4/11 | |
+
+- **Phát hiện quan trọng: `score_all_epochs.py` không chấm 48 mẫu `purged`** (24 h trước ranh giới train/val và val/test). Ở mẫu ranh giới **14/09 21:00 VN, +6 h**, cả 6 epoch "0 lỗi" đều dự báo thiếu: ep75 −209, ep90 −225, ep97 −234, ep114 −236, ep115 −233, ep116 −239 mm. `combined_v1` thì đạt 0 cả ở đây.
+- **Kết luận:**
+  - Theo tiêu chí lỗi lớn trên **mọi giờ**, `combined_v1` vẫn hơn (0 so với 1).
+  - ep116 hơn rõ ở +3/+6 h: MAE thấp hơn 5–10 mm, số lỗi > 150 mm ở +6 h giảm một nửa, ít thiên cao hơn.
+  - ep116 kém hơn một chút ở +12 h.
+  - ep116 gọn hơn (1 model, 279 nghìn tham số, 1 bộ đầu vào) và là model duy nhất dùng được để finetune sang DV (không có embedding).
+- **Chấm lại cả 600 epoch của 5 run, có tính 48 mẫu `purged`** (GPU, ngày 17/11/2026): **không có epoch nào đạt 0 lỗi trên mọi giờ**.
+  - Tốt nhất có 1 lỗi, sát ngưỡng: hw 1/1/2,5 s42 ep63 (lỗi duy nhất val +6 h, 200,2 mm); hw 1/1,5/2,5 s42 ep61 (val +12 h, 200,3 mm); hw 1/1/2 s42 ep61 (200,6 mm).
+  - Sáu epoch "0 lỗi" trước đó đều chỉ sai ở mẫu ranh giới 14/09 21:00 +6 h (209–239 mm).
+- **Bài học:** từ nay chấm cả `purged`, hoặc chấm theo khoảng thời gian liên tục bằng `evaluate combined`, để tránh bỏ sót.
+
+## Loss phạt lỗi lớn (tail penalty), thêm ngày 17/11/2026
+
+- **Nhận xét của người dùng:** loss chỉ là MSE, không có tín hiệu trực tiếp cho thấy lỗi > 200 mm là rất tệ, nên sai số lớn nhất luôn sát 200.
+- **Phân tích của Claude:** sát 200 chủ yếu là hiệu ứng chọn epoch. Sai số lớn nhất trên mọi giờ, các epoch ≥ 30 của run seed 42: thấp nhất 200, trung vị khoảng 222, cao nhất khoảng 238. Không epoch nào dưới 200.
+- **Lựa chọn có sẵn đã loại:**
+  - `large-error-count` (sigmoid quanh 200 ± 20 mm): gradient tắt khi sai số xa 200, không dùng chung được với under-weight; ở DV ngày 11/11 cho kết quả kém hơn.
+  - `--lstm-tail-penalty`: không dùng được với `--change-loss`.
+- **Người dùng đồng ý** thêm số hạng mới (luôn chấp nhận MAE tăng để đạt 0 lỗi):
+  - `--change-tail-weight λ --change-tail-start-mm 150`;
+  - khoản phạt λ·(max(|e| − 150, 0)/d)², tính trên sai số gốc, d = max(σ_h, 200);
+  - code ở `change_objective.py` và `train.py`, test `src/ai/tests/test_change_tail.py` (5 test); các test loss cũ vẫn đạt;
+  - MLflow giờ ghi thêm `change_margin_mm`, `change_tail_weight`, `change_tail_start_mm`.
+- **Độ mạnh, so gradient phần tail với phần base tại e = 220 mm** (base có gradient ∝ e, tail ∝ λ·(e − 150)): λ = 3 tăng thêm khoảng 95%, λ = 10 tăng khoảng 3,2 lần. Với λ = 1 chỉ tăng khoảng 32%, quá yếu. **Đề xuất thử λ = 3 và λ = 10.**
+
+### Kết quả tail penalty (người dùng train λ = 3 và 10 từ 150 mm; chấm ngày 17/11/2026, có cả train và giờ ranh giới)
+
+- **Trên train, model đã gần như không còn sai số lớn.** Ở mọi epoch ≥ 30: 0 dự báo sai > 200 mm, trung vị chỉ **1 dự báo** (trên hơn 18 nghìn) sai > 150 mm, sai số lớn nhất khoảng 150–175 mm. Vì vậy phần tail (bắt đầu từ 150 mm) gần như không có gì để phạt, và λ = 10 hay λ = 3 khác nhau rất ít.
+- **Lỗi còn lại đều trên dữ liệu model chưa thấy, và lặp lại ở cùng vài giờ trong gần như mọi epoch:**
+  - val 13/09 07:00–08:00, +12 h, dự báo thừa 205–216 mm (100% epoch khi λ = 10);
+  - mới 09/11 09:00–10:00, +12 h, dự báo thiếu 205–217 mm (43–92%);
+  - val 31/08 05:00–01/09 01:00, +12 h, dự báo thừa (11–65%);
+  - val 11/08 21:00, +12 h; ranh giới 14/09 21:00, +6 h.
+- **So với run gốc đúng** (cùng công thức, under 0,3, không tail), tail **không giúp**. Bảng tính trên val + test + mới + ranh giới, epoch ≥ 30:
+
+| Run | Tổng lỗi (trung vị) | Tổng lỗi (thấp nhất) | Sai số lớn nhất (trung vị) | Lỗi > 200 trên train |
+|---|---|---|---|---|
+| under 0 | 10 | 4 | 232 | 0 |
+| under 0,2 | 6 | 1 | 222 | 0 |
+| **under 0,3 (gốc)** | **5** | **1** | 223 | 0 |
+| u0,3 + tail 3 | 7 | 3 | 225 | 0 |
+| u0,3 + tail 10 | 6 | 3 | 223 | 0 |
+
+  - Under-weight 0,3 vẫn là tốt nhất; bỏ under-weight (0) thì kém rõ.
+  - Lúc đầu Claude so tail với nhầm run under 0 nên báo "tail có giúp ít"; đã sửa lại.
+- **Kết luận:** loss chỉ "nhìn thấy" train. Không thể dùng loss để sửa lỗi trên dữ liệu chưa thấy khi lỗi đó không có trên train. Đây là giới hạn khái quát hóa và thông tin đầu vào, không phải do model "không chịu học".
+
+### Thêm 5 run tail (người dùng train, chấm ngày 17/11/2026 trên mọi giờ, gồm cả ranh giới)
+
+| Run (tất cả 1/1,5/2,5, seed 42, under 0,3) | Epoch tốt nhất | val | test | mới | ranh giới | Tổng | Sai số lớn nhất | Trung vị tổng, ep ≥ 30 |
+|---|---|---|---|---|---|---|---|---|
+| tail 10 từ 100, b64, lr 1e-4 | 72 | 0/0/3 | 0/0/0 | 0/0/1 | 0/0/0 | 4 | 217 | 6 |
+| tail 10 từ 100 + event 1, b64, lr 1e-4 | 117 | 0/0/2 | 0/0/0 | 0/1/0 | 0/0/0 | 3 | 224 | 6 |
+| tail 10 từ 150, b128, lr 1e-4 | 107 | 0/0/2 | 0/0/0 | 0/0/0 | 0/0/0 | 2 | 226 | 6 |
+| tail 10 từ 150, b128, lr 3e-4, 120 ep | 40 | 0/0/2 | 0/0/0 | 0/0/0 | 0/0/0 | 2 | 208 | 18 |
+| tail 10 từ 150, **b64** (thư mục ghi nhầm b128), lr 3e-4, 75 ep | 23 | 0/1/1 | 0/0/0 | 0/0/0 | 0/0/0 | 2 | 208 | 17,5 |
+
+- **Không có epoch nào đạt 0 lỗi trên mọi giờ**, tính trên tất cả 14 run không embedding (khoảng 1.600 epoch).
+- Tốt nhất vẫn là các epoch có 1 lỗi sát ngưỡng (200,2–200,6 mm) của các run không tail: hw 1/1/2,5 ep63, hw 1/1,5/2,5 ep61, hw 1/1/2 ep61.
+- lr 3e-4 kém ổn định hơn: trung vị tổng 17–18 lỗi, so với 5–6 ở lr 1e-4.
+
+### Bập bênh giữa +6 h và +12 h (người dùng phát hiện; Claude phân tích ngày 17/11/2026)
+
+Lưu dự báo của mọi epoch của run gốc (1/1,5/2,5, seed 42, under 0,3) trên mọi giờ, rồi theo dõi các giờ khó:
+
+| Giờ khó | Thay đổi thật | Sai số, ep 1–15 | ep 31–45 | ep 61–75 | ep 106–120 |
+|---|---|---|---|---|---|
+| 11/09 18:00 +6 h (nước lên) | +383 | −226 | −159 | −192 | −200 |
+| 14/09 21:00 +6 h (nước lên) | +413 | −238 | −167 | −202 | −236 |
+| 13/09 08:00 +12 h (nước rút) | −287 | +248 | +220 | +199 | +198 |
+| 31/08 07:00 +12 h | −184 | +195 | +215 | +163 | +134 |
+| 09/11 09:00 +12 h (nước lên) | +443 | −284 | −209 | −207 | −204 |
+
+- **Các giờ khó di chuyển cùng nhau.** Tương quan qua các epoch (≥ 30) giữa sai số của chúng là 0,71–0,99, trộn lẫn cả +6 h và +12 h. Riêng 09/11 là yếu tố độc lập.
+- **Cơ chế:**
+  - Ở các giờ khó, lỗi +6 h là dự báo **thiếu khi nước lên** (sai số âm), còn lỗi +12 h là dự báo **thiếu mức rút khi nước rút** (sai số dương). Cả hai đều do model **nén biên độ**: trên tập đánh giá, độ dốc giữa thay đổi dự báo và thay đổi thật chỉ 0,80 (+6 h) và 0,63 (+12 h).
+  - Khi train tiếp, độ dốc trên **train** tăng (0,60 → 0,91 ở +6 h; 0,47 → 0,86 ở +12 h), nhưng trên tập đánh giá **đứng yên** sau epoch khoảng 16. Model chỉ học thuộc train.
+  - Thứ duy nhất thay đổi ở các giờ khó là **một mức lệch chung**. Độ lệch trung bình +6 h trên tập đánh giá giảm từ 28 xuống 17 mm. Mức lệch chung đi xuống thì lỗi nước lên (+6 h) xấu đi và lỗi nước rút (+12 h) tốt lên, và ngược lại.
+  - Tổng độ lớn hai lỗi ≈ 390–410 mm, nên **không có mức lệch nào giữ được cả hai dưới 200 mm**. Vì vậy các epoch tốt nhất đều nằm ở 198–200 mm.
+- **Kiểm chứng:** ghép theo mốc từ **cùng một run** (+3/+6 h từ epoch sớm, +12 h từ epoch muộn) cho **0 lỗi trên mọi giờ**: 120 cặp như vậy. Ví dụ +3/+6 h từ ep37 (sai số lớn nhất 187) và +12 h từ ep69 (198). Đây cũng là lý do `combined_v1` đạt 0.
+- **Hệ quả:**
+  - Một model dùng chung một thân GRU cho cả 3 mốc không đạt được 0 lỗi với thông tin hiện có, trừ khi sửa được việc nén biên độ.
+  - Các hướng: (1) ghép theo mốc (từ hai epoch hoặc hai model); (2) tách phần dùng chung giữa các mốc; (3) thêm thông tin để model dự báo đúng biên độ ở bão.
+
+### Hướng sửa (17/11/2026)
+
+- **Hướng 2, đã code:** `--horizon-heads separate`. Mỗi mốc có tầng ghép `Linear(H → H)` + ReLU và head riêng; GRU vẫn dùng chung.
+  - Test: `src/ai/tests/test_horizon_heads.py` (5 test, có test kiểm tra đổi tầng của mốc 0 không làm đổi đầu ra mốc khác).
+  - Dự báo `combined_v1` không đổi.
+  - Số tham số model H128: 278.403 → 311.427.
+- **Hướng 3, chưa làm.** Chẩn đoán: nén biên độ chỉ xảy ra trên dữ liệu chưa thấy (độ dốc 0,80 / 0,63, trong khi train 0,9), tức là "co về trung bình" khi đầu vào không đủ để phân biệt. Ứng viên:
+  - (a) **Thêm thông tin.** Phân tích ngày 13/11: dự báo của model Thuận An đã thấy trước 4 lần nước lên +6 h ở val (+264…+334 mm), trong khi model NBS chỉ dự báo +108…+228. Ứng viên tốt cho các lỗi +6 h. Các lỗi +12 h lúc nước rút thì model TA cũng sai.
+  - (b) **Thêm ví dụ:** khi đã chốt công thức, train model cuối trên train + val + test (có bão 13/09). Chỉ kiểm chứng được trên dữ liệu sau 12/11.
+  - (c) Kéo giãn biên độ sau khi dự báo, hoặc tăng regularization: không khuyến nghị (thêm báo động giả, hoặc không làm tăng độ dốc trên tập đánh giá).
+
+### Kết quả head riêng cho từng mốc (người dùng train, chấm ngày 17/11/2026 trên mọi giờ)
+
+| Run (1/1,5/2,5, seed 42, under 0,3) | Trung vị tổng lỗi, ep ≥ 30 | Thấp nhất | Tương quan lỗi giờ khó +6 h với +12 h |
+|---|---|---|---|
+| head chung (gốc) | 5 | 1 | 0,83 |
+| head riêng 128 × 1 lớp | 7 | 4 | 0,76 |
+| head riêng 32 × 3 lớp (100 epoch) | 13 | 9 | 0,67 |
+
+- **Head riêng không giúp.** Lỗi nhiều hơn, và các giờ khó vẫn di chuyển cùng nhau. Vậy mức lệch chung nằm trong GRU, không nằm trong head.
+- **Đã code hướng ở giữa:** `--horizon-gru-layers K`. K lớp GRU trên cùng thành nhánh riêng cho từng mốc; các lớp dưới (`--lstm-num-layers` − K) dùng chung; giữa phần chung và nhánh có dropout như GRU xếp chồng. Cần `--horizon-heads separate`.
+  - Tham số, GRU 128×3 với 35 đầu vào: K = 1 cho 509.571; K = 2 cho 707.715.
+  - Test trong `test_horizon_heads.py`: đổi nhánh của mốc +12 h không làm đổi +3/+6 h; đổi phần chung thì đổi tất cả.
+
+- **Kết quả `--horizon-gru-layers 1`** (2 lớp GRU chung + 1 lớp riêng mỗi mốc, 120 epoch): mức gắn nhau giữa giờ khó +6 h và +12 h **giảm còn 0,32** (gốc 0,83), tức bập bênh đã bị cắt. Nhưng lỗi **tăng ở cả hai mốc**: trung vị tổng 14 (gốc 5), thấp nhất 7; trung vị +6 h là 7, +12 h là 8. Học chung giữa các mốc giúp model khái quát hóa. Tách ra thì hết bập bênh nhưng mỗi mốc đều kém đi, giống model chỉ +12 h trước đây (test 3–9 lỗi).
+- Người dùng muốn thử phương án cuối: **mỗi mốc một model riêng**. Lưu ý: đã có sẵn cách "mỗi mốc một model" đạt 0 lỗi trên mọi giờ mà không cần train thêm, là lấy +3/+6 h và +12 h từ hai epoch của cùng run gốc (ví dụ ep37 và ep69).
 
 ## Ý tưởng (để thảo luận)
 
