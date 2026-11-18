@@ -1,0 +1,132 @@
+{
+  "water_columns": [
+    "water_level_depth",
+    "water_level_missing"
+  ],
+  "calendar_columns": [
+    "flood_season",
+    "hour_sin",
+    "hour_cos",
+    "day_sin",
+    "day_cos"
+  ],
+  "calendar_groups": {
+    "base": [
+      "flood_season"
+    ],
+    "hour": [
+      "hour_sin",
+      "hour_cos"
+    ],
+    "day_of_year": [
+      "day_sin",
+      "day_cos"
+    ]
+  },
+  "rain_groups": {
+    "tide": [
+      "tide_now",
+      "tide_d3",
+      "tide_d6",
+      "tide_d12",
+      "tide_missing_frac"
+    ],
+    "rain_obs": [
+      "rainobs_east_sum_1h",
+      "rainobs_east_sum_3h",
+      "rainobs_east_sum_6h",
+      "rainobs_east_sum_12h",
+      "rainobs_east_sum_24h",
+      "rainobs_east_sum_48h",
+      "rainobs_east_station_missing_frac",
+      "rainobs_west_sum_1h",
+      "rainobs_west_sum_3h",
+      "rainobs_west_sum_6h",
+      "rainobs_west_sum_12h",
+      "rainobs_west_sum_24h",
+      "rainobs_west_sum_48h",
+      "rainobs_west_station_missing_frac",
+      "rainobs_plain_sum_1h",
+      "rainobs_plain_sum_3h",
+      "rainobs_plain_sum_6h",
+      "rainobs_plain_sum_12h",
+      "rainobs_plain_sum_24h",
+      "rainobs_plain_sum_48h",
+      "rainobs_plain_station_missing_frac"
+    ],
+    "station_obs": [
+      "obs_nbs_minus_self",
+      "obs_nbs_d1",
+      "obs_nbs_d2",
+      "obs_nbs_d3",
+      "obs_nbs_d4",
+      "obs_nbs_d5",
+      "obs_nbs_d6",
+      "obs_nbs_d7",
+      "obs_nbs_d8",
+      "obs_nbs_d9",
+      "obs_nbs_d10",
+      "obs_nbs_d11",
+      "obs_nbs_d12",
+      "obs_nbs_missing_frac"
+    ],
+    "lin_fc": [
+      "lin_d3",
+      "lin_missing_frac"
+    ]
+  },
+  "rain_aliases": {
+    "tide": "tide",
+    "rain_obs": "rain_obs",
+    "station_obs": "station_obs",
+    "lin_fc": "lin_fc"
+  },
+  "rain_value_columns": [
+    "tide_now",
+    "tide_d3",
+    "tide_d6",
+    "tide_d12",
+    "rainobs_east_sum_1h",
+    "rainobs_east_sum_3h",
+    "rainobs_east_sum_6h",
+    "rainobs_east_sum_12h",
+    "rainobs_east_sum_24h",
+    "rainobs_east_sum_48h",
+    "rainobs_west_sum_1h",
+    "rainobs_west_sum_3h",
+    "rainobs_west_sum_6h",
+    "rainobs_west_sum_12h",
+    "rainobs_west_sum_24h",
+    "rainobs_west_sum_48h",
+    "rainobs_plain_sum_1h",
+    "rainobs_plain_sum_3h",
+    "rainobs_plain_sum_6h",
+    "rainobs_plain_sum_12h",
+    "rainobs_plain_sum_24h",
+    "rainobs_plain_sum_48h",
+    "obs_nbs_minus_self",
+    "obs_nbs_d1",
+    "obs_nbs_d2",
+    "obs_nbs_d3",
+    "obs_nbs_d4",
+    "obs_nbs_d5",
+    "obs_nbs_d6",
+    "obs_nbs_d7",
+    "obs_nbs_d8",
+    "obs_nbs_d9",
+    "obs_nbs_d10",
+    "obs_nbs_d11",
+    "obs_nbs_d12",
+    "lin_d3"
+  ],
+  "weather_columns": [],
+  "weather_value_columns": [],
+  "target_columns": [
+    "target_h3_mm"
+  ],
+  "horizons_hours": [
+    3
+  ],
+  "sequence_order": "oldest to newest: t-11h through t",
+  "raw_missing": "NaN in parquet; standardized NaN -> 0 by the reader with water_level_missing = 1"
+}

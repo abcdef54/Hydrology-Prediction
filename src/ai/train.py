@@ -38,7 +38,9 @@ from src.ai.models import (
 )
 from src.ai.trainers import LSTMTrainer, MEFLSTMAdapterTrainer, ResidualLSTMTrainer, VanillaLSTMTrainer
 from src.ai.residual_sequence import NEW_METHODS, residual_model
-from src.ai.regional_training_data import regional_loaders, regional_persistence
+from src.ai.finetune import init_from_checkpoint
+from src.ai.regional_training_data import regional_linear_baseline, regional_loaders, regional_persistence
+from src.ai.augmentation import parse_surge_scale
 from src.ai.utils import (
     FEATURE_SETS, dataset_directory, get_dataloader, load_dataset,
     load_mef_backbone, normalize_feature_set, set_seed,
@@ -116,6 +118,14 @@ parser.add_argument('--horizon-head-layers', type=int, default=1,
 parser.add_argument('--horizon-gru-layers', type=int, default=0,
                     help='Top GRU layers that each horizon gets as its own branch (the remaining lower '
                          '--lstm-num-layers minus this are shared); needs --train-method gru and --horizon-heads separate')
+parser.add_argument('--init-checkpoint', type=Path, default=None,
+                    help='Initialise every weight from this model.pt (e.g. another station) before training: same input '
+                         'columns and architecture required; head rows are selected for --target-horizons; persistence '
+                         'coefficients and input normalisers come from --dataset-dir (src/ai/finetune.py)')
+parser.add_argument('--linear-baseline', action='store_true',
+                    help='Residual over persistence + the dataset linear forecast: for each target horizon h the '
+                         'prediction is persistence + lin_d<h> + learned correction (needs a regional dataset built '
+                         'with the lin_fc group; the untrained model equals the linear forecast)')
 parser.add_argument('--prediction-mode', choices=['residual', 'direct'], default='residual',
                     help='Predict a correction to persistence or the normalized water level directly')
 parser.add_argument('--event-aware', action='store_true', help='Enable supervised rise probability and positive correction heads')
@@ -246,6 +256,11 @@ parser.add_argument('--group-dropout', nargs='+', default=[], metavar='PREFIX:RA
                     help='Training-only dropout of whole input groups, e.g. fc_:0.3 rain_:0.2. With probability RATE per sample all '
                          'channels whose name starts with PREFIX are set to their missing representation (value 0, masks 1) '
                          'over the whole history. Regional residual sequence models only.')
+parser.add_argument('--augment-surge-scale', default=None, metavar='KMIN:KMAX:PROB',
+                    help='Training-only online augmentation (src/ai/augmentation.py): with probability PROB per sample and per '
+                         'load, scale the non-tidal part of the station level (level - tide_now) around its window mean by '
+                         'k ~ U[KMIN, KMAX], in the history and the targets; neighbour-difference and flow_dvres/flow_lp_dv '
+                         'channels follow, exogenous inputs are unchanged. Single-station regional datasets; not with lin_* inputs.')
 parser.add_argument('--sample-weights', action='store_true',
                     help='Training-only per-sample loss weights from the samples.parquet column loss_weight (regional datasets, '
                          'change-risk losses). Validation loss, checkpoint selection and metrics stay unweighted.')
@@ -276,6 +291,13 @@ def is_regional_dataset(args):
 
 def validate_args(args: argparse.Namespace) -> None:
     regional = is_regional_dataset(args)
+    if args.augment_surge_scale:
+        if not regional or args.train_method in ('xgb', 'lgbm'):
+            parser.error('--augment-surge-scale needs a regional dataset and a sequence model')
+        try:
+            parse_surge_scale(args.augment_surge_scale)
+        except ValueError as e:
+            parser.error(str(e))
     if args.event_aware and (not regional or args.water_station is not None or args.train_method != 'transformer-late-fusion'
                              or args.prediction_mode != 'residual' or args.horizon_decoder != 'none'
                              or args.change_loss != 'station-balanced'):
@@ -461,6 +483,13 @@ def validate_args(args: argparse.Namespace) -> None:
         parser.error('Architecture sizes and kernel sizes must be positive')
     if args.station_embedding_size < 0 or (args.station_embedding_size == 0 and args.head_mode != 'shared'):
         parser.error('--station-embedding-size must be >= 0; 0 (no station embedding) requires --head-mode shared')
+    if args.init_checkpoint is not None and (not regional or not args.init_checkpoint.is_file()
+                                             or args.train_method in ('xgb', 'lgbm', 'lstm_adapter', 'residual_lstm')):
+        parser.error('--init-checkpoint needs an existing model.pt and a regional residual sequence model')
+    if args.linear_baseline and (not regional or args.prediction_mode != 'residual' or args.event_aware
+                                 or args.train_method in ('xgb', 'lgbm', 'lstm_adapter', 'residual_lstm')):
+        parser.error('--linear-baseline needs a regional dataset with the lin_fc group, a residual sequence model '
+                     'and no event-aware heads')
     if args.train_method.removesuffix('-late-fusion') == 'transformer' or args.horizon_decoder == 'transformer':
         if args.transformer_heads < 1 or args.transformer_ff_size < 1:
             parser.error('Transformer heads and feed-forward size must be positive')
@@ -640,7 +669,8 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
             use_weather_forecast=weather,
             time_features=args.time_features, station_id=args.water_station,
             sequence_length=args.lstm_seq_len, target_horizons=args.target_horizons,
-            sample_weights=args.sample_weights)
+            sample_weights=args.sample_weights,
+            augment_surge_scale=parse_surge_scale(args.augment_surge_scale) if args.augment_surge_scale else None)
     else:
         train_loader, eval_loader, test_loader = get_dataloader(
         args.horizon,
@@ -718,6 +748,11 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
                 group_values.append(values); group_rates.append(float(rate))
                 group_masks.append([i for i in cols if is_mask(dataset.feature_cols[i])])
                 print(f'Group dropout {prefix!r} p={float(rate)}: {[dataset.feature_cols[i] for i in cols]}')
+            baseline_options = {}
+            if args.linear_baseline:
+                b_idx, b_scale, b_offset = regional_linear_baseline(dataset, regional=args.water_station is None)
+                baseline_options = dict(baseline_feature_indices=b_idx, baseline_scale=b_scale, baseline_offset=b_offset)
+                print(f'Linear baseline: {[dataset.feature_cols[i] for i in b_idx]} scale {b_scale} offset {b_offset}')
             model = residual_model('lstm' if args.train_method == 'residual_lstm' else args.train_method,
                 group_dropout_indices=group_values, group_dropout_mask_indices=group_masks, group_dropout_rates=group_rates,
                 **history_dropout_options(args, dataset, regional, weather),
@@ -730,10 +765,15 @@ def build_sequence_trainer(args: argparse.Namespace) -> LSTMTrainer:
                 transformer_heads=args.transformer_heads, transformer_ff_size=args.transformer_ff_size,
                 head_mode=args.head_mode, horizon_decoder=args.horizon_decoder,
                 station_mlp_hidden_size=args.station_mlp_hidden_size, prediction_mode=args.prediction_mode,
-                event_aware=args.event_aware, horizon_heads=args.horizon_heads,
+                event_aware=args.event_aware, horizon_heads=args.horizon_heads, **baseline_options,
                 **(dict(horizon_head_size=args.horizon_head_size, horizon_head_layers=args.horizon_head_layers,
                         horizon_gru_layers=args.horizon_gru_layers)
                    if args.horizon_heads == 'separate' else {}))
+            if args.init_checkpoint is not None:
+                report = init_from_checkpoint(model, args.init_checkpoint, dataset.feature_cols, dataset.target_horizons)
+                print(f"Initialised from {report['checkpoint']}: {report['copied']} tensors copied, head rows "
+                      f"{report['source_horizons']} -> {report['target_horizons']} ({report['sliced']}), "
+                      f"kept new-dataset {report['kept']}")
             trainer_class = ResidualLSTMTrainer
         elif args.train_method == 'residual_lstm':
             dataset = train_loader.dataset
@@ -913,6 +953,8 @@ def main() -> None:
                     "horizon_head_size": (args.horizon_head_size or args.lstm_hidden_size) if args.horizon_heads == 'separate' else 0,
                     "horizon_head_layers": args.horizon_head_layers if args.horizon_heads == 'separate' else 0,
                     "horizon_gru_layers": args.horizon_gru_layers,
+                    "linear_baseline": args.linear_baseline,
+                    "init_checkpoint": str(args.init_checkpoint or ''),
                     "change_tail_start_mm": args.change_tail_start_mm,
                     "large_error_penalty": args.large_error_penalty if args.change_loss in ('large-error-count', 'large-error-primary') else 0.,
                     "large_error_threshold_mm": args.large_error_threshold_mm,
@@ -920,6 +962,7 @@ def main() -> None:
                     "seed": args.seed,
                     "group_dropout": ' '.join(args.group_dropout) or 'none',
                     "history_dropout": args.history_dropout or 'none',
+                    "augment_surge_scale": args.augment_surge_scale or 'none',
                     "sample_weights": bool(args.sample_weights),
                     "batch_size": args.batch_size,
                     "num_epochs": args.num_epochs,

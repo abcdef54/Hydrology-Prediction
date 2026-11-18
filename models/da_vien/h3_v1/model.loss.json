@@ -1,0 +1,49 @@
+{
+  "mode": "combined",
+  "scale_floor_mm": 200.0,
+  "event_weight": 0.0,
+  "under_weight": 0.0,
+  "threshold_mm": 200.0,
+  "counts_policy": "N/(active_stations*n_station), train only",
+  "station_frequency": [
+    1.0
+  ],
+  "target_scales": [
+    [
+      227.1410627447298
+    ]
+  ],
+  "horizon_weights": [
+    1.0
+  ],
+  "tail_weight": 3.0,
+  "tail_start_mm": 150.0,
+  "training_provenance": {
+    "dataset_path": "/home/my_ubuntu/projects/hydrology/train_data/da_vien/dv_tide7_rainobs_nbsobs_linfull_h3",
+    "dataset_manifest_sha256": "619a43c29477325695b227480b433ed0bb3dc19b1c56becf69c79b8f3b5f841d",
+    "fold": "fixed",
+    "station_mapping": {
+      "0074647403": {
+        "station_index": 0,
+        "name": "D\u00e3 Vi\u00ean (S\u00f4ng H\u01b0\u01a1ng, c\u1ea7u D\u00e3 Vi\u00ean, Hu\u1ebf)",
+        "latitude": 16.458944,
+        "longitude": 107.571361,
+        "unit": "mm"
+      }
+    },
+    "target_horizons": [
+      3
+    ],
+    "training_selection": {
+      "sequence_length": 12,
+      "target_horizons": [
+        3
+      ],
+      "dropped_samples": 0,
+      "effective_purge_hours": 24,
+      "history_policy": "saved anchor pool; require requested history coverage; no new anchors",
+      "target_policy": "exact water.parquet timestamps; retain saved horizon scalers; fit new horizons on selected train only",
+      "feature_scaler_policy": "reuse immutable train-only input scalers"
+    }
+  }
+}

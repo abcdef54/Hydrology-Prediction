@@ -159,6 +159,16 @@ Hồi quy tuyến tính, fit trên train. Kết quả ghi theo val / test.
 - **Bập bênh +6 h / +12 h** trong một model là lý do `combined_v1` (ghép theo mốc) đạt 0 lỗi mà model đơn thì không. Các cách sửa bằng loss hay kiến trúc đều không thành công.
 - Phải train qua MLflow server (experiment `nga_ba_sinh` có nơi lưu artifact là `mlflow-artifacts:/7`).
 
+## B5c. Đóng gói triển khai (18/11/2026)
+- Folder bàn giao cho hệ thống chung: `deploy/thuan_an/`, `deploy/nga_ba_sinh/`. Mỗi folder gồm bundle joblib (dict và mảng numpy, không phụ thuộc repo), dataset train, dữ liệu Open-Meteo hiện có, `predict.py` và `worker.py` tự chứa, cùng `README.md`.
+- Dựng lại: `PYTHONPATH=. .venv/bin/python research/scripts/make_deploy_folders.py` (bản gốc của script nằm ở `src/ai/station_dataset/deploy_templates/`). `src/ai/station_dataset/deploy.py` là bản dùng trong repo.
+- Đã kiểm tra: `predict.py` chạy độc lập cho MAE T9–T10 đúng như đã báo cáo (Ngã Ba Sình 38,0 / 55,7 / 52,0; Thuận An 30,5 / 40,1 / 44,2), chênh với dự báo đã chấm ≤ 0,08 mm.
+
+## B5d. Dọn dẹp và tạm dừng (18/11/2026)
+- Đã xóa mọi checkpoint từng epoch (`model/experiments/`, kể cả hai run gốc của `combined_v1`), MLflow (`mlflow_local.db`, `mlartifacts/`) và các file thô lớn trong `reports/`.
+- Epoch đã chọn của mọi model vẫn còn trong `models/thuan_an/`, `models/nga_ba_sinh/combined_v1/`, `models/da_vien/`. Các đường dẫn `run_dir` trong `combined.json`, `REPRODUCE.md`, `selection.json` chỉ còn là ghi chép nguồn gốc. Muốn tái tạo thì train lại theo lệnh trong `REPRODUCE.md`; MLflow sẽ tạo lại database mới.
+- Nghiên cứu Dã Viên tạm dừng: tóm tắt ở đầu `models/da_vien/notes.md`.
+
 ## B6. Việc tiếp theo
 1. **Kiểm tra `combined_v1` trên dữ liệu sau 12/11:**
    - đồng bộ database (`python -m src.backend.ingestion --once`);

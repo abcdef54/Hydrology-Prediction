@@ -119,11 +119,39 @@ Lệnh dựng: `python -m src.ai.station_dataset.build --config <dataset_config.
 - `sensor_steps`: các lần sensor đổi mốc đo (mục 3.1b).
 - `invalid_ranges`: các khoảng dữ liệu hỏng bị xóa hoàn toàn (mục 3.1d).
 - `max_sequence_length`: cửa sổ lịch sử dài nhất sẽ dùng khi train trên dataset này. Dùng cho quy tắc xóa mẫu của `invalid_ranges` (mục 3.1d).
-- `lin_fc` (nhóm `--groups lin_fc`, đặt sau các nhóm mà nó dùng): dự báo mức thay đổi +3 / +6 / +12 h của một hồi quy tuyến tính (`features.linear_forecast_features`). Đầu vào của hồi quy là lịch sử `history_hours` giờ và các nhóm trong `inputs`. Với các giờ thuộc giai đoạn train, giá trị được tính chéo (`folds` đoạn thời gian liên tiếp, chừa khoảng đệm lịch sử + mốc xa nhất); với val và test, dùng hồi quy fit trên toàn bộ train. Mục đích: GRU bị nén biên độ khi gặp thay đổi lớn hơn lúc train, còn dự báo tuyến tính thì không.
+- `lin_fc` (nhóm `--groups lin_fc`, đặt sau các nhóm mà nó dùng): dự báo mức thay đổi +3 / +6 / +12 h của một hồi quy tuyến tính (`features.linear_forecast_features`). Đầu vào của hồi quy là lịch sử `history_hours` giờ và các nhóm trong `inputs`. Với các giờ thuộc giai đoạn train, giá trị được tính chéo (`folds` đoạn thời gian liên tiếp, chừa khoảng đệm lịch sử + mốc xa nhất); với val và test, dùng hồi quy fit trên toàn bộ train. `folds: 0` = không tính chéo: mọi giờ, kể cả train, dùng hồi quy fit trên toàn bộ train (dùng khi kênh này làm baseline của GRU với `--linear-baseline`, để baseline trên train giống hệt lúc dùng thật). Mục đích: GRU bị nén biên độ khi gặp thay đổi lớn hơn lúc train, còn dự báo tuyến tính thì không.
 
 - `soil` (nhóm `--groups soil`): độ ẩm đất ECMWF (`features.soil_moisture_features`) lấy từ thư mục Single Runs tải kèm biến độ ẩm đất (`open_meteo single-runs --hourly precipitation,soil_moisture_0_to_7cm,...`). Chọn lượt chạy theo đúng quy tắc của `fc_ecmwf`, nhưng lượt chạy thiếu độ ẩm đất thì lùi về lượt cũ hơn (ví dụ 18:00 ngày 10/06 và 06:00 ngày 11/06/2026 không có). Kênh: `soil_<tầng>_basin` (trung bình 7 ô), `soil_x_fcrain` (độ ẩm tầng đầu × log1p mưa dự báo 0–24 h của cùng lượt chạy), `soil_missing_frac`.
 
 - `sea` (nhóm `--groups sea`): mực nước biển ngoài khơi do mô hình dự báo (Open-Meteo Marine, `sea_level_height_msl_previous_day1`, tức giá trị dự báo từ khoảng 24 h trước giờ hiệu lực; tải bằng `open_meteo marine --lat --lon --start --end --out`). `features.sea_level_features`: `sea_setup_chg` = trung bình t+1…t+12 trừ trung bình t−23…t; `sea_anom` = giá trị tại t trừ trung bình 7 ngày qua; `sea_next12_anom` = trung bình t+1…t+12 trừ trung bình 7 ngày qua; `sea_missing_frac`. Chỉ dùng tới t+12, cùng quy tắc với gió, để mọi giá trị đều đã được phát ít nhất 12 h trước thời điểm dự báo. Dữ liệu `previous_day1` có từ 18/11/2025.
+
+- `flow` (nhóm `--groups flow`; `features.flow_features`): đại diện cho dòng chảy sông, từ trạm chính và một trạm lân cận phía hạ lưu. `neighbour` là tên một trạm trong `station_obs.stations`, dùng cùng despike và cùng offset mốc đo. Kênh:
+  - `flow_dvres`: mực nước trừ triều 7 ngày của chính trạm;
+  - `flow_grad`: độ dốc mặt nước giữa hai trạm sau khi trừ triều của từng trạm;
+  - thay đổi của hai kênh trên sau `lags_hours` giờ;
+  - trung bình trượt `lowpass_hours` giờ (một ngày triều, cần ≥ 80% giờ có dữ liệu) của mực nước và của chênh lệch hai trạm, cùng thay đổi sau `lowpass_changes_hours` giờ;
+  - `flow_missing_frac`.
+- `tide_phase` (nhóm `--groups tide_phase`; `features.tide_phase_features`): hình dạng đường triều dự báo trong 14 h tới, dùng cùng cách fit 7 ngày với `tide`. Kênh `tph_*`:
+  - số giờ tới đỉnh và tới chân triều kế tiếp, kèm độ cao so với hiện tại;
+  - biên độ 12 h tới;
+  - độ dốc tại t, t+6, t+12; độ cong tại t+6.
+  
+  Giờ không fit được để trống, `tph_missing_frac` = 1. Tên kênh tránh tiền tố `tide_` vì `lin_fc` lọc theo tiền tố đó.
+- `rain_api` (nhóm `--groups rain_api`; `features.rain_api_features`): chỉ số mưa tích lũy có suy giảm, API_τ = Σ r(t−i)·e^(−i/τ), với `taus_hours` mặc định 12/24/72.
+  - r là trung bình lưu vực của các cụm trong `rain_obs`; giờ một cụm không có trạm nào báo thì cụm đó tính là 0.
+  - `per_cluster: true`: thêm kênh cho từng cụm.
+  - `plus_fc: true`: thêm kênh API cộng mưa ECMWF lưu vực 0–6 h; cần nhóm `fc_ecmwf` đứng trước trong `--groups`.
+  - `rain_api_missing_frac`: tỷ lệ giờ trong 24 h qua không có trạm nào báo.
+
+- `spring_neap` (nhóm `--groups spring_neap`; `features.spring_neap_features`; không cần khóa config): kênh thiên văn, biết trước cho mọi thời điểm.
+  - `sn_cos`, `sn_sin`: pha nước cường / nước kém (cos/sin 2D, chu kỳ 14,77 ngày; +1 khi nước cường);
+  - `sn_decl_cos`, `sn_decl_sin`: chu kỳ xích vĩ Mặt Trăng (cos/sin 2s, 13,66 ngày);
+  - `sn_missing_frac` luôn bằng 0.
+
+- `self_fc` (nhóm `--groups self_fc`; `features.self_forecast_features`): dự báo của chính model trạm, phát hành `issue_lag_hours` giờ trước.
+  - Khóa `self_fc.forecasts_parquet` trỏ tới bảng xuất bằng `research/scripts/export_self_forecasts.py` (cột `timestamp_utc`, `p<h>`).
+  - Kênh `selffc_t<k>` = dự báo cho giờ t + k trừ mực nước lúc t; `selffc_missing_frac`.
+  - Trên giờ train, dự báo là trong mẫu, nên dùng kèm `--group-dropout selffc_:RATE`.
 
 Định dạng thư mục dataset được `src/ai/regional_data/reader.py` đọc.
 

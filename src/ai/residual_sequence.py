@@ -174,7 +174,8 @@ class ResidualSequence(nn.Module):
                  group_dropout_indices=None, group_dropout_mask_indices=None, group_dropout_rates=None,
                  history_dropout_rate=0., history_dropout_min=1, history_dropout_value_indices=None,
                  history_dropout_mask_indices=None, horizon_heads='shared', horizon_head_size=None,
-                 horizon_head_layers=1, horizon_gru_layers=0):
+                 horizon_head_layers=1, horizon_gru_layers=0, baseline_feature_indices=None,
+                 baseline_scale=None, baseline_offset=None):
         super().__init__()
         # horizon_gru_layers K > 0 (GRU only, needs separate horizon heads): the lowest num_layers-K GRU layers are
         # shared by all horizons; each horizon then has its own K-layer GRU on the shared sequence (dropout between
@@ -321,6 +322,35 @@ class ResidualSequence(nn.Module):
             self.architecture_config.update(history_dropout_rate=h_rate, history_dropout_min=h_min,
                                             history_dropout_value_indices=h_values, history_dropout_mask_indices=h_masks)
         self._history_dropout = (h_rate, h_min, torch.tensor(h_values, dtype=torch.long), torch.tensor(h_masks, dtype=torch.long))
+        # Linear baseline (optional): forward() returns persistence + baseline + learned correction, where the baseline
+        # of output j is x[:, -1, baseline_feature_indices[j]]*baseline_scale+baseline_offset, i.e. a standardized input
+        # channel holding an external forecast of the change (e.g. the cross-fitted lin_d<h> channel) mapped back to
+        # normalized target units. With the zero-initialized head the untrained model equals that forecast.
+        # persistence() stays plain persistence (the loss and diagnostics define the true change against it).
+        self.baseline = baseline_feature_indices is not None
+        if self.baseline:
+            b_idx = list(map(int, baseline_feature_indices))
+            b_scale = torch.as_tensor(baseline_scale, dtype=torch.float32)
+            b_offset = torch.as_tensor(baseline_offset, dtype=torch.float32)
+            dropped = {i for g in g_values + g_masks for i in g} | set(h_values) | set(h_masks)
+            if (len(b_idx) != output_size or any(i < 0 or i >= input_size for i in b_idx)
+                    or level_feature_index in b_idx or set(b_idx) & (set(weather) | dropped)
+                    or b_scale.shape != expected or b_offset.shape != expected
+                    or not torch.isfinite(b_scale).all() or not torch.isfinite(b_offset).all()
+                    or prediction_mode != 'residual' or event_aware):
+                raise ValueError('Linear baseline needs one in-range input channel per output (not the level, weather '
+                                 'or dropout channels), finite coefficients shaped like persistence and a residual, '
+                                 'non-event-aware model')
+            self.architecture_config.update(baseline_feature_indices=b_idx, baseline_scale=b_scale.tolist(),
+                                            baseline_offset=b_offset.tolist())
+        else:
+            if baseline_scale is not None or baseline_offset is not None:
+                raise ValueError('baseline_scale / baseline_offset require baseline_feature_indices')
+            b_idx, b_scale, b_offset = [], torch.zeros(0), torch.zeros(0)
+        # non-persistent: the coefficients live in architecture_config, so state_dicts of other models are unchanged
+        self.register_buffer('_baseline_indices', torch.tensor(b_idx, dtype=torch.long), persistent=False)
+        self.register_buffer('_baseline_scale', b_scale, persistent=False)
+        self.register_buffer('_baseline_offset', b_offset, persistent=False)
         self.register_buffer('persistence_scale', scale)
         self.register_buffer('persistence_offset', offset)
         self.register_buffer('_weather_indices', torch.tensor(weather, dtype=torch.long), persistent=False)
@@ -409,6 +439,19 @@ class ResidualSequence(nn.Module):
         x = self._batch(x, station_ids, _validate_station_ids)
         return self._persistence(x, station_ids)
 
+    def _base(self, x, station_ids):
+        """What the learned correction is added to: persistence, plus the linear baseline when configured."""
+        base = self._persistence(x, station_ids)
+        if not self.baseline:
+            return base
+        scale = self._baseline_scale if station_ids is None else self._baseline_scale[station_ids]
+        offset = self._baseline_offset if station_ids is None else self._baseline_offset[station_ids]
+        return base + x[:, -1].index_select(-1, self._baseline_indices)*scale+offset
+
+    def base(self, x, station_ids=None, *, _validate_station_ids=True):
+        x = self._batch(x, station_ids, _validate_station_ids)
+        return self._base(x, station_ids)
+
     def prepare_inputs(self, x):
         if self.late_fusion or self.forecast_history_policy != 'anchor_only' or not len(self._weather_indices):
             return x
@@ -450,6 +493,7 @@ class ResidualSequence(nn.Module):
 
     def forward(self, x, station_ids=None, *, _validate_station_ids=True, return_diagnostics=False):
         x = self._batch(x, station_ids, _validate_station_ids)
+        base = self._base(x, station_ids)          # before any dropout: the baseline channel is never hidden
         x = self.apply_group_dropout(x)
         x = self.apply_history_dropout(x)
         prepared = self.prepare_inputs(x)
@@ -490,7 +534,7 @@ class ResidualSequence(nn.Module):
             raise ValueError('Diagnostics require an event-aware model')
         if self.prediction_mode == 'direct':
             return output
-        return self._persistence(x, station_ids)+output
+        return base+output
 
 
 class ResidualGRU(ResidualSequence):

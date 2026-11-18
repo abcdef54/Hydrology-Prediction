@@ -1,0 +1,48 @@
+{
+  "format_version": 1,
+  "epoch": 50,
+  "status": "complete",
+  "checkpoint": "model.pt",
+  "selected_best_epoch": 1,
+  "best_val_loss": 0.021313735125241456,
+  "configured_epochs": 50,
+  "training_finished": true,
+  "evaluation_mode": "eval, dropout disabled; weights fixed",
+  "validation_fingerprint": "aa0a0d91e334b1087a3445489e9c18791190d8a8e191e4745364f2d0e5c90bb2",
+  "train_fingerprint": "3f1919c227ebb5ef82504515dbbf86487ee2c965fa87c5924231596d737d0e00",
+  "dataset_manifest_sha256": "619a43c29477325695b227480b433ed0bb3dc19b1c56becf69c79b8f3b5f841d",
+  "target_horizons": [
+    3
+  ],
+  "time_features": "none",
+  "head_mode": "shared",
+  "horizon_decoder": "none",
+  "loss": {
+    "mode": "combined",
+    "scale_floor_mm": 200.0,
+    "event_weight": 0.0,
+    "under_weight": 0.0,
+    "threshold_mm": 200.0,
+    "counts_policy": "N/(active_stations*n_station), train only",
+    "station_frequency": [
+      1.0
+    ],
+    "target_scales": [
+      [
+        227.1410627447298
+      ]
+    ],
+    "horizon_weights": [
+      1.0
+    ],
+    "tail_weight": 3.0,
+    "tail_start_mm": 150.0
+  },
+  "gradient_probe": {
+    "enabled": false,
+    "maximum_samples_per_station": 32,
+    "scope": "encoder",
+    "sampling": "Fixed train-only extreme/non-extreme anchors, population reweighted",
+    "caveat": "Correlated, finite probes; a negative cosine is not proof of harmful transfer"
+  }
+}

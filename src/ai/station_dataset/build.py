@@ -35,7 +35,8 @@ def write_json(path, obj):
     Path(path).write_text(json.dumps(obj, indent=2, ensure_ascii=False, default=str))
 
 
-def hourly_level_from_db(station_id, index, engine=None, despike=None, return_flagged=False, invalid_ranges=None):
+def hourly_level_from_db(station_id, index, engine=None, despike=None, return_flagged=False, invalid_ranges=None,
+                         offsets=None):
     """Hourly level on `index` from hydrology.observations: value at t = mean of the station's observations with
     observed_at in (t-1h, t], quality_status 'observed' and finite depth; an hour containing two records with the
     same timestamp is left missing. Units: the station's measurement_unit must be mm.
@@ -43,7 +44,10 @@ def hourly_level_from_db(station_id, index, engine=None, despike=None, return_fl
     invalid_ranges: optional list of {start_utc, end_utc, note}; readings inside are dropped first (see
     drop_invalid_ranges), so they never enter the despike median or the hourly mean.
     despike: optional config dict (see despike_observations); flagged 10-min readings are dropped before the hourly
-    mean, so the hour keeps the mean of its remaining readings. The database is not modified."""
+    mean, so the hour keeps the mean of its remaining readings. The database is not modified.
+    offsets: optional list of {from_utc, add_mm, note}; add_mm is added to every reading with observed_at >= from_utc
+    (a known gauge datum change put back on the old datum), before despiking, so no hour mixes the two datums. Used for
+    a NEIGHBOUR station's level as an input; a target station keeps raw levels (see sensor_steps)."""
     import sqlalchemy as sa
     from src.backend.db.session import build_engine
     own = engine is None
@@ -63,6 +67,8 @@ def hourly_level_from_db(station_id, index, engine=None, despike=None, return_fl
     flagged = pd.DataFrame(columns=['observed_at', 'depth', 'rolling_median', 'deviation_mm'])
     if invalid_ranges:
         obs = drop_invalid_ranges(obs, invalid_ranges)
+    if offsets:
+        obs = apply_offsets(obs, offsets)
     if despike:
         obs, flagged = despike_observations(obs, **{k: v for k, v in despike.items() if k != 'note'})
     level = hourly_level(obs, index)
@@ -77,6 +83,16 @@ def drop_invalid_ranges(obs, ranges):
     for r in ranges:
         inside = (obs.observed_at >= pd.Timestamp(r['start_utc'])) & (obs.observed_at <= pd.Timestamp(r['end_utc']))
         obs.loc[inside, 'quality_status'] = 'invalid'
+    return obs
+
+
+def apply_offsets(obs, offsets):
+    """Add each offset's add_mm to the readings with observed_at >= from_utc (offsets accumulate)."""
+    obs = obs.copy()
+    obs['observed_at'] = pd.to_datetime(obs.observed_at, utc=True)
+    obs['depth'] = pd.to_numeric(obs.depth, errors='coerce').astype(float)
+    for o in offsets:
+        obs.loc[obs.observed_at >= pd.Timestamp(o['from_utc']), 'depth'] += float(o['add_mm'])
     return obs
 
 
@@ -127,6 +143,30 @@ def gauge_rain_from_db(station_ids, index, engine=None):
         if own:
             engine.dispose()
     return F.hourly_gauge_rain(obs, index)
+
+
+def reservoir_ops_from_db(facility_ids, index, drop_records=(), engine=None, history_days=30):
+    """Reservoir operation records (facility_id, observed_at, source_updated_at, qdi, qden, htl) from
+    hydrology.facility_operations, from history_days before the grid; drop_records: [{facility_id, observed_at, note}]
+    (reviewed bad records). Duplicate (facility, observed_at) keep the most recently published."""
+    import sqlalchemy as sa
+    from src.backend.db.session import build_engine
+    own = engine is None
+    engine = engine or build_engine()
+    try:
+        with engine.connect() as c:
+            ops = pd.read_sql(sa.text('select facility_id, observed_at, source_updated_at, qdi, qden, htl '
+                                      'from hydrology.facility_operations where facility_id = any(:f) '
+                                      'and observed_at > :a and observed_at <= :b'), c,
+                              params={'f': list(facility_ids), 'a': index.min() - pd.Timedelta(days=history_days), 'b': index.max()})
+    finally:
+        if own:
+            engine.dispose()
+    ops['observed_at'] = pd.to_datetime(ops.observed_at, utc=True)
+    ops['source_updated_at'] = pd.to_datetime(ops.source_updated_at, utc=True)
+    for d in drop_records:
+        ops = ops[~((ops.facility_id == d['facility_id']) & (ops.observed_at == pd.Timestamp(d['observed_at'])))]
+    return ops.sort_values('source_updated_at').drop_duplicates(['facility_id', 'observed_at'], keep='last')
 
 
 def hourly_level(obs, index):
@@ -238,6 +278,58 @@ def build(cfg, name, groups, output_dir, level=None, normalizers_from=None):
             ext = pd.date_range(index.min() - pd.Timedelta(hours=max(windows)), index.max(), freq='h')   # history for the sums
             hourly = gauge_rain_from_db(sorted({s for v in clusters.values() for s in v}), ext)
             frames['rain_obs'] = F.rain_cluster_features(hourly, clusters, windows, ro.get('transform', 'log1p')).reindex(index)
+        elif g in ('station_obs', 'station_obs_extra'):
+            # observed level of other stations (e.g. Ngã Ba Sình for Dã Viên): obs_<name>_minus_self, obs_<name>_d<k>.
+            # 'station_obs_extra' has the same config format; a second group so lin_fc 'inputs' can include one set only.
+            so = cfg[g]
+            others = {name: hourly_level_from_db(st['station_id'], index, despike=st.get('despike'),
+                                                 invalid_ranges=st.get('invalid_ranges'), offsets=st.get('offsets'))
+                      for name, st in so['stations'].items()}
+            frames[g] = F.station_obs_features(
+                others, level, so.get('lags_hours', 12),
+                surge=[name for name, st in so['stations'].items() if st.get('surge')], train_mask=train_rows)
+        elif g == 'flow':
+            # river-flow proxies: tide-removed surface slope to a neighbour + tidal-day means (features.flow_features);
+            # cfg['flow']['neighbour'] names an entry of cfg['station_obs']['stations'] (same despike / datum offsets)
+            fl = cfg['flow']
+            st = cfg['station_obs']['stations'][fl['neighbour']]
+            other = hourly_level_from_db(st['station_id'], index, despike=st.get('despike'),
+                                         invalid_ranges=st.get('invalid_ranges'), offsets=st.get('offsets'))
+            frames['flow'] = F.flow_features(level, other, train_rows, fl.get('lags_hours', [1, 3, 6, 12]),
+                                             fl.get('lowpass_hours', 25), fl.get('lowpass_changes_hours', [6, 12, 24]))
+        elif g == 'tide_phase':
+            frames['tide_phase'] = F.tide_phase_features(level, cfg.get('tide_phase', {}).get('max_lead_hours', 14))
+        elif g == 'self_fc':
+            # the station model's own earlier forecasts (exported by research/scripts/export_self_forecasts.py)
+            sf = cfg['self_fc']
+            fc = pd.read_parquet(sf['forecasts_parquet']).set_index('timestamp_utc')
+            fc.index = pd.to_datetime(fc.index, utc=True)
+            frames['self_fc'] = F.self_forecast_features(level, fc, sf.get('issue_lag_hours', 1))
+        elif g == 'spring_neap':
+            frames['spring_neap'] = F.spring_neap_features(index)     # astronomical, no config needed
+        elif g == 'rain_api':
+            # decayed observed rain of the rain_obs clusters; optional + ECMWF rain of the next 6 h (needs fc_ecmwf before)
+            ra, ro = cfg['rain_api'], cfg['rain_obs']
+            taus = ra.get('taus_hours', [12, 24, 72])
+            clusters = {k: v for k, v in ro['clusters'].items() if not ro.get('use') or k in ro['use']}
+            ext = pd.date_range(index.min() - pd.Timedelta(hours=5 * max(taus)), index.max(), freq='h')
+            hourly = gauge_rain_from_db(sorted({s for v in clusters.values() for s in v}), ext)
+            fc_next = None
+            if ra.get('plus_fc', False):
+                if 'fc_ecmwf' not in frames:
+                    raise ValueError('rain_api plus_fc needs group fc_ecmwf earlier in --groups')
+                fcf = frames['fc_ecmwf']
+                raw = np.expm1 if cfg['fc_ecmwf'].get('transform', 'log1p') == 'log1p' else (lambda v: v)
+                fc_next = raw(fcf['fc_basin_rain_0_3h']) + raw(fcf['fc_basin_rain_3_6h'])     # mm, next 6 h
+            frames['rain_api'] = F.rain_api_features(hourly, clusters, index, taus, ra.get('per_cluster', False), fc_next,
+                                                     ra.get('transform', 'log1p'))
+        elif g == 'reservoir':
+            # reservoir operations (sohoa, hydrology.facility_operations), only records published by t
+            rv = cfg['reservoir']
+            frames['reservoir'] = F.reservoir_features(reservoir_ops_from_db(list(rv['facilities'].values()), index,
+                                                                             rv.get('drop_records', [])),
+                                                       index, rv['facilities'], rv.get('columns', ['qdi']),
+                                                       rv.get('change_hours', [6, 12]))
         elif g == 'sea':
             frames['sea'] = F.sea_level_features(cfg['sea']['marine_json'], index, cfg['sea'].get('week_hours', 168),
                                                  cfg['sea'].get('direct', False))
@@ -328,7 +420,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('--config', required=True)
     p.add_argument('--name', required=True)
-    p.add_argument('--groups', nargs='*', default=[], choices=['fc_ecmwf', 'wind', 'tide', 'rain_obs', 'lin_fc', 'soil', 'sea', 'sea_multi', 'wave'])
+    p.add_argument('--groups', nargs='*', default=[], choices=['fc_ecmwf', 'wind', 'tide', 'rain_obs', 'station_obs', 'station_obs_extra', 'reservoir', 'lin_fc', 'soil', 'sea', 'sea_multi', 'wave', 'flow', 'tide_phase', 'rain_api', 'spring_neap', 'self_fc'])
     p.add_argument('--output-dir', required=True)
     p.add_argument('--grid-end-utc', help='override grid_end_utc of the config (e.g. evaluation on newer data)')
     p.add_argument('--normalizers-from', help='copy normalizers.json from this (training) dataset instead of refitting')

@@ -1,0 +1,231 @@
+{
+  "station_id": "0074647403",
+  "station_name": "Dã Viên (Sông Hương, cầu Dã Viên, Huế)",
+  "latitude": 16.458944,
+  "longitude": 107.571361,
+  "grid_start_utc": "2025-11-14T17:00:00+00:00",
+  "grid_end_utc": "2026-10-15T07:00:00+00:00",
+  "sequence_length": 12,
+  "max_sequence_length": 96,
+  "minimum_water_history_fraction": 0.8,
+  "purge_hours": 24,
+  "horizons_hours": [
+    3,
+    6
+  ],
+  "validation_start": "2026-07-31T00:00:00+07:00",
+  "validation_end": "2026-09-15T00:00:00+07:00",
+  "cutoff": "2026-09-15T00:00:00+07:00",
+  "invalid_ranges": [
+    {
+      "start_utc": "2026-02-01T03:00:00+00:00",
+      "end_utc": "2026-02-12T08:30:00+00:00",
+      "note": "Stuck sensor: 1618 consecutive readings of exactly 441.0 mm at normal 10-min cadence while Ngã Ba Sình moved 217-688 mm; ended by a restart (off-grid reading 07:52 UTC). Removed after user review 2026-11-17 (models/da_vien/notes.md, figures/da_vien/data_check.png)."
+    },
+    {
+      "start_utc": "2026-06-20T00:40:00+00:00",
+      "end_utc": "2026-06-25T02:26:00+00:00",
+      "note": "Stuck sensor: 732 consecutive readings of exactly 534.0 mm while Ngã Ba Sình moved 383-572 mm; ended by a restart (off-grid readings 02:26-02:51 UTC). Removed after user review 2026-11-17."
+    }
+  ],
+  "despike": {
+    "window_minutes": 121,
+    "threshold_mm": 85,
+    "keep": [
+      {
+        "start_utc": "2026-04-11T00:00:00+00:00",
+        "end_utc": "2026-04-11T01:30:00+00:00",
+        "note": "2026-04-11 07:50-08:10 VN dip (-79/-98 mm) follows the same dip at Ngã Ba Sình ~30 min earlier: a real wave travelling NBS -> DV; kept"
+      }
+    ],
+    "note": "Threshold 85 mm drops exactly the 5 single-reading spikes confirmed by the user on 2026-11-17 (29/03 03:10, 30/06 03:50, 17/08 04:10, 04/09 10:20, 26/09 09:50 VN; deviations +91..+388 mm); the next largest non-kept deviation is -78 mm (28/02, a real NBS->DV wave). figures/da_vien/small_spikes.png"
+  },
+  "tide": {
+    "window_days": 7
+  },
+  "note": "Dã Viên +3/+6 h: dv_h36_all + three candidate groups (Task 20, 2026-11-18): flow (tide-removed DV-NBS surface slope, tidal-day means), tide_phase (shape of the predicted tide over the next 14 h), rain_api (decayed basin rain + ECMWF next 6 h). Build one dataset per group and one with all three; lin_fc inputs unchanged, so lin_d3/lin_d6 equal dv_h36_all.",
+  "rain_obs": {
+    "clusters": {
+      "east": [
+        "750041",
+        "750066"
+      ],
+      "west": [
+        "750062",
+        "750007"
+      ],
+      "plain": [
+        "750014",
+        "750033",
+        "750061"
+      ]
+    },
+    "windows_hours": [
+      1,
+      3,
+      6,
+      12,
+      24,
+      48
+    ],
+    "transform": "log1p",
+    "note": "east = Bạch Mã 750041 + Đỉnh Bạch Mã 750066; west = Hồng Thái 750062 + Nhâm 750007; plain = Hồ chứa Phú Bài 750014 + VP QLKTCTTL TP Huế 750033 + Thủy điện Bình Điền 750061. Linear check 2026-11-17 (notes Task 4): best single extra group for DV +3 h."
+  },
+  "lin_fc": {
+    "history_hours": 12,
+    "folds": 0,
+    "inputs": [
+      "tide",
+      "rain_obs",
+      "station_obs",
+      "sea"
+    ],
+    "note": "In-sample (folds 0) linear +3 h and +6 h forecasts from DV 12 h history + tide_now/tide_d6 + rain_obs + observed NBS history + sea (model \"D + biển\", Task 10). ECMWF is deliberately NOT a baseline input (it lowered val R2 in the linear check), so both +6 h datasets share the same baseline."
+  },
+  "station_obs": {
+    "stations": {
+      "nbs": {
+        "station_id": "0074647705",
+        "despike": {
+          "window_minutes": 121,
+          "threshold_mm": 150,
+          "keep": [
+            {
+              "start_utc": "2026-04-11T00:00:00+00:00",
+              "end_utc": "2026-04-11T01:30:00+00:00",
+              "note": "2026-04-11 07:30-07:40 VN dip (-175/-284 mm): Dã Viên dips at about the same time, possibly real; kept after user review 2026-11-16"
+            }
+          ],
+          "note": "10-min readings deviating > 150 mm from the centred 2-h median are dropped before the hourly mean (spikes and short plateaus, reviewed in figures/nga_ba_sinh/sensor_spikes*.png on 2026-11-16)"
+        },
+        "offsets": [
+          {
+            "from_utc": "2026-10-10T15:20:00+00:00",
+            "add_mm": 172,
+            "note": "Ngã Ba Sình gauge datum change (see models/nga_ba_sinh sensor_steps): raw step -157 mm while TA/DV rose; NBS minus TA/DV offset shifted by -171..-176 mm and stayed. +172 puts later readings back on the old datum (same value as Task 3/8 in models/da_vien/notes.md)."
+          }
+        ]
+      }
+    },
+    "lags_hours": 12,
+    "note": "Observed Ngã Ba Sình level known at t: NBS(t)-DV(t) and NBS(t)-NBS(t-k), k=1..12."
+  },
+  "sea": {
+    "marine_json": "data/external/open_meteo/marine_offshore_ta.json",
+    "request_point": [
+      16.7,
+      107.75
+    ],
+    "request_dates": [
+      "2025-11-01",
+      "2026-11-12"
+    ],
+    "week_hours": 168,
+    "note": "Open-Meteo Marine sea_level_height_msl_previous_day1 (forecast 24 h ahead), grid 16.708/107.708 offshore Thuận An; previous_day1 available from 2025-11-18",
+    "direct": true
+  },
+  "fc_ecmwf": {
+    "single_runs_dir": "data/external/open_meteo/ecmwf_single_runs_soil",
+    "request_points": [
+      [
+        16.458944,
+        107.571361
+      ],
+      [
+        16.554968,
+        107.63527
+      ],
+      [
+        16.251017,
+        107.873289
+      ],
+      [
+        16.199675,
+        107.857476
+      ],
+      [
+        16.122778,
+        107.694444
+      ],
+      [
+        16.576556,
+        107.347889
+      ],
+      [
+        16.221111,
+        107.179444
+      ]
+    ],
+    "request_cycles_utc": [
+      "2025-11-13T00:00",
+      "2026-10-15T06:00"
+    ],
+    "all_cells": [
+      "ecmwf_ifs:16.203865:107.675520",
+      "ecmwf_ifs:16.203865:107.846300",
+      "ecmwf_ifs:16.274164:107.264960",
+      "ecmwf_ifs:16.274164:107.863250",
+      "ecmwf_ifs:16.485060:107.571434",
+      "ecmwf_ifs:16.555359:107.330795",
+      "ecmwf_ifs:16.555359:107.588180"
+    ],
+    "named_cells": {
+      "a_luoi": "ecmwf_ifs:16.274164:107.264960",
+      "thuan_an": "ecmwf_ifs:16.555359:107.588180",
+      "bach_ma": "ecmwf_ifs:16.274164:107.863250"
+    },
+    "lag_hours": 6,
+    "max_age_hours": 24,
+    "transform": "log1p",
+    "note": "Same block as Ngã Ba Sình; runs read from ecmwf_single_runs_soil (identical to ecmwf_single_runs on the dataset period, checked 2026-11-17, and continues to 16/11)."
+  },
+  "wind": {
+    "previous_runs_json": "data/external/open_meteo/prev_offshore_to_20261116.json",
+    "request_point": [
+      16.85,
+      107.85
+    ],
+    "request_dates": [
+      "2025-11-01",
+      "2026-10-21"
+    ],
+    "channels": [
+      "wind_onshore_past24",
+      "wind_onshore_next6",
+      "wind_onshore_next12",
+      "wind_onshore_chg12"
+    ],
+    "note": "Same 4 onshore channels as Ngã Ba Sình; file extended to 16/11 (identical to prev_offshore.json on the dataset period, checked 2026-11-17)."
+  },
+  "flow": {
+    "neighbour": "nbs",
+    "lags_hours": [
+      1,
+      3,
+      6,
+      12
+    ],
+    "lowpass_hours": 25,
+    "lowpass_changes_hours": [
+      6,
+      12,
+      24
+    ],
+    "note": "Group 1 of Task 19: NBS from station_obs (despike, +172 mm datum offset from 2026-10-10). Linear screen: explains the DV-specific change (Δ DV − Δ NBS, R2 val/test/new 21/74/74 -> 40/80/81) but not the error count."
+  },
+  "tide_phase": {
+    "max_lead_hours": 14,
+    "note": "Group 2 of Task 19: next high/low water lead and height, 12 h range, slopes and curvature of the 7-day DV tide fit."
+  },
+  "rain_api": {
+    "taus_hours": [
+      12,
+      24,
+      72
+    ],
+    "per_cluster": false,
+    "plus_fc": true,
+    "transform": "log1p",
+    "note": "Group 3a of Task 19: API of the basin mean of the rain_obs clusters, and API + ECMWF fc_basin rain 0-6 h. Per-cluster (3b) was worse in the linear screen."
+  }
+}

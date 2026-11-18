@@ -1,0 +1,67 @@
+{
+  "mode": "combined",
+  "scale_floor_mm": 200.0,
+  "event_weight": 0.0,
+  "under_weight": 0.0,
+  "threshold_mm": 200.0,
+  "counts_policy": "N/(active_stations*n_station), train only",
+  "station_frequency": [
+    1.0
+  ],
+  "target_scales": [
+    [
+      226.43687748098162,
+      226.34196971054797,
+      227.1410627447298,
+      226.1944923267733,
+      226.1409928725816,
+      226.89512434504158
+    ]
+  ],
+  "horizon_weights": [
+    0.16666666666666666,
+    0.16666666666666666,
+    0.16666666666666666,
+    0.16666666666666666,
+    0.16666666666666666,
+    0.16666666666666666
+  ],
+  "training_provenance": {
+    "dataset_path": "/home/my_ubuntu/projects/hydrology/train_data/da_vien/dv_h36_sn",
+    "dataset_manifest_sha256": "3efb29aaccc505511b00f6bf49b1a8333820fb0cc5fe0f4cf4fe942c47d0683b",
+    "fold": "fixed",
+    "station_mapping": {
+      "0074647403": {
+        "station_index": 0,
+        "name": "D\u00e3 Vi\u00ean (S\u00f4ng H\u01b0\u01a1ng, c\u1ea7u D\u00e3 Vi\u00ean, Hu\u1ebf)",
+        "latitude": 16.458944,
+        "longitude": 107.571361,
+        "unit": "mm"
+      }
+    },
+    "target_horizons": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "training_selection": {
+      "sequence_length": 25,
+      "target_horizons": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "dropped_samples": 13,
+      "effective_purge_hours": 24,
+      "history_policy": "saved anchor pool; require requested history coverage; no new anchors",
+      "target_policy": "exact water.parquet timestamps; retain saved horizon scalers; fit new horizons on selected train only",
+      "feature_scaler_policy": "reuse immutable train-only input scalers"
+    }
+  }
+}

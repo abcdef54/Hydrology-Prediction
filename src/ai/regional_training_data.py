@@ -12,8 +12,9 @@ from .regional_data.training_selection import configure_view
 
 class RegionalBatch(Sequence):
     """A gathered batch with lazy rows for ordinary DataLoader compatibility."""
-    def __init__(self, tensors):
+    def __init__(self, tensors, positions=None):
         self.tensors = tensors
+        self.positions = positions          # dataset row positions of the batch (used by training-only augmentation)
 
     def __len__(self):
         return len(self.tensors['y'])
@@ -146,7 +147,7 @@ class RegionalTrainingDataset(Dataset):
             target_mean=self._target_mean[indices])
         if self._weights is not None:
             out['sample_weight'] = self._weights[indices]
-        return RegionalBatch(out)
+        return RegionalBatch(out, positions)
 
 
 class RegionalShuffleSampler(Sampler):
@@ -167,21 +168,53 @@ class RegionalShuffleSampler(Sampler):
         yield from RandomSampler(self.dataset, generator=self.generator)
 
 
-def regional_loaders(path, *, batch_size, num_workers, seed, sample_weights=False, **selection):
-    """sample_weights applies to the TRAIN split only; validation/test losses stay unweighted."""
+def regional_loaders(path, *, batch_size, num_workers, seed, sample_weights=False, augment_surge_scale=None, **selection):
+    """sample_weights applies to the TRAIN split only; validation/test losses stay unweighted.
+    augment_surge_scale: optional (k_min, k_max, prob) -> src.ai.augmentation.SurgeScaleAugmenter on the TRAIN loader only."""
     loaders = []
     target_normalizers = None
     for i, split in enumerate(['train', 'validation', 'test_exploratory']):
         dataset = RegionalTrainingDataset(path, split=split, target_normalizers=target_normalizers,
                                           sample_weights=sample_weights and i == 0, **selection)
+        collate = regional_collate
         if i == 0:
             target_normalizers = dataset.view.normalizers
+            if augment_surge_scale:
+                from src.ai.augmentation import SurgeScaleAugmenter
+                collate = SurgeScaleAugmenter(dataset, *augment_surge_scale, seed=seed)
         loaders.append(DataLoader(dataset, batch_size=batch_size,
-            collate_fn=regional_collate,
+            collate_fn=collate,
             sampler=RegionalShuffleSampler(dataset, seed+i) if i == 0 else None,
             num_workers=num_workers, drop_last=False, pin_memory=torch.cuda.is_available(),
             persistent_workers=num_workers > 0, generator=torch.Generator().manual_seed(seed+i)))
     return tuple(loaders)
+
+
+def regional_linear_baseline(dataset, regional=True, prefix='lin_d'):
+    """Feature indices and coefficients that map the standardized `lin_d<h>` channel of each target horizon back to
+    normalized target units: (x*s_lin + m_lin)/s_target(h) = x*scale + offset. Shapes follow regional_persistence."""
+    names = [f'{prefix}{h}' for h in dataset.target_horizons]
+    missing = [n for n in names if n not in dataset.feature_cols or n not in dataset.view.normalizers['shared']]
+    if missing:
+        raise ValueError(f'--linear-baseline needs channels {missing}; build the dataset with the lin_fc group')
+    indices = [dataset.feature_cols.index(n) for n in names]
+    shared = dataset.view.normalizers['shared']
+    stats = dataset.view.normalizers['stations']
+
+    def coefficients(station):
+        targets = [station['targets'][f'h{h}']['scale'] for h in dataset.target_horizons]
+        return ([shared[n]['scale']/t for n, t in zip(names, targets)],
+                [shared[n]['mean']/t for n, t in zip(names, targets)])
+    if not regional:
+        sid = dataset.view.samples.station_id.iloc[0]
+        scale, offset = coefficients(stats[sid])
+        return indices, scale, offset
+    count = len(dataset.view.mapping)
+    scale, offset = np.zeros((count, dataset.num_targets)), np.zeros((count, dataset.num_targets))
+    for sid, values in stats.items():
+        i = dataset.view.mapping[sid]['station_index']
+        scale[i], offset[i] = coefficients(values)
+    return indices, scale.tolist(), offset.tolist()
 
 
 def regional_persistence(dataset, regional=True):
