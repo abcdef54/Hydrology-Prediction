@@ -72,7 +72,7 @@ Hai trạm thành công và mốc +3 h của trạm thứ ba đều đến từ 
 - **Biên an toàn mỏng:** sai số lớn nhất của các model 0 lỗi nằm ở 190–198 mm.
 - **Dự báo thời tiết là hồi cứu.** Thời điểm dự báo ECMWF thực sự có sẵn trong quá khứ chưa kiểm chứng được (giả định trễ 6 giờ); dự báo ECMWF thường thấp hơn mưa thực trong đợt lớn.
 - **Định nghĩa nhãn:** mọi kết quả chấm theo mực nước trung bình giờ. Nếu nhãn là số đo tức thời lúc hh:00 thì kết quả Dã Viên đổi (+3 h: 0 → 4 lỗi; +6 h: 12 → 19 lỗi).
-- **Chưa tích hợp vào ứng dụng:** model Thuận An và Ngã Ba Sình được đóng gói độc lập (`deploy/`) nhưng chưa deploy trong ứng dụng web. Cần thêm thu thập gió ngoài khơi, mực nước biển dự báo, dự báo mưa nhiều ô. Có lỗi đã biết: `predict.py` dừng khi không có lượt chạy ECMWF nào.
+- **Chưa tích hợp vào ứng dụng:** model Thuận An và Ngã Ba Sình được đóng gói độc lập (bundle `deploy/`, đã bàn giao, không nằm trong git) nhưng chưa deploy trong ứng dụng web. Cần thêm thu thập gió ngoài khơi, mực nước biển dự báo, dự báo mưa nhiều ô. Có lỗi đã biết: `predict.py` dừng khi không có lượt chạy ECMWF nào.
 - **Lưu trữ:** các báo cáo gốc (`reports/`), `data/` và `scripts/local/` nằm ngoài git; cần sao lưu riêng.
 
 ## 10.7 Việc còn lại và hướng tiếp theo

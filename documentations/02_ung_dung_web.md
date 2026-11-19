@@ -30,7 +30,7 @@ Không có phát hiện nghiên cứu. Chỉ có điểm thực dụng: viết s
 ## 8. Kết luận và tình trạng hiện tại
 
 - Dự báo trong app chỉ bật cho Dã Viên. Các trạm khác chỉ hiển thị quan trắc.
-- **Chưa cập nhật các model mới:** Thuận An, Ngã Ba Sình và Dã Viên `v1` (giai đoạn 7–9) chưa được deploy trong repo này (chưa tích hợp vào app). Chúng chỉ được đóng gói riêng ở `deploy/thuan_an/` và `deploy/nga_ba_sinh/` (bundle model, `predict.py`, `worker.py` chạy độc lập) và bàn giao cho mentor.
+- **Chưa cập nhật các model mới:** Thuận An, Ngã Ba Sình và Dã Viên `v1` (giai đoạn 7–9) chưa được deploy trong repo này (chưa tích hợp vào app). Chúng chỉ được đóng gói riêng thành các bundle `deploy/thuan_an/` và `deploy/nga_ba_sinh/` (không nằm trong git) (bundle model, `predict.py`, `worker.py` chạy độc lập) và bàn giao cho mentor.
 - Nếu muốn cập nhật app: thêm các model mới vào registry và hỗ trợ đầu vào gió, triều, mực biển (hiện chỉ có mưa quan trắc và dự báo mưa).
 
 ## Nguồn

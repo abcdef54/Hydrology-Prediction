@@ -4,7 +4,7 @@ Sau khi Thuận An và Ngã Ba Sình đạt 0 lỗi, nghiên cứu quay lại D�
 
 ## 1. Thời gian
 
-17/11/2026 đến 18/11/2026 (tạm dừng). Toàn bộ nhật ký chi tiết (36 phần việc) nằm ở `models/da_vien/notes.md`.
+17/11/2026 đến 18/11/2026 (tạm dừng). Nhật ký chi tiết (36 phần việc) được lưu ở `reports/da_vien_notes.md` (ngoài git).
 
 ## 2. Trọng tâm
 
@@ -45,7 +45,7 @@ Số lỗi > 200 mm ngoài tập train (validation + ranh giới + test + giai �
 | +6 h (đã đóng gói) | `v1` | 12 | lớn nhất 256 mm |
 | +12 h | model chung +3/+6/+12 h | 37–72 | chưa có ứng viên dùng được |
 
-**`v1`** (đóng gói ở `models/da_vien/v1/`): mỗi mốc lấy trung bình dự báo của 10 epoch cuối (91–100) của một lần train; quy tắc đặt trước, không chọn epoch theo test.
+**`v1`** (từng được đóng gói; hiện chỉ còn ghi lại dataset và lệnh train ở `models/da_vien/README.md`): mỗi mốc lấy trung bình dự báo của 10 epoch cuối (91–100) của một lần train; quy tắc đặt trước, không chọn epoch theo test.
 
 - **+3 h:** GRU residual 64×3 trên nền persistence, cửa sổ 25 giờ, đầu ra chung (không station embedding), hệ số phạt thiếu bằng 0, seed 23, **có augmentation** nước dâng/lũ.
 - **+6 h:** cùng cấu hình, không augmentation.
@@ -117,7 +117,7 @@ Với quy trình từng trạm và bộ feature mới, Dã Viên đạt 0 lỗi 
 
 ## Nguồn
 
-- `models/da_vien/notes.md` (phần tạm dừng ở đầu file và Task 1–36), `models/da_vien/v1/`, `h3_v1/`, `best_h1to6_sn_aug/`, các `models/da_vien/dataset_config_*.json`
+- `reports/da_vien_notes.md` (phần tạm dừng ở đầu file và Task 1–36), `models/da_vien/README.md` (kết quả tốt nhất, dataset, lệnh train) và `models/da_vien/dataset_config_h36_all.json`. Các checkpoint đã đóng gói (`v1`, `best_h1to6_sn_aug`, `h3_v1`) và các cấu hình dataset thử nghiệm khác không còn trong `models/`; xem lịch sử git (commit `783f894`)
 - `research/scripts/score_runs_all_splits.py` (chấm mọi epoch trên mọi tập), `research/scripts/member_ensemble.py`
 - `src/ai/augmentation.py`, `src/ai/station_dataset/features.py` (spring_neap, self_fc, flow)
 - `figures/da_vien/`

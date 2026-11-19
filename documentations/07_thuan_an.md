@@ -47,7 +47,7 @@ Quy trình mới, đóng gói thành `src/ai/station_dataset/` (xem `models/PIPE
 
 Model gió dùng một mình có 6 lỗi validation và 4 lỗi test nên chỉ dùng trong ensemble. Ensemble lớn hơn (khoảng 627 nghìn tham số) có MAE 29,2 / 39,0 / 44,4 mm và cũng 0 lỗi, tức thêm tham số không giúp thêm.
 
-Đóng gói và tái tạo: toàn bộ quy trình được kiểm chứng tái tạo được. Dữ liệu lấy từ API khớp 100% dữ liệu train, dataset dựng lại giống từng byte, hai lần train cùng cấu hình cho dự báo trùng 0,0 mm. Model và ensemble được đóng gói ở `models/thuan_an/` và `deploy/thuan_an/` (bundle chạy độc lập, đã bàn giao).
+Đóng gói và tái tạo: toàn bộ quy trình được kiểm chứng tái tạo được. Dữ liệu lấy từ API khớp 100% dữ liệu train, dataset dựng lại giống từng byte, hai lần train cùng cấu hình cho dự báo trùng 0,0 mm. Model và ensemble được đóng gói ở `models/thuan_an/` (và một bundle chạy độc lập đã bàn giao, không nằm trong git).
 
 ## 5. So với giai đoạn trước
 
@@ -77,6 +77,6 @@ Với các feature mới (gió dự báo, triều 30 ngày, mưa dự báo nhi�
 
 ## Nguồn
 
-- `models/NOTES.md` (phần A: Thuận An và các phân tích chung), `models/PIPELINE.md`, `models/thuan_an/README.md`, `models/thuan_an/REPRODUCE.md`, `models/thuan_an/dataset_config.json`, `deploy/thuan_an/README.md`
+- `models/NOTES.md` (phần A: Thuận An và các phân tích chung), `models/PIPELINE.md`, `models/thuan_an/README.md`, `models/thuan_an/REPRODUCE.md`, `models/thuan_an/dataset_config.json`
 - Bước chuẩn bị: `reports/water_only_gru/` (đánh giá ngày 9/11), `reports/training_rebalancing/`
 - `src/ai/station_dataset/` (`build.py`, `features.py`, `open_meteo.py`, `evaluate.py`)

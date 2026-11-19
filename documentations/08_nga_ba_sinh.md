@@ -91,10 +91,10 @@ Persistence (giữ nguyên mực nước) có MAE 90 / 131 / 72 mm. Cũng 0 lỗ
 
 ## 8. Kết luận
 
-Với quy trình từng trạm, bộ feature (mưa dự báo, gió vào bờ, triều, mực nước biển dự báo), xử lý lỗi dữ liệu và ghép model theo mốc, Ngã Ba Sình đạt 0 lỗi > 200 mm ở cả ba mốc. Hai điểm áp dụng cho trạm tiếp theo ([09](09_da_vien_hien_tai.md)): ghép theo mốc để tránh bập bênh +6/+12 h, và luôn quét dữ liệu hỏng trước khi kết luận về model. Model được đóng gói ở `models/nga_ba_sinh/combined_v1/` và `deploy/nga_ba_sinh/` (bundle chạy độc lập, đã bàn giao); chưa tích hợp vào ứng dụng web ([02](02_ung_dung_web.md)). Việc còn lại là chấm lại trên dữ liệu sau 12/11/2026.
+Với quy trình từng trạm, bộ feature (mưa dự báo, gió vào bờ, triều, mực nước biển dự báo), xử lý lỗi dữ liệu và ghép model theo mốc, Ngã Ba Sình đạt 0 lỗi > 200 mm ở cả ba mốc. Hai điểm áp dụng cho trạm tiếp theo ([09](09_da_vien_hien_tai.md)): ghép theo mốc để tránh bập bênh +6/+12 h, và luôn quét dữ liệu hỏng trước khi kết luận về model. Model được đóng gói ở `models/nga_ba_sinh/combined_v1/` (và một bundle chạy độc lập đã bàn giao, không nằm trong git); chưa tích hợp vào ứng dụng web ([02](02_ung_dung_web.md)). Việc còn lại là chấm lại trên dữ liệu sau 12/11/2026.
 
 ## Nguồn
 
 - `models/NOTES.md` (phần B: Ngã Ba Sình), `models/nga_ba_sinh/REPRODUCE.md` (kèm Phụ lục A: nhật ký thử nghiệm 12–16/11), `models/PIPELINE.md`
-- `models/nga_ba_sinh/dataset_config_onshore_tide7_sea7.json`, `..._sea.json`, `models/nga_ba_sinh/combined_v1/`, `deploy/nga_ba_sinh/README.md`
+- `models/nga_ba_sinh/dataset_config_onshore_tide7_sea7.json`, `..._sea.json`, `models/nga_ba_sinh/combined_v1/`, `models/nga_ba_sinh/README.md`
 - `figures/nga_ba_sinh/` (gai số đo, dự báo `combined_v1`)

@@ -252,7 +252,7 @@ Từ chuỗi `*_previous_day1` theo giờ:
 
 **Mỗi mốc một tầng ghép và một head riêng** (`--horizon-heads separate`, cần `--head-mode shared`; thêm ngày 17/11/2026):
 - Thay tầng ghép dùng chung bằng 3 tầng `Linear(· → H)` + ReLU, mỗi mốc một tầng, cộng một head tuyến tính riêng cho từng mốc, khởi tạo 0.
-- GRU vẫn dùng chung giữa các mốc. Mục đích: các mốc phản ứng khác nhau với cùng trạng thái GRU (xem phần "bập bênh +6 h / +12 h" trong `models/da_vien/notes.md`).
+- GRU vẫn dùng chung giữa các mốc. Mục đích: các mốc phản ứng khác nhau với cùng trạng thái GRU (xem phần "bập bênh +6 h / +12 h" trong `documentations/09_da_vien_hien_tai.md`).
 - Tăng thêm 2·(H·H + H) tham số (H = 128: 278.403 → 311.427).
 - **Nhánh GRU riêng cho từng mốc** (`--horizon-gru-layers K`, cần `--train-method gru` và `--horizon-heads separate`): K lớp GRU trên cùng được nhân thành một nhánh cho mỗi mốc, các lớp dưới (`--lstm-num-layers` − K) dùng chung, giữa hai phần có `Dropout(--lstm-drop-out)`. Với H = 128, 3 lớp, 35 đầu vào: K = 1 → 509.571 tham số; K = 2 → 707.715.
 - Chỉnh được kích thước mỗi head: `--horizon-head-size W` (số nơ-ron mỗi lớp ẩn, mặc định bằng `--lstm-hidden-size`) và `--horizon-head-layers K` (số lớp ẩn Linear + ReLU, mặc định 1). Với GRU 128×3 và 35 đầu vào, tổng tham số theo (W, K): (128, 1) 311.427; (64, 1) 286.467; (128, 2) 360.963; (64, 2) 298.947.

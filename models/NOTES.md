@@ -150,7 +150,7 @@ Hồi quy tuyến tính, fit trên train. Kết quả ghi theo val / test.
 - Mục tiêu của người dùng là **0 lỗi trên toàn bộ thời gian**: val, test và dữ liệu mới.
 - Chấm điểm nên chạy trên GPU (`SequenceRuntime(..., device='cuda')`).
 
-## B5b. Phát hiện thêm ngày 17/11/2026 (chi tiết trong `models/da_vien/notes.md`)
+## B5b. Phát hiện thêm ngày 17/11/2026 (chi tiết trong `documentations/09_da_vien_hien_tai.md`)
 - **Model NBS không có station embedding** (`--head-mode shared --station-embedding-size 0`), train để finetune sang Dã Viên.
   - Công thức tốt nhất: `nbs_onshore_tide7_fc_sea_v3`, GRU 128×3, cửa sổ 25 h, trọng số mốc 1/1,5/2,5, under 0,3, step, seed 42, 120 epoch.
   - Tốt nhất có 1 lỗi sát ngưỡng trên mọi giờ.
@@ -160,14 +160,14 @@ Hồi quy tuyến tính, fit trên train. Kết quả ghi theo val / test.
 - Phải train qua MLflow server (experiment `nga_ba_sinh` có nơi lưu artifact là `mlflow-artifacts:/7`).
 
 ## B5c. Đóng gói triển khai (18/11/2026)
-- Folder bàn giao cho hệ thống chung: `deploy/thuan_an/`, `deploy/nga_ba_sinh/`. Mỗi folder gồm bundle joblib (dict và mảng numpy, không phụ thuộc repo), dataset train, dữ liệu Open-Meteo hiện có, `predict.py` và `worker.py` tự chứa, cùng `README.md`.
+- Folder bàn giao cho hệ thống chung: `deploy/thuan_an/`, `deploy/nga_ba_sinh/` (đã bàn giao; từ 19/11/2026 không còn được git theo dõi, chỉ còn trên ổ đĩa). Mỗi folder gồm bundle joblib (dict và mảng numpy, không phụ thuộc repo), dataset train, dữ liệu Open-Meteo hiện có, `predict.py` và `worker.py` tự chứa, cùng `README.md`.
 - Dựng lại: `PYTHONPATH=. .venv/bin/python research/scripts/make_deploy_folders.py` (bản gốc của script nằm ở `src/ai/station_dataset/deploy_templates/`). `src/ai/station_dataset/deploy.py` là bản dùng trong repo.
 - Đã kiểm tra: `predict.py` chạy độc lập cho MAE T9–T10 đúng như đã báo cáo (Ngã Ba Sình 38,0 / 55,7 / 52,0; Thuận An 30,5 / 40,1 / 44,2), chênh với dự báo đã chấm ≤ 0,08 mm.
 
 ## B5d. Dọn dẹp và tạm dừng (18/11/2026)
 - Đã xóa mọi checkpoint từng epoch (`model/experiments/`, kể cả hai run gốc của `combined_v1`), MLflow (`mlflow_local.db`, `mlartifacts/`) và các file thô lớn trong `reports/`.
 - Epoch đã chọn của mọi model vẫn còn trong `models/thuan_an/`, `models/nga_ba_sinh/combined_v1/`, `models/da_vien/`. Các đường dẫn `run_dir` trong `combined.json`, `REPRODUCE.md`, `selection.json` chỉ còn là ghi chép nguồn gốc. Muốn tái tạo thì train lại theo lệnh trong `REPRODUCE.md`; MLflow sẽ tạo lại database mới.
-- Nghiên cứu Dã Viên tạm dừng: tóm tắt ở đầu `models/da_vien/notes.md`.
+- Nghiên cứu Dã Viên tạm dừng: tóm tắt ở `models/da_vien/README.md` và `documentations/09_da_vien_hien_tai.md`.
 
 ## B6. Việc tiếp theo
 1. **Kiểm tra `combined_v1` trên dữ liệu sau 12/11:**
