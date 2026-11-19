@@ -88,4 +88,4 @@ Train chung nhiều trạm giúp MAE nhưng không giúp lỗi > 200 mm ở Dã 
 - `reports/model_training/regional_experiment_comprehensive_review_20261031.md` (tổng hợp, có bảng run ID), `large_error_primary_experiment_20261031.md`, `regional_xgboost_20261102/`, `regional_mlp_experiments_20261031/`, `station_subset_*`, `huynh_lien_error_investigation_20261030/`, `hydrology_event_forensics_20261102/`, `event_checkpoint_analysis_20261102/`, `o24_daily_rolling_revision_20261103/`, `da_vien_e1_phase_correction_20261104/`, `da_vien_e3_*`, `da_vien_e4_*`
 - `reports/model_comparisons/regional_shortlist_vs_local_da_vien_20261030/`, `regional_vs_local_da_vien_20261030/`, `reports/model_training/da_vien_model_b_vs_regional_final/`
 - `reports/station_analysis/report.md`, `reports/model_selection/EXPERIMENT_HISTORY.md`
-- `research/REGIONAL_O24.md`, `research/CHANGE_DYNAMICS_EXPERIMENTS.md`, `TRAINING_REGIONAL.md`
+- `reports/REGIONAL_O24.md`, `reports/CHANGE_DYNAMICS_EXPERIMENTS.md`, `reports/TRAINING_REGIONAL.md`

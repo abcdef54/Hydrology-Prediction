@@ -35,4 +35,4 @@ Không có phát hiện nghiên cứu. Chỉ có điểm thực dụng: viết s
 
 ## Nguồn
 
-`src/ARCHITECTURE.md`, `src/backend/README.md`, `src/backend/prediction/README.md`, `src/backend/ingestion/README.md`, `src/frontend/README.md`, `src/FORECAST_RAIN_ARCHITECTURE.md`, `model/README.md`, `README.md`, `docker/`; log git 12–23/10
+`src/ARCHITECTURE.md`, `src/backend/README.md`, `src/backend/prediction/README.md`, `src/backend/ingestion/README.md`, `src/frontend/README.md`, `reports/FORECAST_RAIN_ARCHITECTURE.md`, `model/README.md`, `README.md`, `docker/`; log git 12–23/10

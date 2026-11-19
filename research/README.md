@@ -71,9 +71,8 @@ phục vụ và các dataset đã được track trước đó không đổi. D�
 giữ phép cộng số đo nguồn của pipeline; khoảng tích lũy của từng bản ghi chưa
 được xác minh. Các tập test đã phân tích nhiều lần là kết quả khám phá.
 
-Kế hoạch tiếp theo nằm tại
-[FORECAST_RAIN_ARCHITECTURE.md](../src/FORECAST_RAIN_ARCHITECTURE.md): thử số trạm
-mưa, thêm dự báo mưa mới nhất đã có, cuối cùng so sánh 5 với 24 output.
+Kế hoạch này (thử số trạm mưa, thêm dự báo mưa mới nhất đã có, cuối cùng so sánh 5 với 24 output)
+đã được thực hiện; tài liệu kế hoạch `FORECAST_RAIN_ARCHITECTURE.md` được lưu ở `reports/` (ngoài git).
 
 ## Thử tổ hợp trạm mưa bằng tên
 
@@ -423,7 +422,7 @@ và 08–14/10/2026; đây là mốc đầu vào, actual nằm ở t+h. Không d
 
 ## Chẩn đoán dự báo biến động mực nước
 
-[Pipeline thử nghiệm phần 4](CHANGE_DYNAMICS_EXPERIMENTS.md) cung cấp chẩn đoán
+Pipeline thử nghiệm phần 4 (`CHANGE_DYNAMICS_EXPERIMENTS.md`, lưu ở `reports/`, ngoài git) cung cấp chẩn đoán
 train/validation ở eval mode, snapshots theo epoch, gradient probe và head riêng
 theo trạm. Bộ lệnh được chuẩn bị để review; không tự chạy training hay chuyển
 giai đoạn. Các đối chứng bỏ qua test và giữ nguyên dataset/baseline mặc định.

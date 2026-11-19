@@ -16,8 +16,7 @@ regional checkpoint in [model/selected/gru_high_precision/](model/selected/gru_h
 
 - **11 stations**, including Dã Viên, Thuận An, Tư Hiền, Tứ Phú, Ngã Ba Sình,
   Sông Ô Lâu, Phú Xuân and An Cựu. Trained on the fixed regional pool
-  `train_data/hue_regional_20261015_h6_h12_fixed_split_v1` (see
-  [TRAINING_REGIONAL.md](TRAINING_REGIONAL.md)).
+  `train_data/hue_regional_20261015_h6_h12_fixed_split_v1`.
 - **Two outputs: +6 h and +12 h** (not the full five-horizon set).
 - Stacked GRU history encoder (**hidden size 64, 3 layers, 96-hour input**),
   station embeddings (size 8), per-station persistence coefficients and a
@@ -149,7 +148,6 @@ supply observations or appear in the monitoring interface.
 ├── Dockerfile                            # Backend/frontend targets; Python installs use uv
 ├── docker-compose.yaml
 ├── requirements.txt                      # Research/training dependencies
-├── TRAINING_REGIONAL.md                  # How to train the 11-station regional models
 └── .env.example
 ```
 
@@ -238,8 +236,7 @@ The regional experiments additionally use prebuilt Parquet pools such as
 `train_data/hue_regional_20261015_h6_h12_fixed_split_v1` (11 stations,
 +6/+12 h, fixed split: validation July 31 – September 14, test September 15 –
 October 15). These datasets are recognized as prepared regional pools; the
-loader does not rebuild them or refit their normalizers. See
-[TRAINING_REGIONAL.md](TRAINING_REGIONAL.md) for a portable training guide.
+loader does not rebuild them or refit their normalizers.
 
 Single-station and regional residual architectures (GRU, TCN, CNN-GRU,
 Transformer, and their late-fusion variants) are documented in
@@ -287,5 +284,4 @@ stages require review before implementation.
 [Prediction contracts](src/backend/prediction/README.md) ·
 [Ingestion](src/backend/ingestion/README.md) · [Database](src/backend/db/README.md) ·
 [Frontend](src/frontend/README.md) · [API limits](src/backend/security/README.md) ·
-[Residual architectures](src/ai/RESIDUAL_ARCHITECTURES.md) ·
-[Regional training](TRAINING_REGIONAL.md)
+[Residual architectures](src/ai/RESIDUAL_ARCHITECTURES.md)
